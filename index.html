@@ -223,13 +223,18 @@ button { font-family: inherit; cursor: pointer; }
 <!-- key modal -->
 <div class="modal-bg" id="modal">
   <div class="modal">
-    <h3>API keys</h3>
+    <h3>Settings</h3>
     <p>Keys are stored in your browser only. Never sent anywhere except to their respective APIs.<br>
     Get a Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a> — $1 free credit on signup.</p>
     <label>Twitter API key (twitterapi.io)</label>
     <input type="password" id="twKeyInput" placeholder="your twitterapi.io key">
     <label>Anthropic API key</label>
     <input type="password" id="keyInput" placeholder="sk-ant-...">
+    <label>Finance charts</label>
+    <select id="financeProvider">
+      <option value="yahoo">Yahoo Finance</option>
+      <option value="google">Google Finance</option>
+    </select>
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">clear all</button>
       <button onclick="closeModal()">cancel</button>
@@ -263,7 +268,7 @@ button { font-family: inherit; cursor: pointer; }
   <div class="topbar-right">
     <span class="prog" id="prog"></span>
     <button class="top-btn" id="themeBtn" onclick="toggleTheme()">theme</button>
-    <button class="top-btn" id="keyBtn" onclick="openModal()">keys</button>
+    <button class="top-btn" id="keyBtn" onclick="openModal()">settings</button>
   </div>
 </div>
 
@@ -311,6 +316,7 @@ const LS_SCANS = 'signal_scan_history';
 const LS_ACCOUNTS = 'signal_accounts';
 const LS_PRESETS = 'signal_presets';
 const LS_THEME = 'signal_theme';
+const LS_FINANCE = 'signal_finance_provider';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let accounts = [];
@@ -399,14 +405,16 @@ function loadAccounts() {
   if (saved) accounts = JSON.parse(saved);
 }
 
-// --- API Keys ---
+// --- API Keys & Settings ---
 function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
 function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
 function bothKeys() { return !!(getTwKey() && getAnKey()); }
+function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'yahoo'; }
 
 function openModal() {
   $('twKeyInput').value = getTwKey();
   $('keyInput').value = getAnKey();
+  $('financeProvider').value = getFinanceProvider();
   $('modal').classList.add('open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
   setTimeout(() => $('twKeyInput').focus(), 50);
@@ -415,8 +423,10 @@ function closeModal() { $('modal').classList.remove('open'); }
 function saveKeys() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
+  const fp = $('financeProvider').value;
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
+  localStorage.setItem(LS_FINANCE, fp);
   updateKeyBtn();
   closeModal();
 }
@@ -762,7 +772,7 @@ Return a JSON array. Each signal:
 - "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
 - "source": twitter handle (no @)
 - "confidence": "high" | "medium" | "low" — based on engagement + source credibility
-- "tickers": [{symbol: "$TICKER", exchange: "EXCHANGE", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers. Include exchange code: "NASDAQ", "NYSE", "TPE" (Taiwan), "KRX" (Korea), "HKG" (Hong Kong), "TYO" (Tokyo), etc. For crypto use exchange: "CRYPTO". Examples: {symbol: "$AAPL", exchange: "NASDAQ"}, {symbol: "$2408", exchange: "TPE"}, {symbol: "$BTC", exchange: "CRYPTO"}.
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Use Yahoo Finance format: US stocks just the symbol (e.g. "$AAPL", "$UBER"), Taiwan add .TW (e.g. "$2408.TW"), Hong Kong add .HK, Japan add .T, Korea add .KS, crypto just symbol (e.g. "$BTC").
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks). Empty array if none.
 
@@ -835,12 +845,25 @@ function downloadLastScan() {
 }
 
 // --- Renderers ---
+function tickerUrl(sym) {
+  const s = sym.replace(/^\$/, '').toUpperCase();
+  if (getFinanceProvider() === 'google') {
+    // Google Finance needs exchange, try to infer from suffix
+    if (s.endsWith('.TW')) return `https://www.google.com/finance/quote/${s.replace('.TW', '')}:TPE?window=6M`;
+    if (s.endsWith('.HK')) return `https://www.google.com/finance/quote/${s.replace('.HK', '')}:HKG?window=6M`;
+    if (s.endsWith('.T')) return `https://www.google.com/finance/quote/${s.replace('.T', '')}:TYO?window=6M`;
+    if (s.endsWith('.KS')) return `https://www.google.com/finance/quote/${s.replace('.KS', '')}:KRX?window=6M`;
+    return `https://www.google.com/finance/quote/${s}?window=6M`;
+  }
+  return `https://finance.yahoo.com/quote/${encodeURIComponent(s)}`;
+}
+
 function renderTickers(signals) {
   const map = {};
   signals.forEach(r => (r.tickers || []).forEach(t => {
     const k = (t.symbol || '').toUpperCase();
     if (!k) return;
-    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0, exchange: t.exchange || 'NASDAQ' };
+    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0 };
     map[k].acts.add(t.action); map[k].n++;
   }));
   const list = Object.values(map).sort((a, b) => b.n - a.n);
@@ -849,11 +872,7 @@ function renderTickers(signals) {
   el.className = 'ticker-bar';
   el.innerHTML = list.map(t => {
     const pa = ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
-    const sym = t.s.replace(/^\$/, '').toUpperCase();
-    const exch = t.exchange || 'NASDAQ';
-    const url = exch === 'CRYPTO' 
-      ? `https://www.google.com/finance/quote/${sym}-USD?window=6M`
-      : `https://www.google.com/finance/quote/${sym}:${exch}?window=6M`;
+    const url = tickerUrl(t.s);
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
   }).join('');
 }
@@ -879,11 +898,7 @@ function renderSignals(signals) {
     const fc = CONF_C[item.confidence] || '#ccc';
     const tks = (item.tickers && item.tickers.length)
       ? item.tickers.map(t => {
-          const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-          const exch = t.exchange || 'NASDAQ';
-          const url = exch === 'CRYPTO'
-            ? `https://www.google.com/finance/quote/${sym}-USD?window=6M`
-            : `https://www.google.com/finance/quote/${sym}:${exch}?window=6M`;
+          const url = tickerUrl(t.symbol || '');
           return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></a>`;
         }).join('')
       : '<span class="empty-dash">—</span>';
