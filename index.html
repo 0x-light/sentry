@@ -413,13 +413,15 @@ async function fetchTweets(account, days) {
       throw new Error('Invalid JSON from API');
     }
 
-    console.log(`[${account}] Parsed data:`, { status: data.status, tweetCount: data.tweets?.length, hasNext: data.has_next_page });
+    // API nests tweets inside data.data
+    const apiData = data.data || data;
+    console.log(`[${account}] Parsed data:`, { status: data.status, tweetCount: apiData.tweets?.length, hasNext: apiData.has_next_page });
 
     if (data.status === 'error' || (data.status !== 'success' && data.message)) {
-      throw new Error(data.message || 'API error');
+      throw new Error(data.message || data.msg || 'API error');
     }
 
-    const tweets = data.tweets || [];
+    const tweets = apiData.tweets || [];
     if (!tweets.length) {
       console.log(`[${account}] No tweets in response`);
       break;
@@ -433,8 +435,8 @@ async function fetchTweets(account, days) {
     }
 
     if (hitCutoff) break;
-    if (!data.has_next_page || !data.next_cursor) break;
-    cursor = data.next_cursor;
+    if (!apiData.has_next_page || !apiData.next_cursor) break;
+    cursor = apiData.next_cursor;
     pages++;
     // Delay between pagination requests
     await new Promise(r => setTimeout(r, 300));
