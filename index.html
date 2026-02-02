@@ -33,8 +33,9 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-strong); }
-.dot.loading { opacity: .5; }
+.dot { font-size: 8px; color: var(--text-strong); line-height: 1; }
+.dot.loading { animation: pulse 0.6s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 .logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); letter-spacing: .06em; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .prog { font-size: 12px; color: var(--text-muted); }
@@ -169,8 +170,6 @@ button { font-family: inherit; cursor: pointer; }
   padding: 16px 32px; border-bottom: 1px solid var(--border-light);
   align-items: start; gap: 20px;
 }
-.row:hover { background: var(--bg-alt); }
-.row:hover .vlink { opacity: 1; color: var(--link); }
 .row.hidden { display: none; }
 
 .sig-title { font-size: 13px; color: var(--text-strong); font-weight: 400; line-height: 1.4; }
@@ -190,7 +189,7 @@ button { font-family: inherit; cursor: pointer; }
 .ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
 .empty-dash { font-size: 12px; color: var(--text-muted); }
 .source { font-size: 12px; color: var(--text); padding-top: 2px; }
-.vlink { font-size: 11px; color: var(--text-muted); text-decoration: none; opacity: .6; }
+.vlink { font-size: 11px; color: var(--link); text-decoration: none; }
 .empty-state { padding: 48px 32px; font-size: 12px; color: var(--text-muted); text-align: center; }
 
 .debug-section { padding: 16px 32px; border-top: 1px solid var(--border-light); }
@@ -258,7 +257,7 @@ button { font-family: inherit; cursor: pointer; }
 
 <div class="topbar">
   <div class="logo">
-    <div class="dot" id="dot"></div>
+    <span class="dot" id="dot">■</span>
     <span class="logo-text">sentry</span>
   </div>
   <div class="topbar-right">
@@ -759,12 +758,12 @@ async function run() {
 ${combined}
 
 Return a JSON array. Each signal:
-- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints warming up", "Short AAA gaming studios amid market saturation", "AT&S undervalued at current levels despite momentum". NO generic titles.
+- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints ease, buy signal", "Nanya, Winbond: Memory supercycle beneficiaries", "AT&S undervalued despite momentum". NO generic titles.
 - "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
 - "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
 - "source": twitter handle (no @)
 - "confidence": "high" | "medium" | "low" — based on engagement + source credibility
-- "tickers": [{symbol: "$BTC", action: "buy"|"sell"|"hold"|"watch"}] — infer from company names, include crypto. Empty array if none.
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — CRITICAL: You MUST extract tickers for ALL companies mentioned. Look up the stock ticker for any company name (e.g., "Nanya" → "$2408.TW", "Winbond" → "$2344.TW", "Apple" → "$AAPL", "NVIDIA" → "$NVDA"). Include crypto tokens. If a company is publicly traded, include its ticker. This field should rarely be empty.
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks). Empty array if none.
 
