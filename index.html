@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>signal</title>
+<title>sentry</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -200,7 +200,7 @@ button { font-family: inherit; cursor: pointer; }
 <div class="topbar">
   <div class="logo">
     <div class="dot" id="dot"></div>
-    <span class="logo-text">signal</span>
+    <span class="logo-text">sentry</span>
   </div>
   <div class="topbar-right">
     <span class="prog" id="prog"></span>
@@ -243,7 +243,7 @@ const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_PX = 'signal_cors_proxy';
-const DEFAULT_PROXY = '';
+const DEFAULT_PROXY = 'https://signal-proxy.tomaspalmeirim.workers.dev/?url=';
 
 let accounts = [];
 let range = 2;
