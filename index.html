@@ -25,7 +25,7 @@ button { font-family: inherit; cursor: pointer; }
 .dot {
   width: 6px; height: 6px; border-radius: 50%; background: #000000; transition: background .2s;
 }
-.dot.loading { background: #99850a; animation: pulse 0.5s infinite; }
+.dot.loading { background: #000000; animation: pulse 0.5s infinite; }
 .logo-text { font-size: 13px; font-weight: 500; color: #222; letter-spacing: .06em; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .prog { font-size: 12px; color: #999; }
@@ -159,6 +159,14 @@ button { font-family: inherit; cursor: pointer; }
 .debug-content.open { display: block; }
 .debug-entry { margin-bottom: 10px; border-bottom: 1px solid #f3f3f3; padding-bottom: 8px; }
 
+.scan-actions { padding: 12px 32px; border-bottom: 1px solid #eee; display: flex; gap: 12px; align-items: center; }
+.scan-actions .meta { font-size: 11px; color: #999; flex: 1; }
+.dl-btn {
+  background: none; border: 1px solid #ddd; border-radius: 2px;
+  color: #666; font-size: 11px; padding: 4px 12px; cursor: pointer; transition: all .15s;
+}
+.dl-btn:hover { border-color: #999; color: #222; }
+
 .footer { padding: 20px 32px; font-size: 10px; color: #ccc; }
 
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
@@ -221,6 +229,7 @@ button { font-family: inherit; cursor: pointer; }
 <div id="notices"></div>
 <div id="tweetCount"></div>
 <div id="tickerBar"></div>
+<div id="scanActions"></div>
 <div id="results"></div>
 <div id="debugSection"></div>
 <div class="footer">direct timeline · not financial advice</div>
@@ -230,7 +239,6 @@ button { font-family: inherit; cursor: pointer; }
 const SUGGESTED = ['zephyr_z9', 'jukan05', 'citrini7', 'nicholastreece', 'ayz_yzyz'];
 const RANGES = [
   { label: 'today', days: 1 },
-  { label: 'yesterday', days: 2 },
   { label: 'this week', days: 7 },
   { label: 'this month', days: 30 },
 ];
@@ -239,10 +247,12 @@ const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255b
 const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
+const LS_SCANS = 'signal_scan_history';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let accounts = [];
-let range = 2;
+let range = 1;
+let lastScanResult = null;
 let busy = false;
 let logs = [];
 
@@ -486,6 +496,7 @@ async function anthropicCall(body, retries) {
         continue;
       }
       const data = await res.json();
+      console.log('Anthropic response:', res.status, data);
       if (data.error?.type === 'overloaded_error' || data.error?.type === 'rate_limit_error') {
         await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
         continue;
@@ -517,6 +528,7 @@ async function run() {
   $('notices').innerHTML = '';
   $('tweetCount').innerHTML = '';
   $('tickerBar').innerHTML = '';
+  $('scanActions').innerHTML = '';
   $('results').innerHTML = '';
   $('debugSection').innerHTML = '';
   logs = [];
@@ -587,7 +599,7 @@ async function run() {
       .join('\n\n======\n\n');
 
     const data = await anthropicCall({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-sonnet-latest',
       max_tokens: 2048,
       messages: [{
         role: 'user',
@@ -604,6 +616,18 @@ async function run() {
       signals = m ? JSON.parse(m[0]) : [];
     } catch { signals = []; }
 
+    // Store scan result
+    lastScanResult = {
+      date: new Date().toISOString(),
+      range: RANGES[range].label,
+      days: RANGES[range].days,
+      accounts: [...accounts],
+      totalTweets,
+      signals,
+      rawTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets })),
+    };
+    saveScan(lastScanResult);
+
     renderTickers(signals);
     renderSignals(signals);
     renderDebug();
@@ -614,6 +638,37 @@ async function run() {
     setLoading(false);
     setProg('');
   }
+}
+
+// --- Scan Storage ---
+function saveScan(scan) {
+  const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+  history.unshift(scan);
+  // Keep last 20 scans
+  if (history.length > 20) history.pop();
+  localStorage.setItem(LS_SCANS, JSON.stringify(history));
+}
+
+function getScanHistory() {
+  return JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+}
+
+function downloadScan(scan, filename) {
+  const blob = new Blob([JSON.stringify(scan, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `scan-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadLastScan() {
+  if (!lastScanResult) return;
+  const date = new Date(lastScanResult.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  downloadScan(lastScanResult, `sentry-${date}.json`);
 }
 
 // --- Renderers ---
@@ -635,9 +690,20 @@ function renderTickers(signals) {
   }).join('');
 }
 
+function renderScanActions() {
+  const el = $('scanActions');
+  if (!lastScanResult) { el.innerHTML = ''; return; }
+  const d = new Date(lastScanResult.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  el.innerHTML = `<div class="scan-actions">
+    <span class="meta">${dateStr} · ${lastScanResult.accounts.length} accounts · ${lastScanResult.totalTweets} tweets · ${lastScanResult.signals.length} signals</span>
+    <button class="dl-btn" onclick="downloadLastScan()">↓ download json</button>
+  </div>`;
+}
+
 function renderSignals(signals) {
   const el = $('results');
-  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; return; }
+  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; renderScanActions(); return; }
   let h = '<div class="results-header"><span>signal</span><span>tickers</span><span>source</span><span style="text-align:right">link</span></div>';
   signals.forEach((item, i) => {
     const cc = CAT_C[item.category] || '#888';
@@ -665,6 +731,7 @@ function renderSignals(signals) {
     </div>`;
   });
   el.innerHTML = h;
+  renderScanActions();
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
