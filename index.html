@@ -181,14 +181,11 @@ button { font-family: inherit; cursor: pointer; }
   <div class="modal">
     <h3>API keys</h3>
     <p>Keys are stored in your browser only. Never sent anywhere except to their respective APIs.<br>
-    Get a Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a> — $1 free credit on signup.<br>
-    A CORS proxy is required to call Twitter API from the browser. Deploy the included <code>worker.js</code> to <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Workers</a> (free).</p>
+    Get a Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a> — $1 free credit on signup.</p>
     <label>Twitter API key (twitterapi.io)</label>
     <input type="password" id="twKeyInput" placeholder="your twitterapi.io key">
     <label>Anthropic API key</label>
     <input type="password" id="keyInput" placeholder="sk-ant-...">
-    <label>CORS proxy URL</label>
-    <input type="text" id="proxyInput" placeholder="https://your-worker.workers.dev/?url=">
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">clear all</button>
       <button onclick="closeModal()">cancel</button>
@@ -242,8 +239,7 @@ const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255b
 const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
-const LS_PX = 'signal_cors_proxy';
-const DEFAULT_PROXY = 'https://signal-proxy.tomaspalmeirim.workers.dev/?url=';
+const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let accounts = [];
 let range = 2;
@@ -257,13 +253,11 @@ const esc = s => { const d = document.createElement('div'); d.textContent = s; r
 // --- API Keys ---
 function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
 function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
-function getProxy() { return localStorage.getItem(LS_PX) || DEFAULT_PROXY; }
-function bothKeys() { return !!(getTwKey() && getAnKey() && getProxy()); }
+function bothKeys() { return !!(getTwKey() && getAnKey()); }
 
 function openModal() {
   $('twKeyInput').value = getTwKey();
   $('keyInput').value = getAnKey();
-  $('proxyInput').value = getProxy();
   $('modal').classList.add('open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
   setTimeout(() => $('twKeyInput').focus(), 50);
@@ -272,20 +266,16 @@ function closeModal() { $('modal').classList.remove('open'); }
 function saveKeys() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
-  const px = $('proxyInput').value.trim();
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
-  if (px) localStorage.setItem(LS_PX, px); else localStorage.removeItem(LS_PX);
   updateKeyBtn();
   closeModal();
 }
 function clearKeys() {
   localStorage.removeItem(LS_TW);
   localStorage.removeItem(LS_AN);
-  localStorage.removeItem(LS_PX);
   $('twKeyInput').value = '';
   $('keyInput').value = '';
-  $('proxyInput').value = '';
   updateKeyBtn();
   closeModal();
 }
@@ -296,8 +286,7 @@ function updateKeyBtn() {
 }
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
-$('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('proxyInput').focus(); });
-$('proxyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
+$('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
 updateKeyBtn();
 
 // --- Accounts ---
@@ -390,32 +379,15 @@ async function fetchTweets(account, days) {
     if (cursor) params.set('cursor', cursor);
 
     const targetUrl = `https://api.twitterapi.io/twitter/user/last_tweets?${params}`;
-    const proxy = getProxy();
-    const fetchUrl = proxy ? proxy + encodeURIComponent(targetUrl) : targetUrl;
+    const fetchUrl = CORS_PROXY + encodeURIComponent(targetUrl);
 
-    let res;
-    try {
-      res = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: {
-          'X-API-Key': key,
-          'Accept': 'application/json',
-        },
-      });
-    } catch (e) {
-      // Network/CORS error — try without proxy as fallback
-      if (proxy) {
-        try {
-          res = await fetch(targetUrl, {
-            headers: { 'X-API-Key': key, 'Accept': 'application/json' },
-          });
-        } catch (e2) {
-          throw new Error(`CORS blocked & proxy failed: ${e.message}`);
-        }
-      } else {
-        throw new Error(`Failed to fetch: ${e.message}`);
-      }
-    }
+    const res = await fetch(fetchUrl, {
+      method: 'GET',
+      headers: {
+        'X-API-Key': key,
+        'Accept': 'application/json',
+      },
+    });
 
     if (res.status === 401 || res.status === 403) {
       const body = await res.text().catch(() => '');

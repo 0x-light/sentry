@@ -34,8 +34,13 @@ export default {
 
     const headers = new Headers();
     for (const [key, value] of request.headers) {
-      if (['host', 'origin', 'referer', 'cf-connecting-ip', 'cf-ray', 'cf-ipcountry'].includes(key.toLowerCase())) continue;
+      if (['host', 'origin', 'referer', 'cf-ray', 'cf-ipcountry'].includes(key.toLowerCase())) continue;
       headers.set(key, value);
+    }
+    // Forward user's real IP for rate limiting
+    const clientIP = request.headers.get('cf-connecting-ip');
+    if (clientIP) {
+      headers.set('X-Forwarded-For', clientIP);
     }
 
     try {
