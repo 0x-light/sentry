@@ -422,7 +422,7 @@ async function fetchTweets(account, days) {
       throw new Error(`Auth error ${res.status}: ${body.slice(0, 100) || 'invalid key'}`);
     }
     if (res.status === 429) {
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 5000));
       pages++; // count it to prevent infinite loop
       continue;
     }
@@ -457,6 +457,8 @@ async function fetchTweets(account, days) {
     if (!data.has_next_page || !data.next_cursor) break;
     cursor = data.next_cursor;
     pages++;
+    // Delay between pagination requests
+    await new Promise(r => setTimeout(r, 300));
   }
 
   return allTweets;
@@ -540,26 +542,22 @@ async function run() {
 
   const days = RANGES[range].days;
   const done = { count: 0 };
-  const BATCH = 3;
   const accountTweets = [];
 
   try {
-    // Step 1: Fetch tweets from all accounts
-    for (let i = 0; i < accounts.length; i += BATCH) {
-      const batch = accounts.slice(i, i + BATCH);
-      const results = await Promise.all(batch.map(async a => {
-        try {
-          const tweets = await fetchTweets(a, days);
-          done.count++;
-          setProg(`${a} ${done.count}/${accounts.length}`);
-          return { account: a, tweets, error: null };
-        } catch (e) {
-          done.count++;
-          setProg(`${a} ${done.count}/${accounts.length}`);
-          return { account: a, tweets: [], error: e.message };
-        }
-      }));
-      accountTweets.push(...results);
+    // Step 1: Fetch tweets from all accounts (sequential to avoid rate limits)
+    for (const a of accounts) {
+      setProg(`${a} ${done.count + 1}/${accounts.length}`);
+      try {
+        const tweets = await fetchTweets(a, days);
+        done.count++;
+        accountTweets.push({ account: a, tweets, error: null });
+      } catch (e) {
+        done.count++;
+        accountTweets.push({ account: a, tweets: [], error: e.message });
+      }
+      // Small delay between accounts to avoid rate limits
+      if (done.count < accounts.length) await new Promise(r => setTimeout(r, 500));
     }
 
     // Tally
