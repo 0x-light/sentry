@@ -262,7 +262,7 @@ button { font-family: inherit; cursor: pointer; }
   </div>
   <div class="topbar-right">
     <span class="prog" id="prog"></span>
-    <button class="top-btn" id="themeBtn" onclick="toggleTheme()">◐</button>
+    <button class="top-btn" id="themeBtn" onclick="toggleTheme()">theme</button>
     <button class="top-btn" id="keyBtn" onclick="openModal()">keys</button>
   </div>
 </div>
@@ -329,7 +329,6 @@ function getTheme() { return localStorage.getItem(LS_THEME) || 'light'; }
 function setTheme(t) {
   localStorage.setItem(LS_THEME, t);
   document.documentElement.setAttribute('data-theme', t);
-  $('themeBtn').textContent = t === 'dark' ? '☀' : '◐';
 }
 function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
 
