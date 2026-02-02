@@ -10,7 +10,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   background: #fff; color: #555;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px; -webkit-font-smoothing: antialiased;
 }
 ::selection { background: #e8f4e8; color: #1a7a1a; }
@@ -23,10 +23,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 .logo { display: flex; align-items: center; gap: 8px; }
 .dot {
-  width: 6px; height: 6px; border-radius: 50%; background: #1a7a1a; transition: background .2s;
+  width: 6px; height: 6px; border-radius: 50%; background: #000000; transition: background .2s;
 }
-.dot.loading { background: #99850a; animation: pulse 1.2s infinite; }
-.logo-text { font-size: 13px; font-weight: 500; color: #222; letter-spacing: .06em; text-transform: uppercase; }
+.dot.loading { background: #99850a; animation: pulse 0.5s infinite; }
+.logo-text { font-size: 13px; font-weight: 500; color: #222; letter-spacing: .06em; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .prog { font-size: 12px; color: #999; }
 .key-btn {
