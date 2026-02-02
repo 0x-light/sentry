@@ -441,7 +441,7 @@ function clearKeys() {
 function updateKeyBtn() {
   const ok = bothKeys();
   $('keyBtn').classList.toggle('set', ok);
-  $('keyBtn').textContent = ok ? '✓ keys' : 'keys';
+  $('keyBtn').textContent = ok ? '✓ settings' : 'settings';
 }
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
