@@ -22,7 +22,6 @@ body {
   background: var(--bg); color: var(--text);
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px; -webkit-font-smoothing: antialiased;
-  transition: background .2s, color .2s;
 }
 ::selection { background: #e8f4e8; color: #1a7a1a; }
 [data-theme="dark"] ::selection { background: #1a3a1a; color: #4ade80; }
@@ -34,17 +33,12 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
-.dot {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--text-strong); transition: background .2s;
-}
-.dot.loading { animation: pulse 0.5s infinite; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-strong); }
+.dot.loading { opacity: .5; }
 .logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); letter-spacing: .06em; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .prog { font-size: 12px; color: var(--text-muted); }
-.top-btn {
-  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 0;
-  transition: color .1s;
-}
+.top-btn { background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 0; }
 .top-btn:hover { color: var(--text); }
 .top-btn.set { color: var(--accent); }
 
@@ -64,20 +58,28 @@ button { font-family: inherit; cursor: pointer; }
 .modal p a:hover { text-decoration: underline; }
 .modal label { display: block; font-size: 11px; color: var(--text); margin-bottom: 4px; margin-top: 14px; }
 .modal label:first-of-type { margin-top: 0; }
-.modal input, .modal select {
+.modal input, .modal select, .modal textarea {
   width: 100%; border: 1px solid var(--chip-border); border-radius: 2px; padding: 8px 10px;
   font-family: inherit; font-size: 12px; color: var(--text-strong); outline: none;
-  background: var(--bg); transition: border-color .15s;
+  background: var(--bg); resize: vertical;
 }
-.modal input:focus { border-color: var(--text-muted); }
+.modal input:focus, .modal textarea:focus { border-color: var(--text-muted); }
 .modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; flex-wrap: wrap; }
 .modal-actions button {
   background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  font-size: 11px; padding: 5px 14px; color: var(--text); transition: all .15s;
+  font-size: 11px; padding: 5px 14px; color: var(--text);
 }
 .modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .modal-actions button.danger { color: var(--danger); }
 .modal-actions button.danger:hover { border-color: var(--danger); }
+.preset-list { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.preset-list-item {
+  display: flex; align-items: center; justify-content: space-between; padding: 6px 0;
+  border-bottom: 1px solid var(--border-light); font-size: 12px;
+}
+.preset-list-item span { color: var(--text-strong); }
+.preset-list-item small { color: var(--text-muted); margin-left: 8px; }
+.preset-list-item button { background: none; border: none; color: var(--danger); font-size: 11px; padding: 2px 6px; }
 
 .controls { padding: 20px 32px 16px; border-bottom: 1px solid var(--border); }
 .input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
@@ -86,16 +88,14 @@ button { font-family: inherit; cursor: pointer; }
   flex: 1; background: transparent; border: none; outline: none;
   color: var(--text-strong); font-size: 13px; font-family: inherit; padding: 6px 0;
 }
-.add-btn {
-  background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 8px; display: none;
-}
+.add-btn { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 8px; display: none; }
 .add-btn.vis { display: inline; }
 
 .presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .presets-row .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
 .preset-btn {
   background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text-muted); font-size: 11px; padding: 3px 10px; transition: all .1s;
+  color: var(--text-muted); font-size: 11px; padding: 3px 10px;
 }
 .preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
 .preset-btn.active { color: var(--accent); border-color: var(--accent); }
@@ -103,16 +103,16 @@ button { font-family: inherit; cursor: pointer; }
 .preset-manage:hover { color: var(--text-strong); }
 
 .suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-.sug { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 2px 4px; transition: color .1s; }
+.sug { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 2px 4px; }
 .sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
 
-.ranges { display: flex; gap: 16px; align-items: center; transition: margin .15s; }
+.ranges { display: flex; gap: 16px; align-items: center; }
 .ranges.mb { margin-bottom: 14px; }
 .ranges .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
 .rng {
   background: none; border: none; border-bottom: 1.5px solid transparent;
-  color: var(--text-muted); font-size: 12px; padding: 2px 0; transition: all .1s;
+  color: var(--text-muted); font-size: 12px; padding: 2px 0;
 }
 .rng:hover { color: var(--text-strong); }
 .rng.on { color: var(--text-strong); border-bottom-color: var(--text-strong); }
@@ -121,14 +121,13 @@ button { font-family: inherit; cursor: pointer; }
 .chips.vis { display: flex; }
 .chip {
   font-size: 12px; color: var(--text-strong); background: var(--chip-bg); border: 1px solid var(--chip-border); border-radius: 2px;
-  padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; transition: border-color .1s;
+  padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px;
 }
 .chip:hover { border-color: var(--text-muted); }
-.chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; opacity: 0; transition: opacity .1s; }
-.chip:hover .x { opacity: 1; }
+.chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; }
 .scan-btn {
   margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em; transition: all .15s;
+  color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em;
 }
 .scan-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .scan-btn:disabled { cursor: default; opacity: .5; }
@@ -143,7 +142,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 14px 32px; border-bottom: 1px solid var(--border);
   display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; transition: opacity .15s; }
+.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; }
 .ticker-item:hover { opacity: .7; }
 .ticker-sym { color: var(--text-strong); font-weight: 500; }
 .ticker-act { font-size: 10px; text-transform: uppercase; font-weight: 500; }
@@ -155,8 +154,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .filter-bar .label { font-size: 11px; color: var(--text-muted); }
 .filter-btn {
-  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 6px;
-  border-radius: 2px; transition: all .1s;
+  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 6px; border-radius: 2px;
 }
 .filter-btn:hover { color: var(--text-strong); }
 .filter-btn.on { background: var(--chip-bg); color: var(--text-strong); border: 1px solid var(--chip-border); }
@@ -169,33 +167,30 @@ button { font-family: inherit; cursor: pointer; }
 .row {
   display: grid; grid-template-columns: 1fr 160px 110px 80px;
   padding: 16px 32px; border-bottom: 1px solid var(--border-light);
-  align-items: start; gap: 20px; transition: background .1s;
-  animation: fadeIn .25s ease forwards; opacity: 0;
+  align-items: start; gap: 20px;
 }
 .row:hover { background: var(--bg-alt); }
 .row:hover .vlink { opacity: 1; color: var(--link); }
 .row.hidden { display: none; }
 
 .sig-title { font-size: 13px; color: var(--text-strong); font-weight: 400; line-height: 1.4; }
-.sig-img { font-size: 10px; color: var(--text-muted); }
 .sig-summary { font-size: 12px; color: var(--text); line-height: 1.55; margin-top: 5px; }
 .sig-links { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ext-link {
   font-size: 11px; color: var(--link); text-decoration: none;
   padding: 2px 6px; background: var(--bg-alt); border-radius: 2px;
-  transition: opacity .15s;
 }
 .ext-link:hover { opacity: .7; }
 .sig-meta { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 .sig-cat { font-size: 10px; }
 .conf-dot { width: 5px; height: 5px; border-radius: 50%; opacity: .7; display: inline-block; }
 .ticker-cell { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
-.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; text-decoration: none; transition: opacity .15s; }
+.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; text-decoration: none; }
 .ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
 .empty-dash { font-size: 12px; color: var(--text-muted); }
 .source { font-size: 12px; color: var(--text); padding-top: 2px; }
-.vlink { font-size: 11px; color: var(--text-muted); text-decoration: none; opacity: .6; transition: all .15s; }
+.vlink { font-size: 11px; color: var(--text-muted); text-decoration: none; opacity: .6; }
 .empty-state { padding: 48px 32px; font-size: 12px; color: var(--text-muted); text-align: center; }
 
 .debug-section { padding: 16px 32px; border-top: 1px solid var(--border-light); }
@@ -208,14 +203,11 @@ button { font-family: inherit; cursor: pointer; }
 .scan-actions .meta { font-size: 11px; color: var(--text-muted); flex: 1; }
 .dl-btn {
   background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text); font-size: 11px; padding: 4px 12px; cursor: pointer; transition: all .15s;
+  color: var(--text); font-size: 11px; padding: 4px 12px; cursor: pointer;
 }
 .dl-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 
 .footer { padding: 20px 32px; font-size: 10px; color: var(--text-muted); }
-
-@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-@keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }
 
 @media (max-width: 700px) {
   .results-header, .row { grid-template-columns: 1fr; gap: 8px; }
@@ -244,6 +236,23 @@ button { font-family: inherit; cursor: pointer; }
       <button onclick="closeModal()">cancel</button>
       <button onclick="saveKeys()">save</button>
     </div>
+  </div>
+</div>
+
+<!-- preset modal -->
+<div class="modal-bg" id="presetModal">
+  <div class="modal">
+    <h3>Manage presets</h3>
+    <p>Create lists of accounts for quick scanning.</p>
+    <label>Preset name</label>
+    <input type="text" id="presetNameInput" placeholder="e.g. Crypto Alpha">
+    <label>Accounts (comma-separated)</label>
+    <textarea id="presetAccountsInput" rows="3" placeholder="account1, account2, account3"></textarea>
+    <div class="modal-actions">
+      <button onclick="closePresetModal()">cancel</button>
+      <button onclick="savePreset()">save preset</button>
+    </div>
+    <div class="preset-list" id="presetList"></div>
   </div>
 </div>
 
@@ -327,21 +336,15 @@ function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
 
 // --- Presets ---
 function getPresets() { return JSON.parse(localStorage.getItem(LS_PRESETS) || '[]'); }
-function savePresets(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
+function savePresetsData(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
 function loadPreset(name) {
   const preset = getPresets().find(p => p.name === name);
   if (preset) { accounts = [...preset.accounts]; saveAccounts(); render(); }
 }
-function createPreset(name) {
-  if (!name || !accounts.length) return;
-  const presets = getPresets().filter(p => p.name !== name);
-  presets.push({ name, accounts: [...accounts] });
-  savePresets(presets);
-  renderPresets();
-}
 function deletePreset(name) {
-  savePresets(getPresets().filter(p => p.name !== name));
+  savePresetsData(getPresets().filter(p => p.name !== name));
   renderPresets();
+  renderPresetList();
 }
 function renderPresets() {
   const el = $('presetsRow');
@@ -354,9 +357,42 @@ function renderPresets() {
   el.innerHTML = h;
 }
 function openPresetModal() {
-  const name = prompt('Preset name for current accounts:');
-  if (name && name.trim()) createPreset(name.trim());
+  $('presetNameInput').value = '';
+  $('presetAccountsInput').value = accounts.join(', ');
+  renderPresetList();
+  $('presetModal').classList.add('open');
+  $('presetNameInput').focus();
 }
+function closePresetModal() {
+  $('presetModal').classList.remove('open');
+}
+function savePreset() {
+  const name = $('presetNameInput').value.trim();
+  const accountsStr = $('presetAccountsInput').value;
+  const accts = accountsStr.split(',').map(a => a.trim().replace(/^@/, '').toLowerCase()).filter(a => a);
+  if (!name || !accts.length) return;
+  const presets = getPresets().filter(p => p.name !== name);
+  presets.push({ name, accounts: accts });
+  savePresetsData(presets);
+  renderPresets();
+  renderPresetList();
+  $('presetNameInput').value = '';
+  $('presetAccountsInput').value = '';
+}
+function renderPresetList() {
+  const el = $('presetList');
+  const presets = getPresets();
+  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:11px;margin-top:8px">No presets yet</p>'; return; }
+  el.innerHTML = presets.map(p => `
+    <div class="preset-list-item">
+      <span>${esc(p.name)}<small>${p.accounts.length} accounts</small></span>
+      <button onclick="deletePreset('${esc(p.name)}')">delete</button>
+    </div>
+  `).join('');
+}
+$('presetModal').addEventListener('click', e => { if (e.target === $('presetModal')) closePresetModal(); });
+$('presetNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('presetAccountsInput').focus(); });
+$('presetAccountsInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePreset(); } });
 
 // --- Account Persistence ---
 function saveAccounts() { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(accounts)); }
