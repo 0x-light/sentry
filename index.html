@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #fff; color: #555;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px; -webkit-font-smoothing: antialiased;
+}
+::selection { background: #e8f4e8; color: #1a7a1a; }
+input::placeholder { color: #bbb; }
+button { font-family: inherit; cursor: pointer; }
+
+.topbar {
+  padding: 20px 32px; border-bottom: 1px solid #eee;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo { display: flex; align-items: center; gap: 8px; }
+.dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #1a7a1a; transition: background .2s;
+}
+.dot.loading { background: #99850a; animation: pulse 1.2s infinite; }
+.logo-text { font-size: 13px; font-weight: 500; color: #222; letter-spacing: .06em; text-transform: uppercase; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.prog { font-size: 12px; color: #999; }
+.key-btn {
+  background: none; border: none; font-size: 11px; color: #ccc; padding: 2px 0;
+  transition: color .1s;
+}
+.key-btn:hover { color: #888; }
+.key-btn.set { color: #1a7a1a; }
+
+/* modal */
+.modal-bg {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.08); z-index: 100;
+  align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: #fff; border: 1px solid #eee; border-radius: 4px;
+  padding: 28px 32px; width: 480px; max-width: 90vw;
+}
+.modal h3 { font-size: 13px; font-weight: 500; color: #222; margin-bottom: 6px; }
+.modal p { font-size: 11px; color: #999; margin-bottom: 16px; line-height: 1.5; }
+.modal p a { color: #2255bb; text-decoration: none; }
+.modal p a:hover { text-decoration: underline; }
+.modal label { display: block; font-size: 11px; color: #777; margin-bottom: 4px; margin-top: 14px; }
+.modal label:first-of-type { margin-top: 0; }
+.modal input {
+  width: 100%; border: 1px solid #ddd; border-radius: 2px; padding: 8px 10px;
+  font-family: inherit; font-size: 12px; color: #222; outline: none;
+  transition: border-color .15s;
+}
+.modal input:focus { border-color: #aaa; }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+.modal-actions button {
+  background: none; border: 1px solid #ddd; border-radius: 2px;
+  font-size: 11px; padding: 5px 14px; color: #666; transition: all .15s;
+}
+.modal-actions button:hover { border-color: #aaa; color: #222; }
+.modal-actions button.danger { color: #cc3333; }
+.modal-actions button.danger:hover { border-color: #cc3333; }
+
+.controls { padding: 20px 32px 16px; border-bottom: 1px solid #eee; }
+.input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+.input-row .at { color: #bbb; font-size: 13px; }
+.input-row input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: #222; font-size: 13px; font-family: inherit; padding: 6px 0;
+}
+.add-btn {
+  background: none; border: none; color: #888; font-size: 12px; padding: 4px 8px; display: none;
+}
+.add-btn.vis { display: inline; }
+
+.suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.sug { background: none; border: none; color: #888; font-size: 12px; padding: 2px 4px; transition: color .1s; }
+.sug:hover { color: #222; }
+.sug.used { opacity: .35; cursor: default; }
+
+.ranges { display: flex; gap: 16px; align-items: center; transition: margin .15s; }
+.ranges.mb { margin-bottom: 14px; }
+.ranges .label { font-size: 11px; color: #aaa; margin-right: 2px; }
+.rng {
+  background: none; border: none; border-bottom: 1.5px solid transparent;
+  color: #aaa; font-size: 12px; padding: 2px 0; transition: all .1s;
+}
+.rng:hover { color: #222; }
+.rng.on { color: #222; border-bottom-color: #222; }
+
+.chips { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chips.vis { display: flex; }
+.chip {
+  font-size: 12px; color: #444; border: 1px solid #ddd; border-radius: 2px;
+  padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; transition: border-color .1s;
+}
+.chip:hover { border-color: #aaa; }
+.chip .x { cursor: pointer; color: #bbb; font-size: 10px; opacity: 0; transition: opacity .1s; }
+.chip:hover .x { opacity: 1; }
+.scan-btn {
+  margin-left: auto; background: none; border: 1px solid #ddd; border-radius: 2px;
+  color: #888; font-size: 12px; padding: 5px 16px; letter-spacing: .04em; transition: all .15s;
+}
+.scan-btn:hover:not(:disabled) { color: #1a7a1a; border-color: #1a7a1a; }
+.scan-btn:disabled { cursor: default; opacity: .5; }
+
+.notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid #eee; }
+.notice.err { color: #cc3333; }
+.notice.warn { color: #999; }
+
+.tweet-count { padding: 10px 32px; font-size: 11px; color: #aaa; border-bottom: 1px solid #eee; }
+
+.ticker-bar {
+  padding: 14px 32px; border-bottom: 1px solid #eee;
+  display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+}
+.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ticker-sym { color: #222; font-weight: 500; }
+.ticker-act { font-size: 10px; text-transform: uppercase; font-weight: 500; }
+.ticker-cnt { color: #bbb; font-size: 10px; }
+
+.results-header {
+  display: grid; grid-template-columns: 1fr 160px 110px 80px;
+  padding: 12px 32px; border-bottom: 1px solid #eee;
+  font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: .08em; gap: 20px;
+}
+.row {
+  display: grid; grid-template-columns: 1fr 160px 110px 80px;
+  padding: 16px 32px; border-bottom: 1px solid #f3f3f3;
+  align-items: start; gap: 20px; transition: background .1s;
+  animation: fadeIn .25s ease forwards; opacity: 0;
+}
+.row:hover { background: #f8f8f8; }
+.row:hover .vlink { opacity: 1; color: #2255bb; }
+
+.sig-title { font-size: 13px; color: #111; font-weight: 400; line-height: 1.4; }
+.sig-img { font-size: 10px; color: #aaa; }
+.sig-summary { font-size: 12px; color: #666; line-height: 1.55; margin-top: 5px; }
+.sig-meta { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+.sig-cat { font-size: 10px; }
+.conf-dot { width: 5px; height: 5px; border-radius: 50%; opacity: .7; display: inline-block; }
+.ticker-cell { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; }
+.ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
+.empty-dash { font-size: 12px; color: #ddd; }
+.source { font-size: 12px; color: #777; padding-top: 2px; }
+.vlink { font-size: 11px; color: #bbb; text-decoration: none; opacity: .6; transition: all .15s; }
+.empty-state { padding: 48px 32px; font-size: 12px; color: #aaa; text-align: center; }
+
+.debug-section { padding: 16px 32px; border-top: 1px solid #f0f0f0; }
+.debug-toggle { background: none; border: none; color: #ccc; font-size: 11px; padding: 0; }
+.debug-content { margin-top: 8px; font-size: 11px; color: #aaa; line-height: 1.7; white-space: pre-wrap; display: none; }
+.debug-content.open { display: block; }
+.debug-entry { margin-bottom: 10px; border-bottom: 1px solid #f3f3f3; padding-bottom: 8px; }
+
+.footer { padding: 20px 32px; font-size: 10px; color: #ccc; }
+
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }
+
+@media (max-width: 700px) {
+  .results-header, .row { grid-template-columns: 1fr; gap: 8px; }
+  .results-header span:not(:first-child) { display: none; }
+  .row > *:nth-child(3), .row > *:nth-child(4) { display: inline; }
+  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .results-header, .row, .debug-section, .footer {
+    padding-left: 16px; padding-right: 16px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- key modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>API keys</h3>
+    <p>Keys are stored in your browser only. Never sent anywhere except to their respective APIs.<br>
+    Get a Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a> — $1 free credit on signup.<br>
+    A CORS proxy is required to call Twitter API from the browser. Deploy the included <code>worker.js</code> to <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Workers</a> (free).</p>
+    <label>Twitter API key (twitterapi.io)</label>
+    <input type="password" id="twKeyInput" placeholder="your twitterapi.io key">
+    <label>Anthropic API key</label>
+    <input type="password" id="keyInput" placeholder="sk-ant-...">
+    <label>CORS proxy URL</label>
+    <input type="text" id="proxyInput" placeholder="https://your-worker.workers.dev/?url=">
+    <div class="modal-actions">
+      <button class="danger" id="clearKeyBtn" onclick="clearKeys()">clear all</button>
+      <button onclick="closeModal()">cancel</button>
+      <button onclick="saveKeys()">save</button>
+    </div>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="dot" id="dot"></div>
+    <span class="logo-text">signal</span>
+  </div>
+  <div class="topbar-right">
+    <span class="prog" id="prog"></span>
+    <button class="key-btn" id="keyBtn" onclick="openModal()">keys</button>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="input-row">
+    <span class="at">@</span>
+    <input type="text" id="acctInput" placeholder="add account" autocomplete="off">
+    <button class="add-btn" id="addBtn">add</button>
+  </div>
+  <div class="suggested" id="suggested"></div>
+  <div class="ranges" id="rangesRow">
+    <span class="label">range</span>
+  </div>
+  <div class="chips" id="chipsRow"></div>
+</div>
+
+<div id="notices"></div>
+<div id="tweetCount"></div>
+<div id="tickerBar"></div>
+<div id="results"></div>
+<div id="debugSection"></div>
+<div class="footer">direct timeline · not financial advice</div>
+
+<script>
+// --- Config ---
+const SUGGESTED = ['zephyr_z9', 'jukan05', 'citrini7', 'nicholastreece', 'ayz_yzyz'];
+const RANGES = [
+  { label: 'today', days: 1 },
+  { label: 'yesterday', days: 2 },
+  { label: 'this week', days: 7 },
+  { label: 'this month', days: 30 },
+];
+const CAT_C = { 'Investment Idea': '#1a7a1a', 'Tool / Product': '#2255bb', Insight: '#7733aa', Resource: '#8a6e10' };
+const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255bb' };
+const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
+const LS_TW = 'signal_twitter_key';
+const LS_AN = 'signal_anthropic_key';
+const LS_PX = 'signal_cors_proxy';
+const DEFAULT_PROXY = '';
+
+let accounts = [];
+let range = 2;
+let busy = false;
+let logs = [];
+
+// --- DOM ---
+const $ = id => document.getElementById(id);
+const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+// --- API Keys ---
+function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
+function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
+function getProxy() { return localStorage.getItem(LS_PX) || DEFAULT_PROXY; }
+function bothKeys() { return !!(getTwKey() && getAnKey() && getProxy()); }
+
+function openModal() {
+  $('twKeyInput').value = getTwKey();
+  $('keyInput').value = getAnKey();
+  $('proxyInput').value = getProxy();
+  $('modal').classList.add('open');
+  $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
+  setTimeout(() => $('twKeyInput').focus(), 50);
+}
+function closeModal() { $('modal').classList.remove('open'); }
+function saveKeys() {
+  const tw = $('twKeyInput').value.trim();
+  const an = $('keyInput').value.trim();
+  const px = $('proxyInput').value.trim();
+  if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
+  if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
+  if (px) localStorage.setItem(LS_PX, px); else localStorage.removeItem(LS_PX);
+  updateKeyBtn();
+  closeModal();
+}
+function clearKeys() {
+  localStorage.removeItem(LS_TW);
+  localStorage.removeItem(LS_AN);
+  localStorage.removeItem(LS_PX);
+  $('twKeyInput').value = '';
+  $('keyInput').value = '';
+  $('proxyInput').value = '';
+  updateKeyBtn();
+  closeModal();
+}
+function updateKeyBtn() {
+  const ok = bothKeys();
+  $('keyBtn').classList.toggle('set', ok);
+  $('keyBtn').textContent = ok ? '✓ keys' : 'keys';
+}
+$('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
+$('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
+$('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('proxyInput').focus(); });
+$('proxyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
+updateKeyBtn();
+
+// --- Accounts ---
+function add(h) {
+  const c = h.trim().replace(/^@/, '').toLowerCase();
+  if (c && !accounts.includes(c)) accounts.push(c);
+  $('acctInput').value = '';
+  $('addBtn').classList.remove('vis');
+  render();
+  $('acctInput').focus();
+}
+function rm(h) { accounts = accounts.filter(a => a !== h); render(); }
+
+$('acctInput').addEventListener('input', function() {
+  this.value = this.value.replace(/^@/, '');
+  $('addBtn').classList.toggle('vis', this.value.trim().length > 0);
+});
+$('acctInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && $('acctInput').value.trim()) { e.preventDefault(); add($('acctInput').value); }
+});
+$('addBtn').addEventListener('click', () => { if ($('acctInput').value.trim()) add($('acctInput').value); });
+
+// --- Render helpers ---
+function render() { renderSuggested(); renderRanges(); renderChips(); }
+
+function renderSuggested() {
+  const el = $('suggested');
+  el.innerHTML = '';
+  SUGGESTED.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sug' + (accounts.includes(s) ? ' used' : '');
+    b.textContent = s;
+    if (!accounts.includes(s)) b.addEventListener('click', () => add(s));
+    el.appendChild(b);
+  });
+}
+
+function renderRanges() {
+  const row = $('rangesRow');
+  while (row.children.length > 1) row.removeChild(row.lastChild);
+  RANGES.forEach((r, i) => {
+    const b = document.createElement('button');
+    b.className = 'rng' + (range === i ? ' on' : '');
+    b.textContent = r.label;
+    b.addEventListener('click', () => { range = i; renderRanges(); });
+    row.appendChild(b);
+  });
+  row.classList.toggle('mb', accounts.length > 0);
+}
+
+function renderChips() {
+  const el = $('chipsRow');
+  el.innerHTML = '';
+  el.classList.toggle('vis', accounts.length > 0);
+  accounts.forEach(a => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `@${esc(a)}<span class="x">✕</span>`;
+    chip.querySelector('.x').addEventListener('click', () => rm(a));
+    el.appendChild(chip);
+  });
+  const btn = document.createElement('button');
+  btn.className = 'scan-btn';
+  btn.disabled = busy;
+  btn.textContent = busy ? 'scanning...' : 'scan';
+  btn.addEventListener('click', run);
+  el.appendChild(btn);
+}
+
+function setLoading(v) {
+  busy = v;
+  $('dot').classList.toggle('loading', v);
+  renderChips();
+}
+function setProg(t) { $('prog').textContent = t; }
+
+// --- Twitter API (twitterapi.io) ---
+async function fetchTweets(account, days) {
+  const key = getTwKey();
+  if (!key) throw new Error('no Twitter API key');
+
+  const cutoff = new Date(Date.now() - days * 86400000);
+  const allTweets = [];
+  let cursor = null;
+  let pages = 0;
+  const MAX_PAGES = 5;
+
+  while (pages < MAX_PAGES) {
+    const params = new URLSearchParams({ userName: account });
+    if (cursor) params.set('cursor', cursor);
+
+    const targetUrl = `https://api.twitterapi.io/twitter/user/last_tweets?${params}`;
+    const proxy = getProxy();
+    const fetchUrl = proxy ? proxy + encodeURIComponent(targetUrl) : targetUrl;
+
+    let res;
+    try {
+      res = await fetch(fetchUrl, {
+        method: 'GET',
+        headers: {
+          'X-API-Key': key,
+          'Accept': 'application/json',
+        },
+      });
+    } catch (e) {
+      // Network/CORS error — try without proxy as fallback
+      if (proxy) {
+        try {
+          res = await fetch(targetUrl, {
+            headers: { 'X-API-Key': key, 'Accept': 'application/json' },
+          });
+        } catch (e2) {
+          throw new Error(`CORS blocked & proxy failed: ${e.message}`);
+        }
+      } else {
+        throw new Error(`Failed to fetch: ${e.message}`);
+      }
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Auth error ${res.status}: ${body.slice(0, 100) || 'invalid key'}`);
+    }
+    if (res.status === 429) {
+      await new Promise(r => setTimeout(r, 2000));
+      pages++; // count it to prevent infinite loop
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`API ${res.status}: ${body.slice(0, 150) || res.statusText}`);
+    }
+
+    let data;
+    try {
+      const text = await res.text();
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error('Invalid JSON from API');
+    }
+
+    if (data.status === 'error' || (data.status !== 'success' && data.message)) {
+      throw new Error(data.message || 'API error');
+    }
+
+    const tweets = data.tweets || [];
+    if (!tweets.length) break;
+
+    let hitCutoff = false;
+    for (const tw of tweets) {
+      const created = new Date(tw.createdAt);
+      if (created < cutoff) { hitCutoff = true; break; }
+      allTweets.push(tw);
+    }
+
+    if (hitCutoff) break;
+    if (!data.has_next_page || !data.next_cursor) break;
+    cursor = data.next_cursor;
+    pages++;
+  }
+
+  return allTweets;
+}
+
+function formatTweetForAnalysis(tw) {
+  const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
+  const url = tw.url || `https://x.com/i/status/${tw.id}`;
+  let text = tw.text || '';
+
+  // expand URLs in text
+  if (tw.entities?.urls) {
+    for (const u of tw.entities.urls) {
+      if (u.url && u.expanded_url) text = text.replace(u.url, u.expanded_url);
+    }
+  }
+
+  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `url: ${url}`];
+  if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
+  if (tw.quoted_tweet) parts.push(`(quoting: "${tw.quoted_tweet.text?.slice(0, 120) || ''}")`);
+
+  return parts.join('\n');
+}
+
+// --- Anthropic API ---
+async function anthropicCall(body, retries) {
+  const key = getAnKey();
+  if (!key) throw new Error('no Anthropic API key');
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 429 || res.status === 529) {
+        await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
+        continue;
+      }
+      const data = await res.json();
+      if (data.error?.type === 'overloaded_error' || data.error?.type === 'rate_limit_error') {
+        await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
+        continue;
+      }
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      return data;
+    } catch (e) {
+      if (e.message.includes('no Anthropic') || e.message.includes('no API')) throw e;
+      if (attempt >= retries) throw e;
+      await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw new Error('max retries reached');
+}
+
+function extractText(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('\n');
+}
+
+// --- Main flow ---
+async function run() {
+  if (!accounts.length || busy) return;
+  if (!bothKeys()) { openModal(); return; }
+
+  setLoading(true);
+  $('notices').innerHTML = '';
+  $('tweetCount').innerHTML = '';
+  $('tickerBar').innerHTML = '';
+  $('results').innerHTML = '';
+  $('debugSection').innerHTML = '';
+  logs = [];
+
+  const days = RANGES[range].days;
+  const done = { count: 0 };
+  const BATCH = 3;
+  const accountTweets = [];
+
+  try {
+    // Step 1: Fetch tweets from all accounts
+    for (let i = 0; i < accounts.length; i += BATCH) {
+      const batch = accounts.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(async a => {
+        try {
+          const tweets = await fetchTweets(a, days);
+          done.count++;
+          setProg(`${a} ${done.count}/${accounts.length}`);
+          return { account: a, tweets, error: null };
+        } catch (e) {
+          done.count++;
+          setProg(`${a} ${done.count}/${accounts.length}`);
+          return { account: a, tweets: [], error: e.message };
+        }
+      }));
+      accountTweets.push(...results);
+    }
+
+    // Tally
+    const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
+    const fails = accountTweets.filter(a => a.error);
+    const empties = accountTweets.filter(a => !a.error && !a.tweets.length);
+
+    // Log
+    for (const a of accountTweets) {
+      logs.push({
+        a: a.account,
+        len: a.tweets.length,
+        pre: a.error
+          ? `ERROR: ${a.error}`
+          : a.tweets.slice(0, 3).map(t => t.text?.slice(0, 100)).join(' | ') || '(no tweets in range)',
+      });
+    }
+
+    if (totalTweets === 0) {
+      let msg = 'no tweets found for this time range';
+      if (fails.length) msg += ` — errors: ${fails.map(f => `${f.account} (${f.error})`).join(', ')}`;
+      $('notices').innerHTML = `<div class="notice err">${esc(msg)}</div>`;
+      setLoading(false); setProg(''); renderDebug(); return;
+    }
+
+    // Show notices
+    const parts = [];
+    if (fails.length) parts.push(`<span style="color:#cc3333">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
+    if (empties.length) parts.push(`<span style="color:#cc8800">no posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
+    if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
+
+    // Tweet count
+    const perAccount = accountTweets.filter(a => a.tweets.length).map(a => `${a.account}: ${a.tweets.length}`).join(', ');
+    $('tweetCount').innerHTML = `<div class="tweet-count">${totalTweets} tweets fetched (${perAccount})</div>`;
+
+    // Step 2: Format and send to Claude for analysis
+    setProg('analyzing...');
+
+    const combined = accountTweets
+      .filter(a => a.tweets.length)
+      .map(a => {
+        const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+        const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
+        return `${header}\n${body}`;
+      })
+      .join('\n\n======\n\n');
+
+    const data = await anthropicCall({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      messages: [{
+        role: 'user',
+        content: `Extract actionable trading and investment signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.\n\n${combined}\n\nReturn a JSON array. Each item:\n- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"\n- "title": 5-8 word title\n- "summary": 1-2 sentences, specific about the poster's stance and reasoning\n- "source": twitter handle (no @)\n- "confidence": "high" | "medium" | "low" — weight by engagement metrics\n- "tickers": [{symbol: "$BTC", action: "buy"|"sell"|"hold"|"watch"}] — be aggressive: infer tickers from company/project names, include crypto tokens. Empty array if genuinely none.\n- "tweet_url": the exact url from the tweet data\n- "has_image": false\n\nReturn ONLY valid JSON array. No markdown, no backticks, no explanation.`,
+      }],
+    }, 1);
+
+    const txt = extractText(data.content);
+    logs.push({ a: '_analysis', len: txt.length, pre: txt.slice(0, 400) });
+
+    let signals = [];
+    try {
+      const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
+      signals = m ? JSON.parse(m[0]) : [];
+    } catch { signals = []; }
+
+    renderTickers(signals);
+    renderSignals(signals);
+    renderDebug();
+  } catch (e) {
+    $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+    renderDebug();
+  } finally {
+    setLoading(false);
+    setProg('');
+  }
+}
+
+// --- Renderers ---
+function renderTickers(signals) {
+  const map = {};
+  signals.forEach(r => (r.tickers || []).forEach(t => {
+    const k = (t.symbol || '').toUpperCase();
+    if (!k) return;
+    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0 };
+    map[k].acts.add(t.action); map[k].n++;
+  }));
+  const list = Object.values(map).sort((a, b) => b.n - a.n);
+  const el = $('tickerBar');
+  if (!list.length) { el.innerHTML = ''; el.className = ''; return; }
+  el.className = 'ticker-bar';
+  el.innerHTML = list.map(t => {
+    const pa = ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
+    return `<span class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</span>`;
+  }).join('');
+}
+
+function renderSignals(signals) {
+  const el = $('results');
+  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; return; }
+  let h = '<div class="results-header"><span>signal</span><span>tickers</span><span>source</span><span style="text-align:right">link</span></div>';
+  signals.forEach((item, i) => {
+    const cc = CAT_C[item.category] || '#888';
+    const fc = CONF_C[item.confidence] || '#ccc';
+    const tks = (item.tickers && item.tickers.length)
+      ? item.tickers.map(t => `<span class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></span>`).join('')
+      : '<span class="empty-dash">—</span>';
+    const lnk = item.tweet_url
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="vlink">↗</a>`
+      : '<span class="empty-dash">—</span>';
+    h += `<div class="row" style="animation-delay:${i * 40}ms">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span class="sig-title">${esc(item.title || '')}</span>
+        </div>
+        <div class="sig-summary">${esc(item.summary || '')}</div>
+        <div class="sig-meta">
+          <span class="sig-cat" style="color:${cc}">${esc((item.category || '').toLowerCase())}</span>
+          <span class="conf-dot" style="background:${fc}"></span>
+        </div>
+      </div>
+      <div class="ticker-cell">${tks}</div>
+      <span class="source">@${esc((item.source || '').replace(/^@/, ''))}</span>
+      <div style="text-align:right;padding-top:2px">${lnk}</div>
+    </div>`;
+  });
+  el.innerHTML = h;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderDebug() {
+  const el = $('debugSection');
+  if (!logs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="debug-section">
+    <button class="debug-toggle" id="debugToggle">▸ debug</button>
+    <div class="debug-content" id="debugContent">
+      ${logs.map(l => `<div class="debug-entry"><span style="color:#777">@${esc(l.a)}</span> — ${l.len} ${l.a === '_analysis' ? 'chars' : 'tweets'}<div style="color:#bbb;margin-top:2px">${esc(l.pre)}</div></div>`).join('')}
+    </div>
+  </div>`;
+  $('debugToggle').addEventListener('click', function() {
+    const c = $('debugContent');
+    const open = c.classList.toggle('open');
+    this.textContent = (open ? '▾' : '▸') + ' debug';
+  });
+}
+
+// --- Init ---
+render();
+</script>
+</body>
+</html>
