@@ -715,7 +715,7 @@ async function run() {
 
     const data = await anthropicCall({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 8192,
       messages: [{
         role: 'user',
         content: `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
