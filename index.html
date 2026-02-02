@@ -762,7 +762,7 @@ Return a JSON array. Each signal:
 - "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
 - "source": twitter handle (no @)
 - "confidence": "high" | "medium" | "low" — based on engagement + source credibility
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — CRITICAL: You MUST extract tickers for ALL companies mentioned. Look up the stock ticker for any company name (e.g., "Nanya" → "$2408.TW", "Winbond" → "$2344.TW", "Apple" → "$AAPL", "NVIDIA" → "$NVDA"). Include crypto tokens. If a company is publicly traded, include its ticker. This field should rarely be empty.
+- "tickers": [{symbol: "$TICKER", exchange: "EXCHANGE", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers. Include exchange code: "NASDAQ", "NYSE", "TPE" (Taiwan), "KRX" (Korea), "HKG" (Hong Kong), "TYO" (Tokyo), etc. For crypto use exchange: "CRYPTO". Examples: {symbol: "$AAPL", exchange: "NASDAQ"}, {symbol: "$2408", exchange: "TPE"}, {symbol: "$BTC", exchange: "CRYPTO"}.
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks). Empty array if none.
 
@@ -840,7 +840,7 @@ function renderTickers(signals) {
   signals.forEach(r => (r.tickers || []).forEach(t => {
     const k = (t.symbol || '').toUpperCase();
     if (!k) return;
-    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0 };
+    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0, exchange: t.exchange || 'NASDAQ' };
     map[k].acts.add(t.action); map[k].n++;
   }));
   const list = Object.values(map).sort((a, b) => b.n - a.n);
@@ -850,7 +850,10 @@ function renderTickers(signals) {
   el.innerHTML = list.map(t => {
     const pa = ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
     const sym = t.s.replace(/^\$/, '').toUpperCase();
-    const url = `https://www.google.com/finance/quote/${sym}:NASDAQ?window=6M`;
+    const exch = t.exchange || 'NASDAQ';
+    const url = exch === 'CRYPTO' 
+      ? `https://www.google.com/finance/quote/${sym}-USD?window=6M`
+      : `https://www.google.com/finance/quote/${sym}:${exch}?window=6M`;
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
   }).join('');
 }
@@ -877,7 +880,10 @@ function renderSignals(signals) {
     const tks = (item.tickers && item.tickers.length)
       ? item.tickers.map(t => {
           const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-          const url = `https://www.google.com/finance/quote/${sym}:NASDAQ?window=6M`;
+          const exch = t.exchange || 'NASDAQ';
+          const url = exch === 'CRYPTO'
+            ? `https://www.google.com/finance/quote/${sym}-USD?window=6M`
+            : `https://www.google.com/finance/quote/${sym}:${exch}?window=6M`;
           return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></a>`;
         }).join('')
       : '<span class="empty-dash">—</span>';
