@@ -129,9 +129,23 @@ button { font-family: inherit; cursor: pointer; }
 .scan-btn {
   margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
   color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em;
+  position: relative; overflow: hidden;
 }
 .scan-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
-.scan-btn:disabled { cursor: default; opacity: .5; }
+.scan-btn:disabled { cursor: default; }
+.scan-btn.loading { color: var(--text-muted); border-color: var(--accent); }
+.scan-btn.loading::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: swipe 1s infinite;
+}
+@keyframes swipe {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
 
 .notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--danger); }
@@ -509,9 +523,9 @@ function renderChips() {
     el.appendChild(chip);
   });
   const btn = document.createElement('button');
-  btn.className = 'scan-btn';
+  btn.className = busy ? 'scan-btn loading' : 'scan-btn';
   btn.disabled = busy;
-  btn.textContent = busy ? 'scanning...' : 'scan';
+  btn.textContent = busy ? 'scanning' : 'scan';
   btn.addEventListener('click', run);
   el.appendChild(btn);
 }
