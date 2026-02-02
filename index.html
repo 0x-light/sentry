@@ -129,11 +129,11 @@ button { font-family: inherit; cursor: pointer; }
 .scan-btn {
   margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
   color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em;
-  font-family: monospace;
 }
 .scan-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .scan-btn:disabled { cursor: default; }
-.scan-btn.loading { color: var(--accent); border-color: var(--accent); }
+.scan-btn.loading { color: var(--text); border-color: var(--accent); }
+.scan-dot { font-size: 8px; animation: pulse 0.6s infinite; }
 
 .notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--danger); }
@@ -327,8 +327,6 @@ let lastScanResult = null;
 let busy = false;
 let logs = [];
 let filters = { category: null, confidence: null };
-let scanAnimInterval = null;
-const SCAN_FRAMES = ['░░░░░░', '░░░░░░', '░░░░░░', '░░░░░░', '▓░░░░░', '▒▓░░░░', '░▒▓░░░', '░░▒▓░░', '░░░▒▓░', '░░░░▒▓', '░░░░░▒'];
 
 // --- DOM ---
 const $ = id => document.getElementById(id);
@@ -514,24 +512,10 @@ function renderChips() {
   });
   const btn = document.createElement('button');
   btn.className = busy ? 'scan-btn loading' : 'scan-btn';
-  btn.id = 'scanBtn';
   btn.disabled = busy;
-  btn.textContent = busy ? SCAN_FRAMES[0] : 'scan';
+  btn.innerHTML = busy ? '<span class="scan-dot">■</span> scanning' : 'scan';
   btn.addEventListener('click', run);
   el.appendChild(btn);
-  
-  // Start/stop animation
-  if (busy && !scanAnimInterval) {
-    let frame = 0;
-    scanAnimInterval = setInterval(() => {
-      frame = (frame + 1) % SCAN_FRAMES.length;
-      const b = $('scanBtn');
-      if (b) b.textContent = SCAN_FRAMES[frame];
-    }, 80);
-  } else if (!busy && scanAnimInterval) {
-    clearInterval(scanAnimInterval);
-    scanAnimInterval = null;
-  }
 }
 
 function setLoading(v) {
