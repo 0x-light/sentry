@@ -7,167 +7,212 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
+:root {
+  --bg: #fff; --bg-alt: #f8f8f8; --text: #555; --text-strong: #222; --text-muted: #999;
+  --border: #eee; --border-light: #f3f3f3; --accent: #1a7a1a; --danger: #cc3333;
+  --link: #2255bb; --chip-bg: transparent; --chip-border: #ddd;
+}
+[data-theme="dark"] {
+  --bg: #0d0d0d; --bg-alt: #161616; --text: #999; --text-strong: #e0e0e0; --text-muted: #666;
+  --border: #222; --border-light: #1a1a1a; --accent: #4ade80; --danger: #f87171;
+  --link: #60a5fa; --chip-bg: #1a1a1a; --chip-border: #333;
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  background: #fff; color: #555;
+  background: var(--bg); color: var(--text);
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px; -webkit-font-smoothing: antialiased;
+  transition: background .2s, color .2s;
 }
 ::selection { background: #e8f4e8; color: #1a7a1a; }
-input::placeholder { color: #bbb; }
+[data-theme="dark"] ::selection { background: #1a3a1a; color: #4ade80; }
+input::placeholder { color: var(--text-muted); }
 button { font-family: inherit; cursor: pointer; }
 
 .topbar {
-  padding: 20px 32px; border-bottom: 1px solid #eee;
+  padding: 20px 32px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
 .dot {
-  width: 6px; height: 6px; border-radius: 50%; background: #000000; transition: background .2s;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text-strong); transition: background .2s;
 }
-.dot.loading { background: #000000; animation: pulse 0.5s infinite; }
-.logo-text { font-size: 13px; font-weight: 500; color: #222; letter-spacing: .06em; }
+.dot.loading { animation: pulse 0.5s infinite; }
+.logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); letter-spacing: .06em; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
-.prog { font-size: 12px; color: #999; }
-.key-btn {
-  background: none; border: none; font-size: 11px; color: #ccc; padding: 2px 0;
+.prog { font-size: 12px; color: var(--text-muted); }
+.top-btn {
+  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 0;
   transition: color .1s;
 }
-.key-btn:hover { color: #888; }
-.key-btn.set { color: #1a7a1a; }
+.top-btn:hover { color: var(--text); }
+.top-btn.set { color: var(--accent); }
 
 /* modal */
 .modal-bg {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.08); z-index: 100;
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 100;
   align-items: center; justify-content: center;
 }
 .modal-bg.open { display: flex; }
 .modal {
-  background: #fff; border: 1px solid #eee; border-radius: 4px;
-  padding: 28px 32px; width: 480px; max-width: 90vw;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 28px 32px; width: 480px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
 }
-.modal h3 { font-size: 13px; font-weight: 500; color: #222; margin-bottom: 6px; }
-.modal p { font-size: 11px; color: #999; margin-bottom: 16px; line-height: 1.5; }
-.modal p a { color: #2255bb; text-decoration: none; }
+.modal h3 { font-size: 13px; font-weight: 500; color: var(--text-strong); margin-bottom: 6px; }
+.modal p { font-size: 11px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+.modal p a { color: var(--link); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
-.modal label { display: block; font-size: 11px; color: #777; margin-bottom: 4px; margin-top: 14px; }
+.modal label { display: block; font-size: 11px; color: var(--text); margin-bottom: 4px; margin-top: 14px; }
 .modal label:first-of-type { margin-top: 0; }
-.modal input {
-  width: 100%; border: 1px solid #ddd; border-radius: 2px; padding: 8px 10px;
-  font-family: inherit; font-size: 12px; color: #222; outline: none;
-  transition: border-color .15s;
+.modal input, .modal select {
+  width: 100%; border: 1px solid var(--chip-border); border-radius: 2px; padding: 8px 10px;
+  font-family: inherit; font-size: 12px; color: var(--text-strong); outline: none;
+  background: var(--bg); transition: border-color .15s;
 }
-.modal input:focus { border-color: #aaa; }
-.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+.modal input:focus { border-color: var(--text-muted); }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; flex-wrap: wrap; }
 .modal-actions button {
-  background: none; border: 1px solid #ddd; border-radius: 2px;
-  font-size: 11px; padding: 5px 14px; color: #666; transition: all .15s;
+  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
+  font-size: 11px; padding: 5px 14px; color: var(--text); transition: all .15s;
 }
-.modal-actions button:hover { border-color: #aaa; color: #222; }
-.modal-actions button.danger { color: #cc3333; }
-.modal-actions button.danger:hover { border-color: #cc3333; }
+.modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
+.modal-actions button.danger { color: var(--danger); }
+.modal-actions button.danger:hover { border-color: var(--danger); }
 
-.controls { padding: 20px 32px 16px; border-bottom: 1px solid #eee; }
+.controls { padding: 20px 32px 16px; border-bottom: 1px solid var(--border); }
 .input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
-.input-row .at { color: #bbb; font-size: 13px; }
+.input-row .at { color: var(--text-muted); font-size: 13px; }
 .input-row input {
   flex: 1; background: transparent; border: none; outline: none;
-  color: #222; font-size: 13px; font-family: inherit; padding: 6px 0;
+  color: var(--text-strong); font-size: 13px; font-family: inherit; padding: 6px 0;
 }
 .add-btn {
-  background: none; border: none; color: #888; font-size: 12px; padding: 4px 8px; display: none;
+  background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 8px; display: none;
 }
 .add-btn.vis { display: inline; }
 
+.presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.presets-row .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
+.preset-btn {
+  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
+  color: var(--text-muted); font-size: 11px; padding: 3px 10px; transition: all .1s;
+}
+.preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
+.preset-btn.active { color: var(--accent); border-color: var(--accent); }
+.preset-manage { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 3px 6px; }
+.preset-manage:hover { color: var(--text-strong); }
+
 .suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-.sug { background: none; border: none; color: #888; font-size: 12px; padding: 2px 4px; transition: color .1s; }
-.sug:hover { color: #222; }
+.sug { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 2px 4px; transition: color .1s; }
+.sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
 
 .ranges { display: flex; gap: 16px; align-items: center; transition: margin .15s; }
 .ranges.mb { margin-bottom: 14px; }
-.ranges .label { font-size: 11px; color: #aaa; margin-right: 2px; }
+.ranges .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
 .rng {
   background: none; border: none; border-bottom: 1.5px solid transparent;
-  color: #aaa; font-size: 12px; padding: 2px 0; transition: all .1s;
+  color: var(--text-muted); font-size: 12px; padding: 2px 0; transition: all .1s;
 }
-.rng:hover { color: #222; }
-.rng.on { color: #222; border-bottom-color: #222; }
+.rng:hover { color: var(--text-strong); }
+.rng.on { color: var(--text-strong); border-bottom-color: var(--text-strong); }
 
 .chips { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chips.vis { display: flex; }
 .chip {
-  font-size: 12px; color: #444; border: 1px solid #ddd; border-radius: 2px;
+  font-size: 12px; color: var(--text-strong); background: var(--chip-bg); border: 1px solid var(--chip-border); border-radius: 2px;
   padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; transition: border-color .1s;
 }
-.chip:hover { border-color: #aaa; }
-.chip .x { cursor: pointer; color: #bbb; font-size: 10px; opacity: 0; transition: opacity .1s; }
+.chip:hover { border-color: var(--text-muted); }
+.chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; opacity: 0; transition: opacity .1s; }
 .chip:hover .x { opacity: 1; }
 .scan-btn {
-  margin-left: auto; background: none; border: 1px solid #ddd; border-radius: 2px;
-  color: #888; font-size: 12px; padding: 5px 16px; letter-spacing: .04em; transition: all .15s;
+  margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
+  color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em; transition: all .15s;
 }
-.scan-btn:hover:not(:disabled) { color: #1a7a1a; border-color: #1a7a1a; }
+.scan-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .scan-btn:disabled { cursor: default; opacity: .5; }
 
-.notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid #eee; }
-.notice.err { color: #cc3333; }
-.notice.warn { color: #999; }
+.notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid var(--border); }
+.notice.err { color: var(--danger); }
+.notice.warn { color: var(--text-muted); }
 
-.tweet-count { padding: 10px 32px; font-size: 11px; color: #aaa; border-bottom: 1px solid #eee; }
+.tweet-count { padding: 10px 32px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 
 .ticker-bar {
-  padding: 14px 32px; border-bottom: 1px solid #eee;
+  padding: 14px 32px; border-bottom: 1px solid var(--border);
   display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.ticker-sym { color: #222; font-weight: 500; }
+.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; transition: opacity .15s; }
+.ticker-item:hover { opacity: .7; }
+.ticker-sym { color: var(--text-strong); font-weight: 500; }
 .ticker-act { font-size: 10px; text-transform: uppercase; font-weight: 500; }
-.ticker-cnt { color: #bbb; font-size: 10px; }
+.ticker-cnt { color: var(--text-muted); font-size: 10px; }
+
+.filter-bar {
+  padding: 10px 32px; border-bottom: 1px solid var(--border);
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.filter-bar .label { font-size: 11px; color: var(--text-muted); }
+.filter-btn {
+  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 6px;
+  border-radius: 2px; transition: all .1s;
+}
+.filter-btn:hover { color: var(--text-strong); }
+.filter-btn.on { background: var(--chip-bg); color: var(--text-strong); border: 1px solid var(--chip-border); }
 
 .results-header {
   display: grid; grid-template-columns: 1fr 160px 110px 80px;
-  padding: 12px 32px; border-bottom: 1px solid #eee;
-  font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: .08em; gap: 20px;
+  padding: 12px 32px; border-bottom: 1px solid var(--border);
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; gap: 20px;
 }
 .row {
   display: grid; grid-template-columns: 1fr 160px 110px 80px;
-  padding: 16px 32px; border-bottom: 1px solid #f3f3f3;
+  padding: 16px 32px; border-bottom: 1px solid var(--border-light);
   align-items: start; gap: 20px; transition: background .1s;
   animation: fadeIn .25s ease forwards; opacity: 0;
 }
-.row:hover { background: #f8f8f8; }
-.row:hover .vlink { opacity: 1; color: #2255bb; }
+.row:hover { background: var(--bg-alt); }
+.row:hover .vlink { opacity: 1; color: var(--link); }
+.row.hidden { display: none; }
 
-.sig-title { font-size: 13px; color: #111; font-weight: 400; line-height: 1.4; }
-.sig-img { font-size: 10px; color: #aaa; }
-.sig-summary { font-size: 12px; color: #666; line-height: 1.55; margin-top: 5px; }
+.sig-title { font-size: 13px; color: var(--text-strong); font-weight: 400; line-height: 1.4; }
+.sig-img { font-size: 10px; color: var(--text-muted); }
+.sig-summary { font-size: 12px; color: var(--text); line-height: 1.55; margin-top: 5px; }
+.sig-links { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.ext-link {
+  font-size: 11px; color: var(--link); text-decoration: none;
+  padding: 2px 6px; background: var(--bg-alt); border-radius: 2px;
+  transition: opacity .15s;
+}
+.ext-link:hover { opacity: .7; }
 .sig-meta { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 .sig-cat { font-size: 10px; }
 .conf-dot { width: 5px; height: 5px; border-radius: 50%; opacity: .7; display: inline-block; }
 .ticker-cell { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
-.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; }
+.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; text-decoration: none; transition: opacity .15s; }
+.ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
-.empty-dash { font-size: 12px; color: #ddd; }
-.source { font-size: 12px; color: #777; padding-top: 2px; }
-.vlink { font-size: 11px; color: #bbb; text-decoration: none; opacity: .6; transition: all .15s; }
-.empty-state { padding: 48px 32px; font-size: 12px; color: #aaa; text-align: center; }
+.empty-dash { font-size: 12px; color: var(--text-muted); }
+.source { font-size: 12px; color: var(--text); padding-top: 2px; }
+.vlink { font-size: 11px; color: var(--text-muted); text-decoration: none; opacity: .6; transition: all .15s; }
+.empty-state { padding: 48px 32px; font-size: 12px; color: var(--text-muted); text-align: center; }
 
-.debug-section { padding: 16px 32px; border-top: 1px solid #f0f0f0; }
-.debug-toggle { background: none; border: none; color: #ccc; font-size: 11px; padding: 0; }
-.debug-content { margin-top: 8px; font-size: 11px; color: #aaa; line-height: 1.7; white-space: pre-wrap; display: none; }
+.debug-section { padding: 16px 32px; border-top: 1px solid var(--border-light); }
+.debug-toggle { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 0; }
+.debug-content { margin-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; display: none; }
 .debug-content.open { display: block; }
-.debug-entry { margin-bottom: 10px; border-bottom: 1px solid #f3f3f3; padding-bottom: 8px; }
+.debug-entry { margin-bottom: 10px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px; }
 
-.scan-actions { padding: 12px 32px; border-bottom: 1px solid #eee; display: flex; gap: 12px; align-items: center; }
-.scan-actions .meta { font-size: 11px; color: #999; flex: 1; }
+.scan-actions { padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
+.scan-actions .meta { font-size: 11px; color: var(--text-muted); flex: 1; }
 .dl-btn {
-  background: none; border: 1px solid #ddd; border-radius: 2px;
-  color: #666; font-size: 11px; padding: 4px 12px; cursor: pointer; transition: all .15s;
+  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
+  color: var(--text); font-size: 11px; padding: 4px 12px; cursor: pointer; transition: all .15s;
 }
-.dl-btn:hover { border-color: #999; color: #222; }
+.dl-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 
-.footer { padding: 20px 32px; font-size: 10px; color: #ccc; }
+.footer { padding: 20px 32px; font-size: 10px; color: var(--text-muted); }
 
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 @keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }
@@ -209,7 +254,8 @@ button { font-family: inherit; cursor: pointer; }
   </div>
   <div class="topbar-right">
     <span class="prog" id="prog"></span>
-    <button class="key-btn" id="keyBtn" onclick="openModal()">keys</button>
+    <button class="top-btn" id="themeBtn" onclick="toggleTheme()">◐</button>
+    <button class="top-btn" id="keyBtn" onclick="openModal()">keys</button>
   </div>
 </div>
 
@@ -218,6 +264,9 @@ button { font-family: inherit; cursor: pointer; }
     <span class="at">@</span>
     <input type="text" id="acctInput" placeholder="add account" autocomplete="off">
     <button class="add-btn" id="addBtn">add</button>
+  </div>
+  <div class="presets-row" id="presetsRow">
+    <span class="label">presets</span>
   </div>
   <div class="suggested" id="suggested"></div>
   <div class="ranges" id="rangesRow">
@@ -230,6 +279,7 @@ button { font-family: inherit; cursor: pointer; }
 <div id="tweetCount"></div>
 <div id="tickerBar"></div>
 <div id="scanActions"></div>
+<div id="filterBar"></div>
 <div id="results"></div>
 <div id="debugSection"></div>
 <div class="footer">direct timeline · not financial advice</div>
@@ -242,12 +292,17 @@ const RANGES = [
   { label: 'this week', days: 7 },
   { label: 'this month', days: 30 },
 ];
+const CATEGORIES = ['Investment Idea', 'Tool / Product', 'Insight', 'Resource'];
+const CONFIDENCES = ['high', 'medium', 'low'];
 const CAT_C = { 'Investment Idea': '#1a7a1a', 'Tool / Product': '#2255bb', Insight: '#7733aa', Resource: '#8a6e10' };
 const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255bb' };
 const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
+const LS_ACCOUNTS = 'signal_accounts';
+const LS_PRESETS = 'signal_presets';
+const LS_THEME = 'signal_theme';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let accounts = [];
@@ -255,10 +310,60 @@ let range = 1;
 let lastScanResult = null;
 let busy = false;
 let logs = [];
+let filters = { category: null, confidence: null };
 
 // --- DOM ---
 const $ = id => document.getElementById(id);
 const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+// --- Theme ---
+function getTheme() { return localStorage.getItem(LS_THEME) || 'light'; }
+function setTheme(t) {
+  localStorage.setItem(LS_THEME, t);
+  document.documentElement.setAttribute('data-theme', t);
+  $('themeBtn').textContent = t === 'dark' ? '☀' : '◐';
+}
+function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
+
+// --- Presets ---
+function getPresets() { return JSON.parse(localStorage.getItem(LS_PRESETS) || '[]'); }
+function savePresets(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
+function loadPreset(name) {
+  const preset = getPresets().find(p => p.name === name);
+  if (preset) { accounts = [...preset.accounts]; saveAccounts(); render(); }
+}
+function createPreset(name) {
+  if (!name || !accounts.length) return;
+  const presets = getPresets().filter(p => p.name !== name);
+  presets.push({ name, accounts: [...accounts] });
+  savePresets(presets);
+  renderPresets();
+}
+function deletePreset(name) {
+  savePresets(getPresets().filter(p => p.name !== name));
+  renderPresets();
+}
+function renderPresets() {
+  const el = $('presetsRow');
+  const presets = getPresets();
+  let h = '<span class="label">presets</span>';
+  presets.forEach(p => {
+    h += `<button class="preset-btn" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)}</button>`;
+  });
+  h += `<button class="preset-manage" onclick="openPresetModal()">+</button>`;
+  el.innerHTML = h;
+}
+function openPresetModal() {
+  const name = prompt('Preset name for current accounts:');
+  if (name && name.trim()) createPreset(name.trim());
+}
+
+// --- Account Persistence ---
+function saveAccounts() { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(accounts)); }
+function loadAccounts() {
+  const saved = localStorage.getItem(LS_ACCOUNTS);
+  if (saved) accounts = JSON.parse(saved);
+}
 
 // --- API Keys ---
 function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
@@ -305,10 +410,11 @@ function add(h) {
   if (c && !accounts.includes(c)) accounts.push(c);
   $('acctInput').value = '';
   $('addBtn').classList.remove('vis');
+  saveAccounts();
   render();
   $('acctInput').focus();
 }
-function rm(h) { accounts = accounts.filter(a => a !== h); render(); }
+function rm(h) { accounts = accounts.filter(a => a !== h); saveAccounts(); render(); }
 
 $('acctInput').addEventListener('input', function() {
   this.value = this.value.replace(/^@/, '');
@@ -320,7 +426,7 @@ $('acctInput').addEventListener('keydown', e => {
 $('addBtn').addEventListener('click', () => { if ($('acctInput').value.trim()) add($('acctInput').value); });
 
 // --- Render helpers ---
-function render() { renderSuggested(); renderRanges(); renderChips(); }
+function render() { renderPresets(); renderSuggested(); renderRanges(); renderChips(); }
 
 function renderSuggested() {
   const el = $('suggested');
@@ -461,14 +567,22 @@ function formatTweetForAnalysis(tw) {
   const url = tw.url || `https://x.com/i/status/${tw.id}`;
   let text = tw.text || '';
 
-  // expand URLs in text
+  // collect external URLs (exclude twitter/x.com links)
+  const externalLinks = [];
   if (tw.entities?.urls) {
     for (const u of tw.entities.urls) {
-      if (u.url && u.expanded_url) text = text.replace(u.url, u.expanded_url);
+      if (u.url && u.expanded_url) {
+        text = text.replace(u.url, u.expanded_url);
+        // filter out twitter/x.com internal links
+        if (!u.expanded_url.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
+          externalLinks.push(u.expanded_url);
+        }
+      }
     }
   }
 
-  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `url: ${url}`];
+  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
+  if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
   if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
   if (tw.quoted_tweet) parts.push(`(quoting: "${tw.quoted_tweet.text?.slice(0, 120) || ''}")`);
 
@@ -529,6 +643,7 @@ async function run() {
   $('tweetCount').innerHTML = '';
   $('tickerBar').innerHTML = '';
   $('scanActions').innerHTML = '';
+  $('filterBar').innerHTML = '';
   $('results').innerHTML = '';
   $('debugSection').innerHTML = '';
   logs = [];
@@ -603,7 +718,21 @@ async function run() {
       max_tokens: 2048,
       messages: [{
         role: 'user',
-        content: `Extract actionable trading and investment signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.\n\n${combined}\n\nReturn a JSON array. Each item:\n- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"\n- "title": 5-8 word title\n- "summary": 1-2 sentences, specific about the poster's stance and reasoning\n- "source": twitter handle (no @)\n- "confidence": "high" | "medium" | "low" — weight by engagement metrics\n- "tickers": [{symbol: "$BTC", action: "buy"|"sell"|"hold"|"watch"}] — be aggressive: infer tickers from company/project names, include crypto tokens. Empty array if genuinely none.\n- "tweet_url": the exact url from the tweet data\n- "has_image": false\n\nReturn ONLY valid JSON array. No markdown, no backticks, no explanation.`,
+        content: `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
+
+${combined}
+
+Return a JSON array. Each signal:
+- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints warming up", "Short AAA gaming studios amid market saturation", "AT&S undervalued at current levels despite momentum". NO generic titles.
+- "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
+- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
+- "source": twitter handle (no @)
+- "confidence": "high" | "medium" | "low" — based on engagement + source credibility
+- "tickers": [{symbol: "$BTC", action: "buy"|"sell"|"hold"|"watch"}] — infer from company names, include crypto. Empty array if none.
+- "tweet_url": exact tweet_url from data
+- "links": external URLs mentioned (articles, substacks). Empty array if none.
+
+Return ONLY valid JSON array. No markdown, no explanation.`,
       }],
     }, 1);
 
@@ -686,7 +815,9 @@ function renderTickers(signals) {
   el.className = 'ticker-bar';
   el.innerHTML = list.map(t => {
     const pa = ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
-    return `<span class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</span>`;
+    const sym = t.s.replace(/^\$/, '').toUpperCase();
+    const url = `https://www.google.com/finance/quote/${sym}:NASDAQ?window=6M`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
   }).join('');
 }
 
@@ -703,23 +834,32 @@ function renderScanActions() {
 
 function renderSignals(signals) {
   const el = $('results');
-  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; renderScanActions(); return; }
+  filters = { category: null, confidence: null }; // reset filters
+  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; renderScanActions(); renderFilters(); return; }
   let h = '<div class="results-header"><span>signal</span><span>tickers</span><span>source</span><span style="text-align:right">link</span></div>';
   signals.forEach((item, i) => {
     const cc = CAT_C[item.category] || '#888';
     const fc = CONF_C[item.confidence] || '#ccc';
     const tks = (item.tickers && item.tickers.length)
-      ? item.tickers.map(t => `<span class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></span>`).join('')
+      ? item.tickers.map(t => {
+          const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+          const url = `https://www.google.com/finance/quote/${sym}:NASDAQ?window=6M`;
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></a>`;
+        }).join('')
       : '<span class="empty-dash">—</span>';
     const lnk = item.tweet_url
-      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="vlink">↗</a>`
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="vlink">see tweet</a>`
       : '<span class="empty-dash">—</span>';
-    h += `<div class="row" style="animation-delay:${i * 40}ms">
+    const extLinks = (item.links && item.links.length)
+      ? item.links.map(l => `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(l).hostname.replace('www.',''))}</a>`).join(' ')
+      : '';
+    h += `<div class="row" data-category="${esc(item.category || '')}" data-confidence="${esc(item.confidence || '')}" style="animation-delay:${i * 40}ms">
       <div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
           <span class="sig-title">${esc(item.title || '')}</span>
         </div>
         <div class="sig-summary">${esc(item.summary || '')}</div>
+        ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
         <div class="sig-meta">
           <span class="sig-cat" style="color:${cc}">${esc((item.category || '').toLowerCase())}</span>
           <span class="conf-dot" style="background:${fc}"></span>
@@ -732,6 +872,7 @@ function renderSignals(signals) {
   });
   el.innerHTML = h;
   renderScanActions();
+  renderFilters();
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -751,7 +892,45 @@ function renderDebug() {
   });
 }
 
+// --- Filters ---
+function setFilter(type, value) {
+  filters[type] = filters[type] === value ? null : value;
+  applyFilters();
+  renderFilters();
+}
+
+function applyFilters() {
+  const rows = document.querySelectorAll('#results .row');
+  rows.forEach(row => {
+    const cat = row.dataset.category;
+    const conf = row.dataset.confidence;
+    const catMatch = !filters.category || cat === filters.category;
+    const confMatch = !filters.confidence || conf === filters.confidence;
+    row.classList.toggle('hidden', !(catMatch && confMatch));
+  });
+}
+
+function renderFilters() {
+  const el = $('filterBar');
+  if (!lastScanResult || !lastScanResult.signals.length) { el.innerHTML = ''; return; }
+  
+  let h = '<div class="filter-bar"><span class="label">filter</span>';
+  CATEGORIES.forEach(c => {
+    const on = filters.category === c ? ' on' : '';
+    h += `<button class="filter-btn${on}" onclick="setFilter('category','${c}')">${c.toLowerCase()}</button>`;
+  });
+  h += '<span style="color:var(--border);margin:0 4px">|</span>';
+  CONFIDENCES.forEach(c => {
+    const on = filters.confidence === c ? ' on' : '';
+    h += `<button class="filter-btn${on}" onclick="setFilter('confidence','${c}')">${c}</button>`;
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
 // --- Init ---
+setTheme(getTheme());
+loadAccounts();
 render();
 </script>
 </body>
