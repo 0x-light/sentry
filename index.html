@@ -8,18 +8,22 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #ffffff; --bg-alt: #f3f3f3; --text: #555; --text-strong: #222; --text-strong-rgb: 34,34,34; --text-muted: #999;
-  --border: #eee; --border-light: #f3f3f3; --accent: #1a7a1a; --danger: #cc3333; --warn: #cc8800;
-  --link: #2255bb; --chip-bg: transparent; --chip-border: #ddd;
-  --cat-idea: #1a7a1a; --cat-tool: #2255bb; --cat-insight: #7733aa; --cat-resource: #8a6e10;
-  --act-buy: #1a7a1a; --act-sell: #cc2222; --act-hold: #99850a; --act-watch: #2255bb; --act-mixed: #8855aa;
+  --bg: #ffffff; --bg-alt: #f5f5f5; --text: #555; --text-strong: #222; --text-strong-rgb: 34,34,34; --text-muted: #999;
+  --border: #eee; --border-light: #f5f5f5; --chip-bg: transparent; --chip-border: #ddd;
+  --green: #1a7a1a; --green-10: rgba(26,122,26,0.1);
+  --red: #cc2222; --red-10: rgba(204,34,34,0.1);
+  --blue: #2255bb; --blue-10: rgba(34,85,187,0.1);
+  --purple: #7733aa; --purple-10: rgba(119,51,170,0.1);
+  --amber: #996600; --amber-10: rgba(153,102,0,0.1);
 }
 [data-theme="dark"] {
-  --bg: #070707; --bg-alt: #161616; --text: #999; --text-strong: #e0e0e0; --text-strong-rgb: 224,224,224; --text-muted: #666;
-  --border: #222; --border-light: #1a1a1a; --accent: #4ade80; --danger: #f87171; --warn: #f59e0b;
-  --link: #60a5fa; --chip-bg: #1a1a1a; --chip-border: #333;
-  --cat-idea: #4ade80; --cat-tool: #60a5fa; --cat-insight: #a78bfa; --cat-resource: #fbbf24;
-  --act-buy: #4ade80; --act-sell: #f87171; --act-hold: #fbbf24; --act-watch: #60a5fa; --act-mixed: #a78bfa;
+  --bg: #0a0a0a; --bg-alt: #151515; --text: #888; --text-strong: #ddd; --text-strong-rgb: 221,221,221; --text-muted: #555;
+  --border: #222; --border-light: #1a1a1a; --chip-bg: #151515; --chip-border: #333;
+  --green: #4ade80; --green-10: rgba(74,222,128,0.1);
+  --red: #f87171; --red-10: rgba(248,113,113,0.1);
+  --blue: #60a5fa; --blue-10: rgba(96,165,250,0.1);
+  --purple: #a78bfa; --purple-10: rgba(167,139,250,0.1);
+  --amber: #fbbf24; --amber-10: rgba(251,191,36,0.1);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -41,7 +45,7 @@ body {
 [data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3, [data-case="lower"] label,
 [data-case="lower"] .modal-actions button, [data-case="lower"] .preset-list-item button,
 [data-case="lower"] input::placeholder, [data-case="lower"] textarea::placeholder { text-transform: lowercase; }
-::selection { background: var(--bg-alt); color: var(--accent); }
+::selection { background: var(--bg-alt); color: var(--green); }
 input::placeholder { color: var(--text-muted); }
 button { font-family: inherit; cursor: pointer; }
 
@@ -57,7 +61,7 @@ button { font-family: inherit; cursor: pointer; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 .top-btn { background: none; border: none; font-size: 13px; color: var(--text-muted); padding: 3px 6px; }
 .top-btn:hover { color: var(--text); }
-.top-btn.warn { color: var(--warn); }
+.top-btn.warn { color: var(--amber); }
 
 /* modal */
 .modal-bg {
@@ -71,7 +75,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .modal h3 { font-size: 15px; font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
 .modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
-.modal p a { color: var(--link); text-decoration: none; }
+.modal p a { color: var(--blue); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
 .modal label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
 .modal label:first-of-type { margin-top: 0; }
@@ -99,8 +103,8 @@ button { font-family: inherit; cursor: pointer; }
 .modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .modal-actions button:last-child { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg); }
 .modal-actions button:last-child:hover { opacity: 0.9; }
-.modal-actions button.danger { color: var(--danger); margin-right: auto; }
-.modal-actions button.danger:hover { border-color: var(--danger); }
+.modal-actions button.danger { color: var(--red); margin-right: auto; }
+.modal-actions button.danger:hover { border-color: var(--red); }
 .preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
   display: flex; align-items: center; justify-content: space-between; padding: 10px 0;
@@ -113,7 +117,7 @@ button { font-family: inherit; cursor: pointer; }
 .preset-list-actions { display: flex; gap: 8px; }
 .preset-list-item button { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 0; }
 .preset-list-item button:hover { color: var(--text-strong); }
-.preset-list-item button.danger:hover { color: var(--danger); }
+.preset-list-item button.danger:hover { color: var(--red); }
 
 .controls { padding: 20px; border-bottom: 1px solid var(--border); }
 .input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 20px; }
@@ -161,14 +165,14 @@ button { font-family: inherit; cursor: pointer; }
 .chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; background: var(--bg-alt); }
 .chip-group.expanded { flex-wrap: wrap; }
 .chip-summary { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 0 3px 6px; }
-.chip-summary:hover { color: var(--accent); }
+.chip-summary:hover { color: var(--green); }
 .chip-count { color: var(--text-muted); font-size: 13px; }
 .chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: 13px; }
-.chip-header:hover { color: var(--accent); }
+.chip-header:hover { color: var(--green); }
 .chip-x { background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 2px 6px 2px 0px; cursor: pointer; }
-.chip-x:hover { color: var(--danger); }
+.chip-x:hover { color: var(--red); }
 .clear-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
-.clear-btn:hover { color: var(--danger); }
+.clear-btn:hover { color: var(--red); }
 .scan-btn {
   margin-left: auto; background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: 13px; padding: 3px 6px;
 }
@@ -176,7 +180,7 @@ button { font-family: inherit; cursor: pointer; }
 .scan-btn:disabled { opacity: .5; cursor: default; }
 
 .notice { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid var(--border); }
-.notice.err { color: var(--danger); }
+.notice.err { color: var(--red); }
 .notice.warn { color: var(--text-muted); }
 
 .tweet-count { padding: 10px 20px; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
@@ -214,7 +218,7 @@ button { font-family: inherit; cursor: pointer; }
 .sig-title { font-size: 14px; color: var(--text-strong); font-weight: 500; line-height: 1.4; margin-bottom: 6px; }
 .sig-summary { font-size: 13px; color: var(--text); line-height: 1.55; }
 .sig-links { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-.ext-link { font-size: 13px; color: var(--link); text-decoration: none; }
+.ext-link { font-size: 13px; color: var(--blue); text-decoration: none; }
 .ext-link:hover { opacity: .7; }
 .sig-bottom { margin-top: 10px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .sig-cat { color: inherit; }
@@ -357,8 +361,8 @@ const RANGES = [
   { label: 'This month', days: 30 },
 ];
 const CATEGORIES = ['Investment Idea', 'Tool / Product', 'Insight', 'Resource'];
-const CAT_C = { 'Investment Idea': 'var(--cat-idea)', 'Tool / Product': 'var(--cat-tool)', Insight: 'var(--cat-insight)', Resource: 'var(--cat-resource)' };
-const ACT_C = { buy: 'var(--act-buy)', sell: 'var(--act-sell)', hold: 'var(--act-hold)', watch: 'var(--act-watch)', mixed: 'var(--act-mixed)' };
+const CAT_C = { 'Investment Idea': 'var(--green)', 'Tool / Product': 'var(--blue)', Insight: 'var(--purple)', Resource: 'var(--amber)' };
+const ACT_C = { buy: 'var(--green)', sell: 'var(--red)', hold: 'var(--amber)', watch: 'var(--blue)', mixed: 'var(--purple)' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
@@ -996,8 +1000,8 @@ async function run() {
 
     // Show notices
     const parts = [];
-    if (fails.length) parts.push(`<span style="color:var(--danger)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
-    if (empties.length) parts.push(`<span style="color:var(--warn)">No posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
+    if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
+    if (empties.length) parts.push(`<span style="color:var(--amber)">No posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
     if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
 
     // Tweet count
