@@ -20,7 +20,7 @@
   --bg: #0a0a0a; --bg-alt: #151515; --text: #888; --text-strong: #ddd; --text-strong-rgb: 221,221,221; --text-muted: #555;
   --border: #222; --border-light: #1a1a1a; --chip-bg: #151515; --chip-border: #333;
   --green: #4ade80; --green-10: rgba(74,222,128,0.1);
-  --red: #f87171; --red-10: rgba(248,113,113,0.1);
+  --red: #ff4b4b; --red-10: rgba(248,113,113,0.1);
   --blue: #60a5fa; --blue-10: rgba(96,165,250,0.1);
   --purple: #a78bfa; --purple-10: rgba(167,139,250,0.1);
   --amber: #fbbf24; --amber-10: rgba(251,191,36,0.1);
@@ -208,7 +208,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 20px; border-bottom: 1px solid var(--border);
 }
 .signal.hidden { display: none; }
-.sig-top { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.sig-top { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 .sig-top a { color: var(--text-muted); text-decoration: none; }
 .sig-top a:hover { color: var(--text-strong); }
 .sig-tickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -222,7 +222,7 @@ button { font-family: inherit; cursor: pointer; }
 .ext-link:hover { opacity: .7; }
 .sig-bottom { margin-top: 10px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .sig-cat { color: inherit; }
-.see-post { margin-left: auto; color: var(--text-muted); text-decoration: none; font-size: 13px; }
+.see-post { color: var(--text-muted); text-decoration: none; font-size: 13px; }
 .see-post:hover { color: var(--text-strong); }
 .tweet-tooltip {
   position: fixed; z-index: 1000; max-width: 320px; padding: 12px 14px;
@@ -366,6 +366,7 @@ const ACT_C = { buy: 'var(--green)', sell: 'var(--red)', hold: 'var(--amber)', w
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
+const LS_CURRENT = 'signal_current_scan';
 const LS_ACCOUNTS = 'signal_accounts';
 const LS_LOADED_PRESETS = 'signal_loaded_presets';
 const LS_PRESETS = 'signal_presets';
@@ -1084,6 +1085,14 @@ function saveScan(scan) {
   // Keep last 20 scans
   if (history.length > 20) history.pop();
   localStorage.setItem(LS_SCANS, JSON.stringify(history));
+  // Also save as current for page refresh persistence
+  localStorage.setItem(LS_CURRENT, JSON.stringify(scan));
+}
+
+function loadCurrentScan() {
+  const saved = localStorage.getItem(LS_CURRENT);
+  if (!saved) return null;
+  try { return JSON.parse(saved); } catch { return null; }
 }
 
 function getScanHistory() {
@@ -1197,14 +1206,13 @@ function renderSignals(signals) {
       : '';
     
     h += `<div class="signal" data-category="${esc(item.category || '')}">
-      <div class="sig-top">${sourceLink}${time ? ` · ${time}` : ''}</div>
+      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}</span>${seePost}</div>
       ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
       <div class="sig-title">${esc(item.title || '')}</div>
       <div class="sig-summary">${esc(item.summary || '')}</div>
       ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
       <div class="sig-bottom">
         <span class="sig-cat" style="color:${cc}">${esc(item.category || '')}</span>
-        ${seePost}
       </div>
     </div>`;
   });
@@ -1296,6 +1304,17 @@ setCase(getCase());
 loadAccountsData();
 loadLoadedPresets();
 render();
+
+// Load previous scan on refresh
+const savedScan = loadCurrentScan();
+if (savedScan) {
+  lastScanResult = savedScan;
+  const d = new Date(savedScan.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
+  renderTickers(savedScan.signals);
+  renderSignals(savedScan.signals);
+}
 </script>
 </body>
 </html>
