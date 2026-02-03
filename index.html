@@ -42,6 +42,7 @@ button { font-family: inherit; cursor: pointer; }
 .top-btn { background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 0; }
 .top-btn:hover { color: var(--text); }
 .top-btn.set { color: var(--accent); }
+.top-btn.warn { color: #cc8800; }
 
 /* modal */
 .modal-bg {
@@ -93,10 +94,9 @@ button { font-family: inherit; cursor: pointer; }
 .add-btn.vis { display: inline; }
 
 .presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-.presets-row .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
 .preset-btn {
   background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text-muted); font-size: 11px; padding: 3px 10px;
+  color: var(--text-muted); font-size: 11px; padding: 3px 6px;
 }
 .preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
 .preset-btn.active { color: var(--accent); border-color: var(--accent); }
@@ -104,13 +104,13 @@ button { font-family: inherit; cursor: pointer; }
 .preset-manage:hover { color: var(--text-strong); }
 
 .suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.sug-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
 .sug { background: none; border: none; color: var(--text-muted); font-size: 12px; margin-right: 10px; }
 .sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
 
 .ranges { display: flex; gap: 16px; align-items: center; }
 .ranges.mb { margin-bottom: 14px; }
-.ranges .label { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
 .rng {
   background: none; border: none; border-bottom: 1.5px solid transparent;
   color: var(--text-muted); font-size: 12px; padding: 2px 0;
@@ -126,6 +126,18 @@ button { font-family: inherit; cursor: pointer; }
 }
 .chip:hover { border-color: var(--text-muted); }
 .chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; }
+.chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; }
+.chip-group.collapsed { background: var(--bg-alt); border-radius: 2px; padding: 1px; }
+.chip-group.expanded { flex-wrap: wrap; background: var(--bg-alt); border-radius: 2px; padding: 4px 6px; }
+.chip-summary { cursor: pointer; color: var(--text); border: none; background: none; padding: 3px 0 3px 6px; }
+.chip-summary:hover { color: var(--text-strong); }
+.chip-count { color: var(--text-muted); font-size: 11px; }
+.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 2px 6px; font-size: 11px; }
+.chip-header:hover { color: var(--accent); }
+.chip-x { background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 2px 6px 2px 0px; cursor: pointer; }
+.chip-x:hover { color: var(--danger); }
+.clear-btn { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 4px 0; }
+.clear-btn:hover { color: var(--danger); }
 .scan-btn {
   margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
   color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em;
@@ -155,7 +167,6 @@ button { font-family: inherit; cursor: pointer; }
   padding: 10px 32px; border-bottom: 1px solid var(--border);
   display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
 }
-.filter-bar .label { font-size: 11px; color: var(--text-muted); }
 .filter-btn {
   background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 6px; border-radius: 2px; border: 1px solid transparent;
 }
@@ -227,7 +238,8 @@ button { font-family: inherit; cursor: pointer; }
   <div class="modal">
     <h3>Settings</h3>
     <p>Keys are stored in your browser only. Never sent anywhere except to their respective APIs.<br>
-    Get a Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a> — $1 free credit on signup.</p>
+    Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
+    Get an Anthropic API key at <a href="https://platform.claude.com/settings/keys" target="_blank">platform.claude.com</a>.</p>
     <label>Twitter API key (twitterapi.io)</label>
     <input type="password" id="twKeyInput" placeholder="your twitterapi.io key">
     <label>Anthropic API key</label>
@@ -280,13 +292,9 @@ button { font-family: inherit; cursor: pointer; }
     <input type="text" id="acctInput" placeholder="add account" autocomplete="off">
     <button class="add-btn" id="addBtn">add</button>
   </div>
-  <div class="presets-row" id="presetsRow">
-    <span class="label">presets</span>
-  </div>
+  <div class="presets-row" id="presetsRow"></div>
   <div class="suggested" id="suggested"></div>
-  <div class="ranges" id="rangesRow">
-    <span class="label">range</span>
-  </div>
+  <div class="ranges" id="rangesRow"></div>
   <div class="chips" id="chipsRow"></div>
 </div>
 
@@ -297,15 +305,15 @@ button { font-family: inherit; cursor: pointer; }
 <div id="filterBar"></div>
 <div id="results"></div>
 <div id="debugSection"></div>
-<div class="footer">direct timeline · not financial advice</div>
+<div class="footer">not financial advice</div>
 
 <script>
 // --- Config ---
 const DEFAULT_PRESETS = [
-  { name: 'tradfi', accounts: ['zephyr_z9', 'jukan05', 'citrini7', 'nicholastreece', 'ayz_yzyz'] },
-  { name: 'crypto', accounts: ['RunnerXBT', 'rodeo_crypro', '0xaporia', 'pet3rpan_', 'mert', 'hansolar21', 'kwaker_oats_', 'chrisgrx_', 'danny_xbt', 'riddle245', 'deaftrader1', 'DonAlt', 'FoftyPawlow', 'choffstein', 'Cbb0fe', 'BambouClub', 'ThinkingUSD', '__bleeker', 'inversebrah', 'tzedonn', 'Bluntz_Capital', 'blknoiz06', 'redphonecrypto', 'thedefivillain', '0xkyle__', 'ahboyash', 'c0xswain', 'burstingbagel', 'Evan_ss6', 'gametheorizing', 'defi_monk', '0xNairolf', 'DeFiyst', 'PineAnalytics', 'definalist', '0xGeeGee', 'TangTrades', 'Cheshire_Cap', 'ieaturfoods', 'xmgnr', 'awawat', 'CL207', 'goodalexander', 'QwQiao', 'saliencexbt', 'jeff_w1098', 'sershokunin', 'pk79z', 'PaperFlow8', 'DegenPing', 'NyuuRoe', 'TheCryptoNexus', 'Husslin_', 'lBattleRhino', 'chortly', 'trading_axe', 'based16z', 'HsakaTrades', 'cobie', 'delucinator', 'tetra_gamma', 'Techno_Revenant', 'maruushae', 'Cryptopathic', 'TreeNewsFeed', 'AggrNews', 'zoomerfied', 'mlmabc', 'velo_xyz'] },
+  { name: 'tradfi', accounts: ['ayz_yzyz', 'citrini7', 'jukan05', 'nicholastreece', 'zephyr_z9'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkyle__', '0xNairolf', '__bleeker', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'blknoiz06', 'Bluntz_Capital', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'Cryptopathic', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DegenPing', 'delucinator', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'goodalexander', 'hansolar21', 'HsakaTrades', 'Husslin_', 'ieaturfoods', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'maruushae', 'mert', 'mlmabc', 'NyuuRoe', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'ThinkingUSD', 'trading_axe', 'TreeNewsFeed', 'tzedonn', 'velo_xyz', 'xmgnr', 'zoomerfied'] },
 ];
-const SUGGESTED = DEFAULT_PRESETS[0].accounts.slice(0, 5); // show first few tradfi as quick-adds
+const MAX_RECENTS = 10; // how many recent accounts to show
 const RANGES = [
   { label: 'today', days: 1 },
   { label: 'this week', days: 7 },
@@ -314,23 +322,42 @@ const RANGES = [
 const CATEGORIES = ['Investment Idea', 'Tool / Product', 'Insight', 'Resource'];
 const CONFIDENCES = ['high', 'medium', 'low'];
 const CAT_C = { 'Investment Idea': '#1a7a1a', 'Tool / Product': '#2255bb', Insight: '#7733aa', Resource: '#8a6e10' };
-const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255bb' };
+const ACT_C = { buy: '#1a7a1a', sell: '#cc2222', hold: '#99850a', watch: '#2255bb', mixed: '#8855aa' };
 const CONF_C = { high: '#1a7a1a', medium: '#99850a', low: '#cc2222' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
 const LS_ACCOUNTS = 'signal_accounts';
+const LS_LOADED_PRESETS = 'signal_loaded_presets';
 const LS_PRESETS = 'signal_presets';
 const LS_THEME = 'signal_theme';
 const LS_FINANCE = 'signal_finance_provider';
+const LS_RECENTS = 'signal_recent_accounts';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
-let accounts = [];
+let customAccounts = [];      // manually added accounts
+let loadedPresets = [];       // array of preset names currently loaded
+let expandedPresets = new Set(); // which preset groups are expanded
 let range = 1;
 let lastScanResult = null;
 let busy = false;
 let logs = [];
 let filters = { category: null, confidence: null };
+
+// Get all accounts (presets + custom) for scanning
+function getAllAccounts() {
+  const all = [...customAccounts];
+  const presets = getPresets();
+  for (const name of loadedPresets) {
+    const p = presets.find(p => p.name === name);
+    if (p) all.push(...p.accounts);
+  }
+  return [...new Set(all)]; // dedupe
+}
+
+function hasAnyAccounts() {
+  return customAccounts.length > 0 || loadedPresets.length > 0;
+}
 
 // --- DOM ---
 const $ = id => document.getElementById(id);
@@ -357,7 +384,33 @@ function getPresets() {
 function savePresetsData(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
 function loadPreset(name) {
   const preset = getPresets().find(p => p.name === name);
-  if (preset) { accounts = [...preset.accounts]; saveAccounts(); render(); }
+  if (!preset) return;
+  
+  // Toggle preset on/off
+  if (loadedPresets.includes(name)) {
+    loadedPresets = loadedPresets.filter(n => n !== name);
+    expandedPresets.delete(name);
+  } else {
+    loadedPresets.push(name);
+  }
+  saveLoadedPresets();
+  render();
+}
+
+function unloadPreset(name) {
+  loadedPresets = loadedPresets.filter(n => n !== name);
+  expandedPresets.delete(name);
+  saveLoadedPresets();
+  render();
+}
+
+function togglePresetExpand(name) {
+  if (expandedPresets.has(name)) {
+    expandedPresets.delete(name);
+  } else {
+    expandedPresets.add(name);
+  }
+  renderChips();
 }
 function deletePreset(name) {
   savePresetsData(getPresets().filter(p => p.name !== name));
@@ -367,16 +420,17 @@ function deletePreset(name) {
 function renderPresets() {
   const el = $('presetsRow');
   const presets = getPresets();
-  let h = '<span class="label">presets</span>';
+  let h = '';
   presets.forEach(p => {
-    h += `<button class="preset-btn" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)}</button>`;
+    const active = loadedPresets.includes(p.name) ? ' active' : '';
+    h += `<button class="preset-btn${active}" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)}</button>`;
   });
   h += `<button class="preset-manage" onclick="openPresetModal()">+</button>`;
   el.innerHTML = h;
 }
 function openPresetModal() {
   $('presetNameInput').value = '';
-  $('presetAccountsInput').value = accounts.join(', ');
+  $('presetAccountsInput').value = getAllAccounts().join(', ');
   renderPresetList();
   $('presetModal').classList.add('open');
   $('presetNameInput').focus();
@@ -413,10 +467,31 @@ $('presetNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $
 $('presetAccountsInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePreset(); } });
 
 // --- Account Persistence ---
-function saveAccounts() { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(accounts)); }
-function loadAccounts() {
+function saveAccounts() { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(customAccounts)); }
+function loadAccountsData() {
   const saved = localStorage.getItem(LS_ACCOUNTS);
-  if (saved) accounts = JSON.parse(saved);
+  if (saved) customAccounts = JSON.parse(saved);
+}
+function saveLoadedPresets() { localStorage.setItem(LS_LOADED_PRESETS, JSON.stringify(loadedPresets)); }
+function loadLoadedPresets() {
+  const saved = localStorage.getItem(LS_LOADED_PRESETS);
+  if (saved) loadedPresets = JSON.parse(saved);
+}
+
+// --- Recent Accounts ---
+function getRecents() {
+  return JSON.parse(localStorage.getItem(LS_RECENTS) || '[]');
+}
+function addToRecents(accounts) {
+  let recents = getRecents();
+  // Add new accounts to front, remove duplicates
+  accounts.forEach(a => {
+    recents = recents.filter(r => r !== a);
+    recents.unshift(a);
+  });
+  // Keep only MAX_RECENTS
+  recents = recents.slice(0, MAX_RECENTS);
+  localStorage.setItem(LS_RECENTS, JSON.stringify(recents));
 }
 
 // --- API Keys & Settings ---
@@ -455,6 +530,7 @@ function clearKeys() {
 function updateKeyBtn() {
   const ok = bothKeys();
   $('keyBtn').classList.toggle('set', ok);
+  $('keyBtn').classList.toggle('warn', !ok);
   $('keyBtn').textContent = ok ? '✓ settings' : 'settings';
 }
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
@@ -465,14 +541,18 @@ updateKeyBtn();
 // --- Accounts ---
 function add(h) {
   const c = h.trim().replace(/^@/, '').toLowerCase();
-  if (c && !accounts.includes(c)) accounts.push(c);
+  if (c && !customAccounts.includes(c)) customAccounts.push(c);
   $('acctInput').value = '';
   $('addBtn').classList.remove('vis');
   saveAccounts();
   render();
   $('acctInput').focus();
 }
-function rm(h) { accounts = accounts.filter(a => a !== h); saveAccounts(); render(); }
+function rmCustom(h) {
+  customAccounts = customAccounts.filter(a => a !== h);
+  saveAccounts();
+  render();
+}
 
 $('acctInput').addEventListener('input', function() {
   this.value = this.value.replace(/^@/, '');
@@ -488,19 +568,25 @@ function render() { renderPresets(); renderSuggested(); renderRanges(); renderCh
 
 function renderSuggested() {
   const el = $('suggested');
-  el.innerHTML = '';
-  SUGGESTED.forEach(s => {
+  const recents = getRecents();
+  if (!recents.length) { el.innerHTML = ''; return; }
+  
+  const allAccounts = getAllAccounts();
+  let h = '<span class="sug-label">recent</span>';
+  el.innerHTML = h;
+  
+  recents.forEach(s => {
     const b = document.createElement('button');
-    b.className = 'sug' + (accounts.includes(s) ? ' used' : '');
+    b.className = 'sug' + (allAccounts.includes(s) ? ' used' : '');
     b.textContent = s;
-    if (!accounts.includes(s)) b.addEventListener('click', () => add(s));
+    if (!allAccounts.includes(s)) b.addEventListener('click', () => add(s));
     el.appendChild(b);
   });
 }
 
 function renderRanges() {
   const row = $('rangesRow');
-  while (row.children.length > 1) row.removeChild(row.lastChild);
+  row.innerHTML = '';
   RANGES.forEach((r, i) => {
     const b = document.createElement('button');
     b.className = 'rng' + (range === i ? ' on' : '');
@@ -508,26 +594,77 @@ function renderRanges() {
     b.addEventListener('click', () => { range = i; renderRanges(); });
     row.appendChild(b);
   });
-  row.classList.toggle('mb', accounts.length > 0);
+  row.classList.toggle('mb', hasAnyAccounts());
 }
 
 function renderChips() {
   const el = $('chipsRow');
   el.innerHTML = '';
-  el.classList.toggle('vis', accounts.length > 0);
-  accounts.forEach(a => {
+  el.classList.toggle('vis', hasAnyAccounts());
+  
+  const presets = getPresets();
+  const COLLAPSE_THRESHOLD = 5;
+  
+  // Render each loaded preset as a group
+  loadedPresets.forEach(name => {
+    const preset = presets.find(p => p.name === name);
+    if (!preset) return;
+    
+    const isExpanded = expandedPresets.has(name);
+    const canCollapse = preset.accounts.length > COLLAPSE_THRESHOLD;
+    
+    if (!isExpanded) {
+      // Collapsed - show summary
+      const group = document.createElement('span');
+      group.className = 'chip-group collapsed';
+      group.innerHTML = `<button class="chip chip-summary" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} <span class="chip-count">(${preset.accounts.length})</span></button><button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
+      el.appendChild(group);
+    } else {
+      // Expanded - show all accounts in this preset
+      const group = document.createElement('span');
+      group.className = 'chip-group expanded';
+      let h = `<button class="chip chip-header" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} −</button>`;
+      preset.accounts.forEach(a => {
+        h += `<span class="chip">@${esc(a)}</span>`;
+      });
+      h += `<button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
+      group.innerHTML = h;
+      el.appendChild(group);
+    }
+  });
+  
+  // Render custom accounts
+  customAccounts.forEach(a => {
     const chip = document.createElement('span');
     chip.className = 'chip';
-    chip.innerHTML = `@${esc(a)}<span class="x">✕</span>`;
-    chip.querySelector('.x').addEventListener('click', () => rm(a));
+    chip.innerHTML = `@${esc(a)}<span class="x" onclick="rmCustom('${esc(a)}')">✕</span>`;
     el.appendChild(chip);
   });
+  
+  // Clear all button
+  if (loadedPresets.length > 0 || customAccounts.length > 0) {
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-btn';
+    clearBtn.textContent = 'clear';
+    clearBtn.addEventListener('click', clearAllAccounts);
+    el.appendChild(clearBtn);
+  }
+  
   const btn = document.createElement('button');
   btn.className = busy ? 'scan-btn loading' : 'scan-btn';
   btn.disabled = busy;
   btn.innerHTML = busy ? '<span class="scan-dot">■</span> scanning' : 'scan';
   btn.addEventListener('click', run);
   el.appendChild(btn);
+}
+
+function clearAllAccounts() {
+  customAccounts = [];
+  loadedPresets = [];
+  expandedPresets.clear();
+  saveAccounts();
+  saveLoadedPresets();
+  render();
 }
 
 function setLoading(v) {
@@ -693,6 +830,7 @@ function extractText(content) {
 
 // --- Main flow ---
 async function run() {
+  const accounts = getAllAccounts();
   if (!accounts.length || busy) return;
   if (!bothKeys()) { openModal(); return; }
 
@@ -705,6 +843,12 @@ async function run() {
   $('results').innerHTML = '';
   $('debugSection').innerHTML = '';
   logs = [];
+  
+  // Save custom accounts to recents
+  if (customAccounts.length) {
+    addToRecents(customAccounts);
+    renderSuggested();
+  }
 
   const days = RANGES[range].days;
   const done = { count: 0 };
@@ -885,7 +1029,10 @@ function renderTickers(signals) {
   if (!list.length) { el.innerHTML = ''; el.className = ''; return; }
   el.className = 'ticker-bar';
   el.innerHTML = list.map(t => {
-    const pa = ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
+    // If both buy and sell, show "mixed"
+    const hasBuy = t.acts.has('buy');
+    const hasSell = t.acts.has('sell');
+    const pa = (hasBuy && hasSell) ? 'mixed' : ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
     const url = tickerUrl(t.s);
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
   }).join('');
@@ -983,7 +1130,7 @@ function renderFilters() {
   const el = $('filterBar');
   if (!lastScanResult || !lastScanResult.signals.length) { el.innerHTML = ''; return; }
   
-  let h = '<div class="filter-bar"><span class="label">filter</span>';
+  let h = '<div class="filter-bar">';
   CATEGORIES.forEach(c => {
     const on = filters.category === c ? ' on' : '';
     h += `<button class="filter-btn${on}" onclick="setFilter('category','${c}')">${c.toLowerCase()}</button>`;
@@ -999,7 +1146,8 @@ function renderFilters() {
 
 // --- Init ---
 setTheme(getTheme());
-loadAccounts();
+loadAccountsData();
+loadLoadedPresets();
 render();
 </script>
 </body>
