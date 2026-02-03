@@ -301,7 +301,11 @@ button { font-family: inherit; cursor: pointer; }
 
 <script>
 // --- Config ---
-const SUGGESTED = ['zephyr_z9', 'jukan05', 'citrini7', 'nicholastreece', 'ayz_yzyz'];
+const DEFAULT_PRESETS = [
+  { name: 'tradfi', accounts: ['zephyr_z9', 'jukan05', 'citrini7', 'nicholastreece', 'ayz_yzyz'] },
+  { name: 'crypto', accounts: ['RunnerXBT', 'rodeo_crypro', '0xaporia', 'pet3rpan_', 'mert', 'hansolar21', 'kwaker_oats_', 'chrisgrx_', 'danny_xbt', 'riddle245', 'deaftrader1', 'DonAlt', 'FoftyPawlow', 'choffstein', 'Cbb0fe', 'BambouClub', 'ThinkingUSD', '__bleeker', 'inversebrah', 'tzedonn', 'Bluntz_Capital', 'blknoiz06', 'redphonecrypto', 'thedefivillain', '0xkyle__', 'ahboyash', 'c0xswain', 'burstingbagel', 'Evan_ss6', 'gametheorizing', 'defi_monk', '0xNairolf', 'DeFiyst', 'PineAnalytics', 'definalist', '0xGeeGee', 'TangTrades', 'Cheshire_Cap', 'ieaturfoods', 'xmgnr', 'awawat', 'CL207', 'goodalexander', 'QwQiao', 'saliencexbt', 'jeff_w1098', 'sershokunin', 'pk79z', 'PaperFlow8', 'DegenPing', 'NyuuRoe', 'TheCryptoNexus', 'Husslin_', 'lBattleRhino', 'chortly', 'trading_axe', 'based16z', 'HsakaTrades', 'cobie', 'delucinator', 'tetra_gamma', 'Techno_Revenant', 'maruushae', 'Cryptopathic', 'TreeNewsFeed', 'AggrNews', 'zoomerfied', 'mlmabc', 'velo_xyz'] },
+];
+const SUGGESTED = DEFAULT_PRESETS[0].accounts.slice(0, 5); // show first few tradfi as quick-adds
 const RANGES = [
   { label: 'today', days: 1 },
   { label: 'this week', days: 7 },
@@ -341,7 +345,15 @@ function setTheme(t) {
 function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
 
 // --- Presets ---
-function getPresets() { return JSON.parse(localStorage.getItem(LS_PRESETS) || '[]'); }
+function getPresets() {
+  const stored = localStorage.getItem(LS_PRESETS);
+  if (!stored) {
+    // Initialize with defaults on first load
+    localStorage.setItem(LS_PRESETS, JSON.stringify(DEFAULT_PRESETS));
+    return DEFAULT_PRESETS;
+  }
+  return JSON.parse(stored);
+}
 function savePresetsData(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
 function loadPreset(name) {
   const preset = getPresets().find(p => p.name === name);
