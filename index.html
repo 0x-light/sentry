@@ -8,12 +8,12 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #fff; --bg-alt: #f8f8f8; --text: #555; --text-strong: #222; --text-muted: #999;
+  --bg: #ffffff; --bg-alt: #f3f3f3; --text: #555; --text-strong: #222; --text-strong-rgb: 34,34,34; --text-muted: #999;
   --border: #eee; --border-light: #f3f3f3; --accent: #1a7a1a; --danger: #cc3333;
   --link: #2255bb; --chip-bg: transparent; --chip-border: #ddd;
 }
 [data-theme="dark"] {
-  --bg: #0d0d0d; --bg-alt: #161616; --text: #999; --text-strong: #e0e0e0; --text-muted: #666;
+  --bg: #070707; --bg-alt: #161616; --text: #999; --text-strong: #e0e0e0; --text-strong-rgb: 224,224,224; --text-muted: #666;
   --border: #222; --border-light: #1a1a1a; --accent: #4ade80; --danger: #f87171;
   --link: #60a5fa; --chip-bg: #1a1a1a; --chip-border: #333;
 }
@@ -23,6 +23,22 @@ body {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px; -webkit-font-smoothing: antialiased;
 }
+[data-font="system"], [data-font="system"] * {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+/* Text case - default is lowercase */
+[data-case="lower"] .logo-text, [data-case="lower"] .top-btn, [data-case="lower"] .add-btn,
+[data-case="lower"] .preset-btn, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
+[data-case="lower"] .rng, [data-case="lower"] .chip, [data-case="lower"] .chip-summary, 
+[data-case="lower"] .chip-header, [data-case="lower"] .chip-x, [data-case="lower"] .clear-btn,
+[data-case="lower"] .scan-btn, [data-case="lower"] .notice, [data-case="lower"] .tweet-count,
+[data-case="lower"] .ticker-item, [data-case="lower"] .filter-btn, [data-case="lower"] .results-header,
+[data-case="lower"] .sig-title, [data-case="lower"] .sig-cat, [data-case="lower"] .ext-link,
+[data-case="lower"] .vlink, [data-case="lower"] .empty-state, [data-case="lower"] .empty-dash,
+[data-case="lower"] .debug-toggle, [data-case="lower"] .dl-btn, [data-case="lower"] .footer,
+[data-case="lower"] .modal h3, [data-case="lower"] label, [data-case="lower"] .modal-actions button,
+[data-case="lower"] .preset-list-item span, [data-case="lower"] .preset-list-item button,
+[data-case="lower"] input::placeholder, [data-case="lower"] textarea::placeholder { text-transform: lowercase; }
 ::selection { background: #e8f4e8; color: #1a7a1a; }
 [data-theme="dark"] ::selection { background: #1a3a1a; color: #4ade80; }
 input::placeholder { color: var(--text-muted); }
@@ -36,84 +52,100 @@ button { font-family: inherit; cursor: pointer; }
 .dot { font-size: 8px; color: var(--text-strong); line-height: 1; }
 .dot.loading { animation: pulse 0.6s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-.logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); letter-spacing: .06em; }
+.logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
-.prog { font-size: 12px; color: var(--text-muted); }
-.top-btn { background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 0; }
+.prog { font-size: 13px; color: var(--text-muted); }
+.top-btn { background: none; border: none; font-size: 13px; color: var(--text-muted); padding: 3px 6px; }
 .top-btn:hover { color: var(--text); }
-.top-btn.set { color: var(--accent); }
 .top-btn.warn { color: #cc8800; }
 
 /* modal */
 .modal-bg {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 100;
-  align-items: center; justify-content: center;
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100;
+  align-items: center; justify-content: center; padding: 16px;
 }
 .modal-bg.open { display: flex; }
 .modal {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-  padding: 28px 32px; width: 480px; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 24px; width: 100%; max-width: 420px; max-height: calc(100vh - 32px); overflow-y: auto;
 }
-.modal h3 { font-size: 13px; font-weight: 500; color: var(--text-strong); margin-bottom: 6px; }
-.modal p { font-size: 11px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+.modal h3 { font-size: 15px; font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
+.modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
 .modal p a { color: var(--link); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
-.modal label { display: block; font-size: 11px; color: var(--text); margin-bottom: 4px; margin-top: 14px; }
+.modal label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
 .modal label:first-of-type { margin-top: 0; }
 .modal input, .modal select, .modal textarea {
-  width: 100%; border: 1px solid var(--chip-border); border-radius: 2px; padding: 8px 10px;
-  font-family: inherit; font-size: 12px; color: var(--text-strong); outline: none;
+  width: 100%; border: 1px solid var(--chip-border); padding: 10px 12px;
+  font-family: inherit; font-size: 13px; color: var(--text-strong); outline: none;
   background: var(--bg); resize: vertical;
 }
+.modal select {
+  padding-right: 36px; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+[data-theme="dark"] .modal select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+}
 .modal input:focus, .modal textarea:focus { border-color: var(--text-muted); }
-.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; flex-wrap: wrap; }
+.modal-actions { display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end; }
 .modal-actions button {
-  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  font-size: 11px; padding: 5px 14px; color: var(--text);
+  background: none; border: 1px solid var(--chip-border);
+  font-size: 13px; padding: 3px 6px; color: var(--text);
 }
 .modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
-.modal-actions button.danger { color: var(--danger); }
+.modal-actions button:last-child { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg); }
+.modal-actions button:last-child:hover { opacity: 0.9; }
+.modal-actions button.danger { color: var(--danger); margin-right: auto; }
 .modal-actions button.danger:hover { border-color: var(--danger); }
-.preset-list { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
-  display: flex; align-items: center; justify-content: space-between; padding: 6px 0;
-  border-bottom: 1px solid var(--border-light); font-size: 12px;
+  display: flex; align-items: center; justify-content: space-between; padding: 10px 0;
+  border-bottom: 1px solid var(--border-light); font-size: 13px;
 }
+.preset-list-item:last-child { border-bottom: none; }
 .preset-list-item span { color: var(--text-strong); }
-.preset-list-item small { color: var(--text-muted); margin-left: 8px; }
-.preset-list-item button { background: none; border: none; color: var(--danger); font-size: 11px; padding: 2px 6px; }
+.preset-list-item small { color: var(--text-muted); margin-left: 8px; font-size: 12px; }
+.preset-list-item.editing { background: var(--bg-alt); margin: 0 -8px; padding: 10px 8px; }
+.preset-list-actions { display: flex; gap: 8px; }
+.preset-list-item button { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 0; }
+.preset-list-item button:hover { color: var(--text-strong); }
+.preset-list-item button.danger:hover { color: var(--danger); }
 
-.controls { padding: 20px 32px 16px; border-bottom: 1px solid var(--border); }
-.input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+.controls { padding: 20px 32px; border-bottom: 1px solid var(--border); }
+.input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 20px; }
 .input-row .at { color: var(--text-muted); font-size: 13px; }
 .input-row input {
   flex: 1; background: transparent; border: none; outline: none;
-  color: var(--text-strong); font-size: 13px; font-family: inherit; padding: 6px 0;
+  color: var(--text-strong); font-size: 13px; font-family: inherit;
 }
-.add-btn { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 8px; display: none; }
+.add-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; display: none; }
 .add-btn.vis { display: inline; }
 
-.presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
 .preset-btn {
-  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text-muted); font-size: 11px; padding: 3px 6px;
+  background: none; border: 1px solid var(--chip-border);
+  color: var(--text-muted); font-size: 13px; padding: 3px 6px;
 }
 .preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
-.preset-btn.active { color: var(--accent); border-color: var(--accent); }
-.preset-manage { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 3px 6px; }
+.preset-btn.active { color: var(--text-strong); border-color: var(--text-strong); }
+.preset-manage { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
 .preset-manage:hover { color: var(--text-strong); }
 
-.suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-.sug-label { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
-.sug { background: none; border: none; color: var(--text-muted); font-size: 12px; margin-right: 10px; }
+.suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+.suggested:empty { margin-bottom: 0; }
+.sug { background: none; border: none; color: var(--text-muted); font-size: 13px; }
 .sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
 
 .ranges { display: flex; gap: 16px; align-items: center; }
-.ranges.mb { margin-bottom: 14px; }
+.ranges.mb { margin-bottom: 20px; }
 .rng {
-  background: none; border: none; border-bottom: 1.5px solid transparent;
-  color: var(--text-muted); font-size: 12px; padding: 2px 0;
+  background: none; border: none; border-bottom: 1px solid transparent;
+  color: var(--text-muted); font-size: 13px;
 }
 .rng:hover { color: var(--text-strong); }
 .rng.on { color: var(--text-strong); border-bottom-color: var(--text-strong); }
@@ -121,43 +153,41 @@ button { font-family: inherit; cursor: pointer; }
 .chips { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chips.vis { display: flex; }
 .chip {
-  font-size: 12px; color: var(--text-strong); background: var(--chip-bg); border: 1px solid var(--chip-border); border-radius: 2px;
-  padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-strong); background: var(--bg-alt); border: 1px solid var(--bg-alt);
+  padding: 3px 6px; display: inline-flex; align-items: center; gap: 6px;
 }
-.chip:hover { border-color: var(--text-muted); }
+.chip-group.expanded .chip { border-color: rgba(var(--text-strong-rgb), 0.1); }
 .chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; }
-.chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; }
-.chip-group.collapsed { background: var(--bg-alt); border-radius: 2px; padding: 1px; }
-.chip-group.expanded { flex-wrap: wrap; background: var(--bg-alt); border-radius: 2px; padding: 4px 6px; }
-.chip-summary { cursor: pointer; color: var(--text); border: none; background: none; padding: 3px 0 3px 6px; }
-.chip-summary:hover { color: var(--text-strong); }
-.chip-count { color: var(--text-muted); font-size: 11px; }
-.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 2px 6px; font-size: 11px; }
+.chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; background: var(--bg-alt); }
+.chip-group.expanded { flex-wrap: wrap; }
+.chip-summary { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 0 3px 6px; }
+.chip-summary:hover { color: var(--accent); }
+.chip-count { color: var(--text-muted); font-size: 13px; }
+.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: 13px; }
 .chip-header:hover { color: var(--accent); }
 .chip-x { background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 2px 6px 2px 0px; cursor: pointer; }
 .chip-x:hover { color: var(--danger); }
-.clear-btn { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 4px 0; }
+.clear-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
 .clear-btn:hover { color: var(--danger); }
 .scan-btn {
-  margin-left: auto; background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text-muted); font-size: 12px; padding: 5px 16px; letter-spacing: .04em;
+  margin-left: auto; background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: 13px; padding: 3px 6px;
 }
-.scan-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text); }
+.scan-btn:hover:not(:disabled) { color: var(--bg);}
 .scan-btn:disabled { cursor: default; }
 .scan-btn.loading { color: var(--text); border-color: var(--text); }
 .scan-dot { font-size: 8px; animation: pulse 0.6s infinite; }
 
-.notice { padding: 12px 32px; font-size: 12px; border-bottom: 1px solid var(--border); }
+.notice { padding: 12px 32px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--danger); }
 .notice.warn { color: var(--text-muted); }
 
-.tweet-count { padding: 10px 32px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.tweet-count { padding: 10px 32px; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 
 .ticker-bar {
   padding: 14px 32px; border-bottom: 1px solid var(--border);
   display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; }
+.ticker-item { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; }
 .ticker-item:hover { opacity: .7; }
 .ticker-sym { color: var(--text-strong); font-weight: 500; }
 .ticker-act { font-size: 10px; text-transform: uppercase; font-weight: 500; }
@@ -168,7 +198,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
 }
 .filter-btn {
-  background: none; border: none; font-size: 11px; color: var(--text-muted); padding: 2px 6px; border-radius: 2px; border: 1px solid transparent;
+  background: none; border: none; font-size: 13px; color: var(--text-muted); padding: 3px 6px; border: 1px solid transparent;
 }
 .filter-btn:hover { color: var(--text-strong); }
 .filter-btn.on { background: var(--chip-bg); color: var(--text-strong); border: 1px solid var(--chip-border); }
@@ -176,50 +206,57 @@ button { font-family: inherit; cursor: pointer; }
 .results-header {
   display: grid; grid-template-columns: 1fr 160px 110px 80px;
   padding: 12px 32px; border-bottom: 1px solid var(--border);
-  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; gap: 20px;
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase; gap: 20px;
 }
 .row {
   display: grid; grid-template-columns: 1fr 160px 110px 80px;
-  padding: 16px 32px; border-bottom: 1px solid var(--border-light);
+  padding: 16px 32px; border-bottom: 1px solid var(--border);
   align-items: start; gap: 20px;
 }
 .row.hidden { display: none; }
 
 .sig-title { font-size: 13px; color: var(--text-strong); font-weight: 400; line-height: 1.4; }
-.sig-summary { font-size: 12px; color: var(--text); line-height: 1.55; margin-top: 5px; }
+.sig-summary { font-size: 13px; color: var(--text); line-height: 1.55; margin-top: 5px; }
 .sig-links { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ext-link {
-  font-size: 11px; color: var(--link); text-decoration: none;
-  background: var(--bg-alt); border-radius: 2px;
+  font-size: 13px; color: var(--link); text-decoration: none;
+  background: var(--bg-alt);
 }
 .ext-link:hover { opacity: .7; }
 .sig-meta { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 .sig-cat { font-size: 10px; }
 .conf-dot { width: 5px; height: 5px; border-radius: 50%; opacity: .7; display: inline-block; }
 .ticker-cell { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
-.ticker-tag { font-size: 12px; white-space: nowrap; font-weight: 500; text-decoration: none; }
+.ticker-tag { font-size: 13px; white-space: nowrap; font-weight: 500; text-decoration: none; }
 .ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
-.empty-dash { font-size: 12px; color: var(--text-muted); }
-.source { font-size: 12px; color: var(--text); padding-top: 2px; }
-.vlink { font-size: 11px; color: var(--link); text-decoration: none; }
-.empty-state { padding: 48px 32px; font-size: 12px; color: var(--text-muted); text-align: center; }
+.empty-dash { font-size: 13px; color: var(--text-muted); }
+.source { font-size: 13px; color: var(--text); padding-top: 2px; }
+.vlink { font-size: 13px; color: var(--text-strong); text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid var(--text-strong); }
+.tweet-tooltip {
+  position: fixed; z-index: 1000; max-width: 320px; padding: 12px 14px;
+  background: var(--text-strong); color: var(--bg); font-size: 13px; line-height: 1.5;
+  pointer-events: none; opacity: 0; border: 1px solid var(--text-strong);
+}
+.tweet-tooltip.vis { opacity: 1; }
+.empty-state { padding: 48px 32px; font-size: 13px; color: var(--text-muted); text-align: center; }
 
 .debug-section { padding: 16px 32px; border-top: 1px solid var(--border-light); }
-.debug-toggle { background: none; border: none; color: var(--text-muted); font-size: 11px; padding: 0; }
-.debug-content { margin-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; display: none; }
+.debug-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
+.debug-content { margin-top: 8px; font-size: 13px; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; display: none; }
 .debug-content.open { display: block; }
 .debug-entry { margin-bottom: 10px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px; }
 
 .scan-actions { padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
-.scan-actions .meta { font-size: 11px; color: var(--text-muted); flex: 1; }
+.scan-actions .meta { font-size: 13px; color: var(--text-muted); flex: 1; }
 .dl-btn {
-  background: none; border: 1px solid var(--chip-border); border-radius: 2px;
-  color: var(--text); font-size: 11px; padding: 4px 12px; cursor: pointer;
+  background: none; border: 1px solid var(--chip-border);
+  color: var(--text); font-size: 13px; padding: 3px 6px; cursor: pointer;
 }
 .dl-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 
 .footer { padding: 20px 32px; font-size: 10px; color: var(--text-muted); }
+.footer:empty { display: none; }
 
 @media (max-width: 700px) {
   .results-header, .row { grid-template-columns: 1fr; gap: 8px; }
@@ -228,6 +265,11 @@ button { font-family: inherit; cursor: pointer; }
   .topbar, .controls, .notice, .tweet-count, .ticker-bar, .results-header, .row, .debug-section, .footer {
     padding-left: 16px; padding-right: 16px;
   }
+  .modal-bg { align-items: flex-end; padding: 0; }
+  .modal { max-width: 100%; max-height: 85vh; border: none; border-top: 1px solid var(--border); padding: 20px; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button { width: 100%; padding: 12px; }
+  .modal-actions button.danger { margin-right: 0; margin-top: 8px; }
 }
 </style>
 </head>
@@ -237,11 +279,11 @@ button { font-family: inherit; cursor: pointer; }
 <div class="modal-bg" id="modal">
   <div class="modal">
     <h3>Settings</h3>
-    <p>Keys are stored in your browser only. Never sent anywhere except to their respective APIs.<br>
+    <p>Keys are stored in your browser only and are never sent anywhere except to their respective APIs.<br>
     Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
     Get an Anthropic API key at <a href="https://platform.claude.com/settings/keys" target="_blank">platform.claude.com</a>.</p>
     <label>Twitter API key (twitterapi.io)</label>
-    <input type="password" id="twKeyInput" placeholder="your twitterapi.io key">
+    <input type="password" id="twKeyInput" placeholder="Your twitterapi.io key">
     <label>Anthropic API key</label>
     <input type="password" id="keyInput" placeholder="sk-ant-...">
     <label>Finance charts</label>
@@ -249,10 +291,20 @@ button { font-family: inherit; cursor: pointer; }
       <option value="yahoo">Yahoo Finance</option>
       <option value="google">Google Finance</option>
     </select>
+    <label>Font</label>
+    <select id="fontProvider">
+      <option value="mono">Monospace</option>
+      <option value="system">System</option>
+    </select>
+    <label>Text style</label>
+    <select id="caseProvider">
+      <option value="lower">lowercase</option>
+      <option value="sentence">Sentence case</option>
+    </select>
     <div class="modal-actions">
-      <button class="danger" id="clearKeyBtn" onclick="clearKeys()">clear all</button>
-      <button onclick="closeModal()">cancel</button>
-      <button onclick="saveKeys()">save</button>
+      <button class="danger" id="clearKeyBtn" onclick="clearKeys()">Clear all</button>
+      <button onclick="closeModal()">Cancel</button>
+      <button onclick="saveKeys()">Save</button>
     </div>
   </div>
 </div>
@@ -263,12 +315,12 @@ button { font-family: inherit; cursor: pointer; }
     <h3>Manage presets</h3>
     <p>Create lists of accounts for quick scanning.</p>
     <label>Preset name</label>
-    <input type="text" id="presetNameInput" placeholder="e.g. Crypto Alpha">
+    <input type="text" id="presetNameInput" placeholder="E.g. Commodities">
     <label>Accounts (comma-separated)</label>
-    <textarea id="presetAccountsInput" rows="3" placeholder="account1, account2, account3"></textarea>
+    <textarea id="presetAccountsInput" style="height:175px" placeholder="account1, account2, account3"></textarea>
     <div class="modal-actions">
-      <button onclick="closePresetModal()">cancel</button>
-      <button onclick="savePreset()">save preset</button>
+      <button onclick="closePresetModal()">Cancel</button>
+      <button onclick="savePreset()">Save preset</button>
     </div>
     <div class="preset-list" id="presetList"></div>
   </div>
@@ -277,20 +329,20 @@ button { font-family: inherit; cursor: pointer; }
 <div class="topbar">
   <div class="logo">
     <span class="dot" id="dot">■</span>
-    <span class="logo-text">sentry</span>
+    <span class="logo-text">Sentry</span>
   </div>
   <div class="topbar-right">
     <span class="prog" id="prog"></span>
-    <button class="top-btn" id="themeBtn" onclick="toggleTheme()">theme</button>
-    <button class="top-btn" id="keyBtn" onclick="openModal()">settings</button>
+    <button class="top-btn" id="themeBtn" onclick="toggleTheme()">Theme</button>
+    <button class="top-btn" id="keyBtn" onclick="openModal()">Settings</button>
   </div>
 </div>
 
 <div class="controls">
   <div class="input-row">
     <span class="at">@</span>
-    <input type="text" id="acctInput" placeholder="add account" autocomplete="off">
-    <button class="add-btn" id="addBtn">add</button>
+    <input type="text" id="acctInput" placeholder="Add account" autocomplete="off">
+    <button class="add-btn" id="addBtn">Add</button>
   </div>
   <div class="presets-row" id="presetsRow"></div>
   <div class="suggested" id="suggested"></div>
@@ -305,7 +357,8 @@ button { font-family: inherit; cursor: pointer; }
 <div id="filterBar"></div>
 <div id="results"></div>
 <div id="debugSection"></div>
-<div class="footer">not financial advice</div>
+<div class="footer" id="footer"></div>
+<div class="tweet-tooltip" id="tweetTooltip"></div>
 
 <script>
 // --- Config ---
@@ -315,9 +368,9 @@ const DEFAULT_PRESETS = [
 ];
 const MAX_RECENTS = 10; // how many recent accounts to show
 const RANGES = [
-  { label: 'today', days: 1 },
-  { label: 'this week', days: 7 },
-  { label: 'this month', days: 30 },
+  { label: 'Today', days: 1 },
+  { label: 'This week', days: 7 },
+  { label: 'This month', days: 30 },
 ];
 const CATEGORIES = ['Investment Idea', 'Tool / Product', 'Insight', 'Resource'];
 const CONFIDENCES = ['high', 'medium', 'low'];
@@ -332,6 +385,8 @@ const LS_LOADED_PRESETS = 'signal_loaded_presets';
 const LS_PRESETS = 'signal_presets';
 const LS_THEME = 'signal_theme';
 const LS_FINANCE = 'signal_finance_provider';
+const LS_FONT = 'signal_font';
+const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
@@ -428,7 +483,10 @@ function renderPresets() {
   h += `<button class="preset-manage" onclick="openPresetModal()">+</button>`;
   el.innerHTML = h;
 }
+let editingPresetName = null; // track if editing an existing preset
+
 function openPresetModal() {
+  editingPresetName = null;
   $('presetNameInput').value = '';
   $('presetAccountsInput').value = getAllAccounts().join(', ');
   renderPresetList();
@@ -436,33 +494,69 @@ function openPresetModal() {
   $('presetNameInput').focus();
 }
 function closePresetModal() {
+  editingPresetName = null;
   $('presetModal').classList.remove('open');
+}
+function editPreset(name) {
+  const preset = getPresets().find(p => p.name === name);
+  if (!preset) return;
+  editingPresetName = name;
+  $('presetNameInput').value = preset.name;
+  $('presetAccountsInput').value = preset.accounts.join(', ');
+  $('presetNameInput').focus();
+  renderPresetList();
 }
 function savePreset() {
   const name = $('presetNameInput').value.trim();
   const accountsStr = $('presetAccountsInput').value;
   const accts = accountsStr.split(',').map(a => a.trim().replace(/^@/, '').toLowerCase()).filter(a => a);
   if (!name || !accts.length) return;
-  const presets = getPresets().filter(p => p.name !== name);
+  
+  let presets = getPresets();
+  if (editingPresetName) {
+    // Update existing preset
+    presets = presets.filter(p => p.name !== editingPresetName);
+  }
+  presets = presets.filter(p => p.name !== name);
   presets.push({ name, accounts: accts });
   savePresetsData(presets);
+  
+  // Update loaded presets if name changed
+  if (editingPresetName && editingPresetName !== name && loadedPresets.includes(editingPresetName)) {
+    loadedPresets = loadedPresets.map(n => n === editingPresetName ? name : n);
+    saveLoadedPresets();
+  }
+  
+  editingPresetName = null;
   renderPresets();
   renderPresetList();
+  render();
   $('presetNameInput').value = '';
   $('presetAccountsInput').value = '';
 }
 function renderPresetList() {
   const el = $('presetList');
   const presets = getPresets();
-  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:11px;margin-top:8px">No presets yet</p>'; return; }
-  el.innerHTML = presets.map(p => `
-    <div class="preset-list-item">
+  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;margin-top:8px">No presets yet</p>'; return; }
+  el.innerHTML = presets.map(p => {
+    const isEditing = editingPresetName === p.name;
+    return `
+    <div class="preset-list-item${isEditing ? ' editing' : ''}">
       <span>${esc(p.name)}<small>${p.accounts.length} accounts</small></span>
-      <button onclick="deletePreset('${esc(p.name)}')">delete</button>
+      <div class="preset-list-actions">
+        <button onclick="editPreset('${esc(p.name)}')">${isEditing ? 'Editing' : 'Edit'}</button>
+        <button class="danger" onclick="deletePreset('${esc(p.name)}')">Delete</button>
+      </div>
     </div>
-  `).join('');
+  `}).join('');
 }
-$('presetModal').addEventListener('click', e => { if (e.target === $('presetModal')) closePresetModal(); });
+// Only close modal if mousedown AND mouseup both happen on backdrop
+let presetModalMouseDownTarget = null;
+$('presetModal').addEventListener('mousedown', e => { presetModalMouseDownTarget = e.target; });
+$('presetModal').addEventListener('click', e => {
+  if (e.target === $('presetModal') && presetModalMouseDownTarget === $('presetModal')) closePresetModal();
+  presetModalMouseDownTarget = null;
+});
 $('presetNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('presetAccountsInput').focus(); });
 $('presetAccountsInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePreset(); } });
 
@@ -499,11 +593,23 @@ function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
 function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
 function bothKeys() { return !!(getTwKey() && getAnKey()); }
 function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'yahoo'; }
+function getFont() { return localStorage.getItem(LS_FONT) || 'mono'; }
+function setFont(f) {
+  localStorage.setItem(LS_FONT, f);
+  document.documentElement.setAttribute('data-font', f);
+}
+function getCase() { return localStorage.getItem(LS_CASE) || 'lower'; }
+function setCase(c) {
+  localStorage.setItem(LS_CASE, c);
+  document.documentElement.setAttribute('data-case', c);
+}
 
 function openModal() {
   $('twKeyInput').value = getTwKey();
   $('keyInput').value = getAnKey();
   $('financeProvider').value = getFinanceProvider();
+  $('fontProvider').value = getFont();
+  $('caseProvider').value = getCase();
   $('modal').classList.add('open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
   setTimeout(() => $('twKeyInput').focus(), 50);
@@ -513,9 +619,13 @@ function saveKeys() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
   const fp = $('financeProvider').value;
+  const font = $('fontProvider').value;
+  const textCase = $('caseProvider').value;
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
   localStorage.setItem(LS_FINANCE, fp);
+  setFont(font);
+  setCase(textCase);
   updateKeyBtn();
   closeModal();
 }
@@ -529,11 +639,16 @@ function clearKeys() {
 }
 function updateKeyBtn() {
   const ok = bothKeys();
-  $('keyBtn').classList.toggle('set', ok);
   $('keyBtn').classList.toggle('warn', !ok);
-  $('keyBtn').textContent = ok ? '✓ settings' : 'settings';
+  $('keyBtn').textContent = 'Settings';
 }
-$('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
+// Only close modal if mousedown AND mouseup both happen on backdrop
+let modalMouseDownTarget = null;
+$('modal').addEventListener('mousedown', e => { modalMouseDownTarget = e.target; });
+$('modal').addEventListener('click', e => {
+  if (e.target === $('modal') && modalMouseDownTarget === $('modal')) closeModal();
+  modalMouseDownTarget = null;
+});
 $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
 $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
 updateKeyBtn();
@@ -572,8 +687,7 @@ function renderSuggested() {
   if (!recents.length) { el.innerHTML = ''; return; }
   
   const allAccounts = getAllAccounts();
-  let h = '<span class="sug-label">recent</span>';
-  el.innerHTML = h;
+  el.innerHTML = '';
   
   recents.forEach(s => {
     const b = document.createElement('button');
@@ -620,11 +734,11 @@ function renderChips() {
       group.innerHTML = `<button class="chip chip-summary" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} <span class="chip-count">(${preset.accounts.length})</span></button><button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
       el.appendChild(group);
     } else {
-      // Expanded - show all accounts in this preset
+      // Expanded - show all accounts in this preset (sorted alphabetically)
       const group = document.createElement('span');
       group.className = 'chip-group expanded';
       let h = `<button class="chip chip-header" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} −</button>`;
-      preset.accounts.forEach(a => {
+      [...preset.accounts].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).forEach(a => {
         h += `<span class="chip">@${esc(a)}</span>`;
       });
       h += `<button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
@@ -645,7 +759,7 @@ function renderChips() {
   if (loadedPresets.length > 0 || customAccounts.length > 0) {
     const clearBtn = document.createElement('button');
     clearBtn.className = 'clear-btn';
-    clearBtn.textContent = 'clear';
+    clearBtn.textContent = 'Clear';
     clearBtn.addEventListener('click', clearAllAccounts);
     el.appendChild(clearBtn);
   }
@@ -653,7 +767,7 @@ function renderChips() {
   const btn = document.createElement('button');
   btn.className = busy ? 'scan-btn loading' : 'scan-btn';
   btn.disabled = busy;
-  btn.innerHTML = busy ? '<span class="scan-dot">■</span> scanning' : 'scan';
+  btn.innerHTML = busy ? '<span class="scan-dot">■</span> Scanning' : 'Scan';
   btn.addEventListener('click', run);
   el.appendChild(btn);
 }
@@ -896,7 +1010,7 @@ async function run() {
     // Show notices
     const parts = [];
     if (fails.length) parts.push(`<span style="color:#cc3333">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
-    if (empties.length) parts.push(`<span style="color:#cc8800">no posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
+    if (empties.length) parts.push(`<span style="color:#cc8800">No posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
     if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
 
     // Tweet count
@@ -1045,14 +1159,32 @@ function renderScanActions() {
   const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
   el.innerHTML = `<div class="scan-actions">
     <span class="meta">${dateStr} · ${lastScanResult.accounts.length} accounts · ${lastScanResult.totalTweets} tweets · ${lastScanResult.signals.length} signals</span>
-    <button class="dl-btn" onclick="downloadLastScan()">↓ download json</button>
+    <button class="dl-btn" onclick="downloadLastScan()">↓ Download JSON</button>
   </div>`;
 }
 
 function renderSignals(signals) {
   const el = $('results');
   filters = { category: null, confidence: null }; // reset filters
-  if (!signals.length) { el.innerHTML = '<div class="empty-state">no signals extracted</div>'; renderScanActions(); renderFilters(); return; }
+  if (!signals.length) { el.innerHTML = '<div class="empty-state">No signals extracted</div>'; renderScanActions(); renderFilters(); $('footer').innerHTML = ''; return; }
+  
+  // Build tweet URL to info map from rawTweets
+  const tweetMap = {};
+  if (lastScanResult?.rawTweets) {
+    lastScanResult.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        const date = tw.createdAt ? new Date(tw.createdAt) : null;
+        const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+        tweetMap[url] = {
+          text: tw.text || '',
+          author: tw.author?.userName || a.account || '',
+          time: timeStr
+        };
+      });
+    });
+  }
+  
   let h = '<div class="results-header"><span>signal</span><span>tickers</span><span>source</span><span style="text-align:right">link</span></div>';
   signals.forEach((item, i) => {
     const cc = CAT_C[item.category] || '#888';
@@ -1063,8 +1195,9 @@ function renderSignals(signals) {
           return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || '#666'}">${esc(t.symbol)}<span class="a">${t.action}</span></a>`;
         }).join('')
       : '<span class="empty-dash">—</span>';
+    const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || {}) : {};
     const lnk = item.tweet_url
-      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="vlink">see tweet</a>`
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="vlink" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(tweetInfo.author || '')}" data-time="${esc(tweetInfo.time || '')}">See tweet</a>`
       : '<span class="empty-dash">—</span>';
     const extLinks = (item.links && item.links.length)
       ? item.links.map(l => `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(l).hostname.replace('www.',''))}</a>`).join(' ')
@@ -1077,7 +1210,7 @@ function renderSignals(signals) {
         <div class="sig-summary">${esc(item.summary || '')}</div>
         ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
         <div class="sig-meta">
-          <span class="sig-cat" style="color:${cc}">${esc((item.category || '').toLowerCase())}</span>
+          <span class="sig-cat" style="color:${cc}">${esc(item.category || '')}</span>
           <span class="conf-dot" style="background:${fc}"></span>
         </div>
       </div>
@@ -1089,14 +1222,44 @@ function renderSignals(signals) {
   el.innerHTML = h;
   renderScanActions();
   renderFilters();
+  $('footer').innerHTML = 'Not financial advice';
+  setupTweetTooltips();
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function setupTweetTooltips() {
+  const tooltip = $('tweetTooltip');
+  document.querySelectorAll('.vlink[data-tweet]').forEach(link => {
+    link.addEventListener('mouseenter', e => {
+      const text = link.dataset.tweet;
+      if (!text) return;
+      const author = link.dataset.author || '';
+      const time = link.dataset.time || '';
+      const header = (author || time) ? `<div style="opacity:.7;margin-bottom:8px">@${esc(author)} · ${esc(time)}</div>` : '';
+      tooltip.innerHTML = header + esc(text);
+      tooltip.classList.add('vis');
+    });
+    link.addEventListener('mousemove', e => {
+      const x = e.clientX + 12;
+      const y = e.clientY + 12;
+      // Keep tooltip in viewport
+      const rect = tooltip.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width - 20;
+      const maxY = window.innerHeight - rect.height - 20;
+      tooltip.style.left = Math.min(x, maxX) + 'px';
+      tooltip.style.top = Math.min(y, maxY) + 'px';
+    });
+    link.addEventListener('mouseleave', () => {
+      tooltip.classList.remove('vis');
+    });
+  });
 }
 
 function renderDebug() {
   const el = $('debugSection');
   if (!logs.length) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="debug-section">
-    <button class="debug-toggle" id="debugToggle">▸ debug</button>
+    <button class="debug-toggle" id="debugToggle">▸ Debug</button>
     <div class="debug-content" id="debugContent">
       ${logs.map(l => `<div class="debug-entry"><span style="color:#777">@${esc(l.a)}</span> — ${l.len} ${l.a === '_analysis' ? 'chars' : 'tweets'}<div style="color:#bbb;margin-top:2px">${esc(l.pre)}</div></div>`).join('')}
     </div>
@@ -1104,7 +1267,7 @@ function renderDebug() {
   $('debugToggle').addEventListener('click', function() {
     const c = $('debugContent');
     const open = c.classList.toggle('open');
-    this.textContent = (open ? '▾' : '▸') + ' debug';
+    this.textContent = (open ? '▾' : '▸') + ' Debug';
   });
 }
 
@@ -1133,7 +1296,7 @@ function renderFilters() {
   let h = '<div class="filter-bar">';
   CATEGORIES.forEach(c => {
     const on = filters.category === c ? ' on' : '';
-    h += `<button class="filter-btn${on}" onclick="setFilter('category','${c}')">${c.toLowerCase()}</button>`;
+    h += `<button class="filter-btn${on}" onclick="setFilter('category','${c}')">${c}</button>`;
   });
   h += '<span style="color:var(--border);margin:0 4px">|</span>';
   CONFIDENCES.forEach(c => {
@@ -1146,6 +1309,8 @@ function renderFilters() {
 
 // --- Init ---
 setTheme(getTheme());
+setFont(getFont());
+setCase(getCase());
 loadAccountsData();
 loadLoadedPresets();
 render();
