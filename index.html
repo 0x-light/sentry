@@ -35,11 +35,12 @@
   --purple: #7733aa; --purple-10: rgba(119,51,170,0.1);
   --amber: #996600; --amber-10: rgba(153,102,0,0.1);
   /* Font sizes */
-  --fs: 13px; --fs-sm: 11px; --fs-xs: 10px; --fs-lg: 14px; --fs-xl: 15px;
+  --fs: 14px; --fs-sm: 14px; --fs-xs: 14px; --fs-lg: 14px; --fs-xl: 14px;
 }
-[data-font-size="small"] { --fs: 12px; --fs-sm: 10px; --fs-xs: 9px; --fs-lg: 13px; --fs-xl: 14px; }
-[data-font-size="large"] { --fs: 14px; --fs-sm: 12px; --fs-xs: 11px; --fs-lg: 15px; --fs-xl: 16px; }
-[data-font-size="xlarge"] { --fs: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-lg: 16px; --fs-xl: 17px; }
+[data-font-size="xsmall"] { --fs: 12px; --fs-sm: 12px; --fs-xs: 12px; --fs-lg: 12px; --fs-xl: 12px; }
+[data-font-size="small"] { --fs: 13px; --fs-sm: 13px; --fs-xs: 13px; --fs-lg: 13px; --fs-xl: 13px; }
+[data-font-size="large"] { --fs: 15px; --fs-sm: 15px; --fs-xs: 15px; --fs-lg: 15px; --fs-xl: 15px; }
+[data-font-size="xlarge"] { --fs: 17px; --fs-sm: 17px; --fs-xs: 17px; --fs-lg: 17px; --fs-xl: 17px; }
 [data-theme="dark"] {
   --bg: #0a0a0a; --bg-alt: #151515; --text: #888; --text-strong: #ddd; --text-strong-rgb: 221,221,221; --text-muted: #555;
   --text-10: rgba(136,136,136,0.1); --text-20: rgba(136,136,136,0.2);
@@ -70,9 +71,8 @@ body {
 /* Text case - default is lowercase */
 /* Lowercase mode - UI elements only */
 [data-case="lower"] .logo-text, [data-case="lower"] .top-btn, [data-case="lower"] .add-btn,
-[data-case="lower"] .preset-btn, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
-[data-case="lower"] .rng, [data-case="lower"] .chip, [data-case="lower"] .chip-summary, 
-[data-case="lower"] .chip-header, [data-case="lower"] .chip-x, [data-case="lower"] .clear-btn,
+[data-case="lower"] .preset-chip, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
+[data-case="lower"] .rng, [data-case="lower"] .clear-btn,
 [data-case="lower"] .scan-btn, [data-case="lower"] .cancel-btn, [data-case="lower"] .sig-cat,
 [data-case="lower"] .dl-btn, [data-case="lower"] .footer,
 [data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3,
@@ -88,7 +88,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
-.dot { font-size: 8px; color: var(--text-strong); line-height: 1; }
+.dot { font-size: var(--fs); color: var(--text-strong); line-height: 1; }
 .dot.loading { animation: pulse 0.6s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 .logo-text { font-size: var(--fs); font-weight: 500; color: var(--text-strong); }
@@ -108,7 +108,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 24px; width: 100%; max-width: 600px; max-height: calc(100vh - 32px); overflow-y: auto;
   position: relative;
 }
-.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; padding: 4px 8px; line-height: 1; }
 .modal-close:hover { color: var(--text-strong); }
 .modal h3 { font-size: var(--fs-xl); font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
 .modal p { font-size: var(--fs); color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
@@ -171,55 +171,43 @@ button { font-family: inherit; cursor: pointer; }
 .add-btn.vis { display: inline; }
 
 .presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
-.preset-btn {
-  background: none; border: 1px solid var(--chip-border);
-  color: var(--text-muted); font-size: var(--fs); padding: 3px 6px;
+.preset-chip {
+  background: var(--text-10); border: none;
+  color: var(--text-muted); font-size: var(--fs);
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
 }
-.preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
-.preset-btn.active { color: var(--text-strong); border-color: var(--text-strong); }
+.preset-chip:hover { color: var(--text-strong); }
+.preset-chip.selected { color: var(--bg-alt); background: var(--text-strong); }
+.preset-chip .count { font-size: var(--fs-sm); }
+.preset-chip.selected .count { color: var(--bg-alt); }
 .preset-manage { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
 .preset-manage:hover { color: var(--text-strong); }
 
-.suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+.suggested { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
 .suggested:empty { margin-bottom: 0; }
-.sug { background: none; border: none; color: var(--text-muted); font-size: var(--fs); }
+.sug { background: var(--text-10); border: none; color: var(--text-muted); font-size: var(--fs); }
 .sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
+.sug-label { color: var(--text-muted); font-size: var(--fs); }
 
-.ranges { display: flex; gap: 16px; align-items: center; }
-.ranges.mb { margin-bottom: 20px; }
+.ranges { display: flex; gap: 8px; align-items: center; }
 .rng {
   background: none; border: none; border-bottom: 1px solid transparent;
   color: var(--text-muted); font-size: var(--fs);
 }
 .rng:hover { color: var(--text-strong); }
-.rng.on { color: var(--text-strong); border-bottom-color: var(--text-strong); }
+.rng.on { color: var(--bg); background: var(--text-strong); border-bottom-color: var(--text-strong); }
 
-.chips { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
-.chips.vis { display: flex; }
-.chip {
-  font-size: var(--fs); color: var(--text-strong); background: var(--bg-alt); border: 1px solid var(--bg-alt);
-  padding: 3px 6px; display: inline-flex; align-items: center; gap: 6px;
-}
-.chip-group.expanded .chip { border-color: rgba(var(--text-strong-rgb), 0.1); }
-.chip .x { cursor: pointer; color: var(--text-muted); font-size: var(--fs-xs); }
-.chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; background: var(--bg-alt); }
-.chip-group.expanded { flex-wrap: wrap; }
-.chip-summary { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 0 3px 6px; }
-.chip-count { color: var(--text-muted); font-size: var(--fs); }
-.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: var(--fs); }
-.chip-x { background: none; border: none; color: var(--text-muted); font-size: var(--fs-xs); padding: 2px 6px 2px 0px; cursor: pointer; }
-.chip-x:hover { color: var(--red); }
-.clear-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
+.clear-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); }
 .clear-btn:hover { color: var(--red); }
-.scan-btns { margin-left: auto; display: flex; gap: 6px; }
+.scan-btns { margin-left: auto; display: flex; gap: 8px; }
 .scan-btn {
-  background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: var(--fs); padding: 3px 6px;
+  background: var(--text-strong); border: none; color: var(--bg); font-size: var(--fs);
 }
 .scan-btn:hover:not(:disabled) { opacity: .8; }
 .scan-btn:disabled { opacity: .5; cursor: default; }
-.cancel-btn { background: none; border: 1px solid var(--red); color: var(--red); font-size: var(--fs); padding: 3px 6px; }
-.cancel-btn:hover { background: var(--red-10); }
+.cancel-btn { background: var(--red-10); border: none; color: var(--red); font-size: var(--fs); }
+.cancel-btn:hover { opacity: 0.8; }
 
 .notice { padding: 12px 20px; font-size: var(--fs); border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--red); }
@@ -236,7 +224,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 14px 20px; border-bottom: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: var(--fs); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 500; }
+.ticker-item { font-size: var(--fs); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; }
 .ticker-item:hover { opacity: .7; }
 .ticker-cnt { font-size: var(--fs-sm); opacity: .6; }
 
@@ -249,11 +237,11 @@ button { font-family: inherit; cursor: pointer; }
   padding: 20px; border-bottom: 1px solid var(--border);
 }
 .signal.hidden { display: none; }
-.sig-top { font-size: var(--fs); color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.sig-top { font-size: calc(var(--fs) - 2px); color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 .sig-top a { color: var(--text-muted); text-decoration: none; }
 .sig-top a:hover { color: var(--text-strong); }
-.sig-tickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.ticker-tag { font-size: var(--fs); font-weight: 500; text-decoration: none; }
+.sig-tickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.ticker-tag { font-size: var(--fs); text-decoration: none; }
 .ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { display: none; }
 .sig-title { font-size: var(--fs-lg); color: var(--text-strong); font-weight: 500; line-height: 1.4; margin-bottom: 6px; }
@@ -354,6 +342,7 @@ button { font-family: inherit; cursor: pointer; }
     </select>
     <label>Font size</label>
     <select id="fontSizeProvider">
+      <option value="xsmall">Extra Small</option>
       <option value="small">Small</option>
       <option value="medium">Medium</option>
       <option value="large">Large</option>
@@ -404,7 +393,7 @@ button { font-family: inherit; cursor: pointer; }
 
 <div class="topbar">
   <div class="logo">
-    <span class="dot" id="dot">■</span>
+    <span class="dot" id="dot">█</span>
     <span class="logo-text">Sentry</span>
   </div>
   <div class="topbar-right">
@@ -422,7 +411,6 @@ button { font-family: inherit; cursor: pointer; }
   <div class="presets-row" id="presetsRow"></div>
   <div class="suggested" id="suggested"></div>
   <div class="ranges" id="rangesRow"></div>
-  <div class="chips" id="chipsRow"></div>
 </div>
 
 <div id="tweetCount"></div>
@@ -500,7 +488,6 @@ const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let customAccounts = [];      // manually added accounts
 let loadedPresets = [];       // array of preset names currently loaded
-let expandedPresets = new Set(); // which preset groups are expanded
 let range = 1;
 let lastScanResult = null;
 let busy = false;
@@ -552,7 +539,6 @@ function loadPreset(name) {
   // Toggle preset on/off
   if (loadedPresets.includes(name)) {
     loadedPresets = loadedPresets.filter(n => n !== name);
-    expandedPresets.delete(name);
   } else {
     loadedPresets.push(name);
   }
@@ -560,21 +546,6 @@ function loadPreset(name) {
   render();
 }
 
-function unloadPreset(name) {
-  loadedPresets = loadedPresets.filter(n => n !== name);
-  expandedPresets.delete(name);
-  saveLoadedPresets();
-  render();
-}
-
-function togglePresetExpand(name) {
-  if (expandedPresets.has(name)) {
-    expandedPresets.delete(name);
-  } else {
-    expandedPresets.add(name);
-  }
-  renderChips();
-}
 function deletePreset(name) {
   savePresetsData(getPresets().filter(p => p.name !== name));
   renderPresets();
@@ -584,11 +555,26 @@ function renderPresets() {
   const el = $('presetsRow');
   const presets = getPresets();
   let h = '';
+  
+  // Render preset chips (toggleable)
   presets.forEach(p => {
-    const active = loadedPresets.includes(p.name) ? ' active' : '';
-    h += `<button class="preset-btn${active}" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)}</button>`;
+    const selected = loadedPresets.includes(p.name) ? ' selected' : '';
+    h += `<button class="preset-chip${selected}" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)} <span class="count">(${p.accounts.length})</span></button>`;
   });
+  
+  // Render custom accounts (toggleable - always selected since they're manually added)
+  customAccounts.forEach(a => {
+    h += `<button class="preset-chip selected" onclick="rmCustom('${esc(a)}')">${esc(a)}</button>`;
+  });
+  
+  // Add preset button
   h += `<button class="preset-manage" onclick="openPresetModal()">+</button>`;
+  
+  // Clear button (only if there are accounts)
+  if (loadedPresets.length > 0 || customAccounts.length > 0) {
+    h += `<button class="clear-btn" onclick="clearAllAccounts()">×</button>`;
+  }
+  
   el.innerHTML = h;
 }
 let editingPresetName = null; // track if editing an existing preset
@@ -694,6 +680,10 @@ function addToRecents(accounts) {
   // Keep only MAX_RECENTS
   recents = recents.slice(0, MAX_RECENTS);
   localStorage.setItem(LS_RECENTS, JSON.stringify(recents));
+}
+function clearRecents() {
+  localStorage.removeItem(LS_RECENTS);
+  renderSuggested();
 }
 
 // ============================================================================
@@ -978,7 +968,7 @@ $('acctInput').addEventListener('keydown', e => {
 $('addBtn').addEventListener('click', () => { if ($('acctInput').value.trim()) add($('acctInput').value); });
 
 // --- Render helpers ---
-function render() { renderPresets(); renderSuggested(); renderRanges(); renderChips(); }
+function render() { renderPresets(); renderSuggested(); renderRanges(); }
 
 function renderSuggested() {
   const el = $('suggested');
@@ -988,6 +978,11 @@ function renderSuggested() {
   const allAccounts = getAllAccounts();
   el.innerHTML = '';
   
+  const label = document.createElement('span');
+  label.className = 'sug-label';
+  label.textContent = 'recents ·';
+  el.appendChild(label);
+  
   recents.forEach(s => {
     const b = document.createElement('button');
     b.className = 'sug' + (allAccounts.includes(s) ? ' used' : '');
@@ -995,102 +990,39 @@ function renderSuggested() {
     if (!allAccounts.includes(s)) b.addEventListener('click', () => add(s));
     el.appendChild(b);
   });
+  
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'clear-btn';
+  clearBtn.textContent = '×';
+  clearBtn.addEventListener('click', clearRecents);
+  el.appendChild(clearBtn);
 }
 
 function renderRanges() {
   const row = $('rangesRow');
-  row.innerHTML = '';
+  let h = '';
+  
+  // Date range selectors
   RANGES.forEach((r, i) => {
-    const b = document.createElement('button');
-    b.className = 'rng' + (range === i ? ' on' : '');
-    b.textContent = r.label;
-    b.addEventListener('click', () => { range = i; renderRanges(); });
-    row.appendChild(b);
+    const on = range === i ? ' on' : '';
+    h += `<button class="rng${on}" onclick="range=${i};renderRanges();">${r.label}</button>`;
   });
-  row.classList.toggle('mb', hasAnyAccounts());
+  
+  // Right side: scan buttons
+  h += `<div class="scan-btns">`;
+  if (busy) {
+    h += `<button class="cancel-btn" onclick="abortCurrentScan(); setLoading(false); setStatus('Scan cancelled');">Cancel</button>`;
+  }
+  h += `<button class="scan-btn"${busy ? ' disabled' : ''} onclick="run()">${busy ? 'Scanning...' : 'Scan'}</button>`;
+  h += `</div>`;
+  
+  row.innerHTML = h;
 }
 
-function renderChips() {
-  const el = $('chipsRow');
-  el.innerHTML = '';
-  el.classList.toggle('vis', hasAnyAccounts());
-  
-  const presets = getPresets();
-  const COLLAPSE_THRESHOLD = 5;
-  
-  // Render each loaded preset as a group
-  loadedPresets.forEach(name => {
-    const preset = presets.find(p => p.name === name);
-    if (!preset) return;
-    
-    const isExpanded = expandedPresets.has(name);
-    const canCollapse = preset.accounts.length > COLLAPSE_THRESHOLD;
-    
-    if (!isExpanded) {
-      // Collapsed - show summary
-      const group = document.createElement('span');
-      group.className = 'chip-group collapsed';
-      group.innerHTML = `<button class="chip chip-summary" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} <span class="chip-count">(${preset.accounts.length})</span></button><button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
-      el.appendChild(group);
-    } else {
-      // Expanded - show all accounts in this preset (sorted alphabetically)
-      const group = document.createElement('span');
-      group.className = 'chip-group expanded';
-      let h = `<button class="chip chip-header" onclick="togglePresetExpand('${esc(name)}')">${esc(name)} −</button>`;
-      [...preset.accounts].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())).forEach(a => {
-        h += `<span class="chip">@${esc(a)}</span>`;
-      });
-      h += `<button class="chip-x" onclick="unloadPreset('${esc(name)}')">✕</button>`;
-      group.innerHTML = h;
-      el.appendChild(group);
-    }
-  });
-  
-  // Render custom accounts
-  customAccounts.forEach(a => {
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.innerHTML = `@${esc(a)}<span class="x" onclick="rmCustom('${esc(a)}')">✕</span>`;
-    el.appendChild(chip);
-  });
-  
-  // Clear all button
-  if (loadedPresets.length > 0 || customAccounts.length > 0) {
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'clear-btn';
-    clearBtn.textContent = 'Clear';
-    clearBtn.addEventListener('click', clearAllAccounts);
-    el.appendChild(clearBtn);
-  }
-  
-  const btns = document.createElement('div');
-  btns.className = 'scan-btns';
-  
-  if (busy) {
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'cancel-btn';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => {
-      abortCurrentScan();
-      setLoading(false);
-      setStatus('Scan cancelled');
-    });
-    btns.appendChild(cancelBtn);
-  }
-  
-  const btn = document.createElement('button');
-  btn.className = 'scan-btn';
-  btn.disabled = busy;
-  btn.textContent = busy ? 'Scanning...' : 'Scan';
-  btn.addEventListener('click', run);
-  btns.appendChild(btn);
-  el.appendChild(btns);
-}
 
 function clearAllAccounts() {
   customAccounts = [];
   loadedPresets = [];
-  expandedPresets.clear();
   saveAccounts();
   saveLoadedPresets();
   render();
@@ -1099,12 +1031,12 @@ function clearAllAccounts() {
 function setLoading(v) {
   busy = v;
   $('dot').classList.toggle('loading', v);
-  renderChips();
+  renderRanges();
 }
 function setStatus(t, animate = false, showDownload = false) {
   const el = $('tweetCount');
   if (!t) { el.innerHTML = ''; return; }
-  const dl = showDownload ? `<button class="dl-btn" onclick="downloadLastScan()">↓ Download</button>` : '';
+  const dl = showDownload ? `<button class="dl-btn" onclick="downloadLastScan()">↓ <span class="hide-mobile">Download</span></button>` : '';
   el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${dl}</div>`;
 }
 
