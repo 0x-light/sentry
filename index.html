@@ -9,6 +9,7 @@
 <style>
 :root {
   --bg: #ffffff; --bg-alt: #f5f5f5; --text: #555; --text-strong: #222; --text-strong-rgb: 34,34,34; --text-muted: #999;
+  --text-10: rgba(85,85,85,0.1); --text-20: rgba(85,85,85,0.2);
   --border: #eee; --border-light: #f5f5f5; --chip-bg: transparent; --chip-border: #ddd;
   --green: #1a7a1a; --green-10: rgba(26,122,26,0.1);
   --red: #cc2222; --red-10: rgba(204,34,34,0.1);
@@ -18,6 +19,7 @@
 }
 [data-theme="dark"] {
   --bg: #0a0a0a; --bg-alt: #151515; --text: #888; --text-strong: #ddd; --text-strong-rgb: 221,221,221; --text-muted: #555;
+  --text-10: rgba(136,136,136,0.1); --text-20: rgba(136,136,136,0.2);
   --border: #222; --border-light: #1a1a1a; --chip-bg: #151515; --chip-border: #333;
   --green: #4ade80; --green-10: rgba(74,222,128,0.1);
   --red: #ff4b4b; --red-10: rgba(248,113,113,0.1);
@@ -72,7 +74,10 @@ button { font-family: inherit; cursor: pointer; }
 .modal {
   background: var(--bg); border: 1px solid var(--border);
   padding: 24px; width: 100%; max-width: 420px; max-height: calc(100vh - 32px); overflow-y: auto;
+  position: relative;
 }
+.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.modal-close:hover { color: var(--text-strong); }
 .modal h3 { font-size: 15px; font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
 .modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
 .modal p a { color: var(--blue); text-decoration: none; }
@@ -83,7 +88,7 @@ button { font-family: inherit; cursor: pointer; }
 .reset-prompt:hover { color: var(--text-strong); }
 .modal input, .modal select, .modal textarea {
   width: 100%; border: 1px solid var(--chip-border); padding: 10px 12px;
-  font-family: inherit; font-size: 13px; color: var(--text-strong); outline: none;
+  font-family: inherit; font-size: inherit; color: var(--text-strong); outline: none;
   background: var(--bg); resize: vertical;
 }
 .modal select {
@@ -126,7 +131,7 @@ button { font-family: inherit; cursor: pointer; }
 .input-row .at { color: var(--text-muted); font-size: 13px; }
 .input-row input {
   flex: 1; background: transparent; border: none; outline: none;
-  color: var(--text-strong); font-size: 13px; font-family: inherit;
+  color: var(--text-strong); font-size: inherit; font-family: inherit;
 }
 .add-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; display: none; }
 .add-btn.vis { display: inline; }
@@ -167,10 +172,8 @@ button { font-family: inherit; cursor: pointer; }
 .chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; background: var(--bg-alt); }
 .chip-group.expanded { flex-wrap: wrap; }
 .chip-summary { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 0 3px 6px; }
-.chip-summary:hover { color: var(--green); }
 .chip-count { color: var(--text-muted); font-size: 13px; }
 .chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: 13px; }
-.chip-header:hover { color: var(--green); }
 .chip-x { background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 2px 6px 2px 0px; cursor: pointer; }
 .chip-x:hover { color: var(--red); }
 .clear-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
@@ -193,13 +196,11 @@ button { font-family: inherit; cursor: pointer; }
 
 .ticker-bar {
   padding: 14px 20px; border-bottom: 1px solid var(--border);
-  display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; text-decoration: none; }
+.ticker-item { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 500; }
 .ticker-item:hover { opacity: .7; }
-.ticker-sym { color: var(--text-strong); font-weight: 500; }
-.ticker-act { font-size: 10px; text-transform: uppercase; font-weight: 500; }
-.ticker-cnt { color: var(--text-muted); font-size: 10px; }
+.ticker-cnt { font-size: 11px; opacity: .6; }
 
 .filter-bar {
   padding: 12px 20px; border-bottom: 1px solid var(--border);
@@ -216,16 +217,21 @@ button { font-family: inherit; cursor: pointer; }
 .sig-tickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .ticker-tag { font-size: 13px; font-weight: 500; text-decoration: none; }
 .ticker-tag:hover { opacity: .7; }
-.ticker-tag .a { font-size: 9px; opacity: .7; margin-left: 3px; text-transform: uppercase; font-weight: 400; }
+.ticker-tag .a { display: none; }
 .sig-title { font-size: 14px; color: var(--text-strong); font-weight: 500; line-height: 1.4; margin-bottom: 6px; }
 .sig-summary { font-size: 13px; color: var(--text); line-height: 1.55; }
 .sig-links { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-.ext-link { font-size: 13px; color: var(--blue); text-decoration: none; }
-.ext-link:hover { opacity: .7; }
+.ext-link { font-size: 13px; color: var(--text); text-decoration: none; background: var(--text-10); }
+.ext-link:hover { background: var(--text-20); }
 .sig-bottom { margin-top: 10px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .sig-cat { color: inherit; }
 .see-post { color: var(--text-muted); text-decoration: none; font-size: 13px; }
 .see-post:hover { color: var(--text-strong); }
+.see-post .arrow { display: none; }
+@media (max-width: 700px) {
+  .see-post .text { display: none; }
+  .see-post .arrow { display: inline; }
+}
 .tweet-tooltip {
   position: fixed; z-index: 1000; max-width: 320px; padding: 12px 14px;
   background: var(--text-strong); color: var(--bg); font-size: 13px; line-height: 1.5;
@@ -234,7 +240,7 @@ button { font-family: inherit; cursor: pointer; }
 .tweet-tooltip.vis { opacity: 1; }
 .empty-state { padding: 48px 20px; font-size: 13px; color: var(--text-muted); text-align: center; }
 
-.debug-section { padding: 16px 20px; border-top: 1px solid var(--border-light); }
+.debug-section { padding: 16px 20px; }
 .debug-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
 .debug-content { margin-top: 8px; font-size: 13px; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; display: none; }
 .debug-content.open { display: block; }
@@ -256,7 +262,7 @@ button { font-family: inherit; cursor: pointer; }
     padding-left: 16px; padding-right: 16px;
   }
   .hide-mobile { display: none; }
-  input, textarea, select { font-size: 16px !important; } /* prevent iOS zoom on focus */
+  .modal input, .modal textarea, .modal select, .input-row input { font-size: 16px !important; } /* prevent iOS zoom on focus */
   .modal-bg { align-items: flex-end; padding: 0; }
   .modal { max-width: 100%; max-height: 85vh; border: none; border-top: 1px solid var(--border); padding: 20px; }
   .modal-actions { flex-direction: column-reverse; }
@@ -270,6 +276,7 @@ button { font-family: inherit; cursor: pointer; }
 <!-- key modal -->
 <div class="modal-bg" id="modal">
   <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
     <h3>Settings</h3>
     <p>Keys are stored in your browser only and are never sent anywhere except to their respective APIs.<br>
     Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
@@ -306,6 +313,7 @@ button { font-family: inherit; cursor: pointer; }
 <!-- preset modal -->
 <div class="modal-bg" id="presetModal">
   <div class="modal">
+    <button class="modal-close" onclick="closePresetModal()">✕</button>
     <h3>Manage presets</h3>
     <p>Create lists of accounts for quick scanning.</p>
     <label>Preset name</label>
@@ -365,9 +373,13 @@ const RANGES = [
   { label: 'This week', days: 7 },
   { label: 'This month', days: 30 },
 ];
-const CATEGORIES = ['Investment Idea', 'Tool / Product', 'Insight', 'Resource'];
-const CAT_C = { 'Investment Idea': 'var(--green)', 'Tool / Product': 'var(--blue)', Insight: 'var(--purple)', Resource: 'var(--amber)' };
+const CATEGORIES = ['Trade', 'Tool', 'Insight', 'Resource'];
+const CAT_C = { Trade: 'var(--green)', Tool: 'var(--blue)', Insight: 'var(--purple)', Resource: 'var(--amber)' };
+// Migrate old category names
+const CAT_MIGRATE = { 'Investment Idea': 'Trade', 'Tool / Product': 'Tool' };
+function normCat(c) { return CAT_MIGRATE[c] || c; }
 const ACT_C = { buy: 'var(--green)', sell: 'var(--red)', hold: 'var(--amber)', watch: 'var(--blue)', mixed: 'var(--purple)' };
+const ACT_BG = { buy: 'var(--green-10)', sell: 'var(--red-10)', hold: 'var(--amber-10)', watch: 'var(--blue-10)', mixed: 'var(--purple-10)' };
 const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
@@ -378,7 +390,7 @@ const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actiona
 Return a JSON array. Each signal:
 - "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints ease, buy signal", "Nanya, Winbond: Memory supercycle beneficiaries", "AT&S undervalued despite momentum". NO generic titles.
 - "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
-- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
+- "category": "Trade" | "Tool" | "Insight" | "Resource"
 - "source": twitter handle (no @)
 - "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Use Yahoo Finance format: US stocks just the symbol (e.g. "$AAPL", "$UBER"), Taiwan add .TW (e.g. "$2408.TW"), Hong Kong add .HK, Japan add .T, Korea add .KS, crypto just symbol (e.g. "$BTC").
 - "tweet_url": exact tweet_url from data
@@ -593,10 +605,31 @@ function addToRecents(accounts) {
   localStorage.setItem(LS_RECENTS, JSON.stringify(recents));
 }
 
-// --- API Keys & Settings ---
+// ============================================================================
+// API KEYS & SETTINGS - With validation
+// ============================================================================
+
 function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
 function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
-function bothKeys() { return !!(getTwKey() && getAnKey()); }
+
+// Check if both keys exist and have reasonable format
+function bothKeys() {
+  const tw = getTwKey();
+  const an = getAnKey();
+  // Basic validation: keys should be non-empty and have reasonable length
+  return tw.length >= 20 && an.length >= 20;
+}
+
+// Validate API key format (basic sanity check)
+function validateApiKey(key, type) {
+  if (!key || typeof key !== 'string') return false;
+  key = key.trim();
+  if (key.length < 20) return false;
+  // Anthropic keys start with sk-ant-
+  if (type === 'anthropic' && !key.startsWith('sk-ant-')) return false;
+  return true;
+}
+
 function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'yahoo'; }
 function getFont() { return localStorage.getItem(LS_FONT) || 'mono'; }
 function setFont(f) {
@@ -611,6 +644,19 @@ function setCase(c) {
 function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT; }
 function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
 function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
+
+// Cache cleanup (called on init)
+function cleanupCache() {
+  // Clear old tweet cache entries (older than 2 hours)
+  const now = Date.now();
+  const twoHoursAgo = Math.floor(now / 3600000) - 2;
+  for (const [key] of tweetCache) {
+    const keyHour = parseInt(key.split(':')[2]);
+    if (keyHour < twoHoursAgo) {
+      tweetCache.delete(key);
+    }
+  }
+}
 
 function openModal() {
   $('twKeyInput').value = getTwKey();
@@ -804,17 +850,39 @@ function setStatus(t, animate = false, showDownload = false) {
   el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${dl}</div>`;
 }
 
-// --- Twitter API (twitterapi.io) ---
-async function fetchTweets(account, days) {
+// ============================================================================
+// TWITTER API - Robust fetching with caching and intelligent retry
+// ============================================================================
+
+// In-memory cache for tweets (prevents re-fetching on analysis failures)
+const tweetCache = new Map();
+
+function getCacheKey(account, days) {
+  // Cache key includes hour to allow reasonable freshness while preventing spam
+  const hour = Math.floor(Date.now() / 3600000);
+  return `${account}:${days}:${hour}`;
+}
+
+async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
+  const cacheKey = getCacheKey(account, days);
+  
+  // Return cached data if available (from this session)
+  if (tweetCache.has(cacheKey)) {
+    console.log(`[${account}] Using cached tweets`);
+    return tweetCache.get(cacheKey);
+  }
+  
   const key = getTwKey();
-  if (!key) throw new Error('no Twitter API key');
+  if (!key) throw new Error('No Twitter API key configured. Add it in Settings.');
 
   const cutoff = new Date(Date.now() - days * 86400000);
   console.log(`[${account}] Fetching tweets since ${cutoff.toISOString()} (${days} days)`);
+  
   const allTweets = [];
   let cursor = null;
   let pages = 0;
   const MAX_PAGES = 5;
+  let consecutiveErrors = 0;
 
   while (pages < MAX_PAGES) {
     const params = new URLSearchParams({ userName: account });
@@ -823,48 +891,90 @@ async function fetchTweets(account, days) {
     const targetUrl = `https://api.twitterapi.io/twitter/user/last_tweets?${params}`;
     const fetchUrl = CORS_PROXY + encodeURIComponent(targetUrl);
 
-    const res = await fetch(fetchUrl, {
-      method: 'GET',
-      headers: {
-        'X-API-Key': key,
-        'Accept': 'application/json',
-      },
-    });
+    let res, data;
+    let pageRetries = 0;
+    
+    while (pageRetries <= maxRetries) {
+      try {
+        res = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: {
+            'X-API-Key': key,
+            'Accept': 'application/json',
+          },
+        });
 
-    if (res.status === 401 || res.status === 403) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Auth error ${res.status}: ${body.slice(0, 100) || 'invalid key'}`);
+        // Auth errors - fail immediately, no retry
+        if (res.status === 401 || res.status === 403) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API auth error: ${body.slice(0, 100) || 'invalid key'}`);
+        }
+        
+        // Rate limit - wait with backoff
+        if (res.status === 429) {
+          const waitMs = backoffDelay(pageRetries, 5000, 30000);
+          console.log(`[${account}] Rate limited, waiting ${Math.ceil(waitMs/1000)}s...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          pageRetries++;
+          continue;
+        }
+        
+        // Other HTTP errors
+        if (!res.ok) {
+          if (pageRetries < maxRetries) {
+            await new Promise(r => setTimeout(r, backoffDelay(pageRetries, 1000, 10000)));
+            pageRetries++;
+            continue;
+          }
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API error ${res.status}: ${body.slice(0, 100) || res.statusText}`);
+        }
+
+        // Parse response
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.warn(`[${account}] Invalid JSON response, retrying...`);
+          if (pageRetries < maxRetries) {
+            pageRetries++;
+            continue;
+          }
+          throw new Error('Invalid JSON from Twitter API');
+        }
+        
+        break; // Success, exit retry loop
+        
+      } catch (e) {
+        if (e.message.includes('auth error') || e.message.includes('No Twitter API')) {
+          throw e; // Don't retry auth errors
+        }
+        if (pageRetries >= maxRetries) {
+          throw e;
+        }
+        console.warn(`[${account}] Fetch error, retrying:`, e.message);
+        await new Promise(r => setTimeout(r, backoffDelay(pageRetries, 1000, 10000)));
+        pageRetries++;
+      }
     }
-    if (res.status === 429) {
-      await new Promise(r => setTimeout(r, 5000));
-      pages++; // count it to prevent infinite loop
+
+    // Process response data
+    const apiData = data.data || data;
+    
+    if (data.status === 'error' || (data.status !== 'success' && data.message)) {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 2) {
+        console.warn(`[${account}] Multiple consecutive errors, stopping`);
+        break;
+      }
       continue;
     }
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`API ${res.status}: ${body.slice(0, 150) || res.statusText}`);
-    }
-
-    let data;
-    try {
-      const text = await res.text();
-      console.log(`[${account}] Raw API response:`, text.slice(0, 500));
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error('Invalid JSON from API');
-    }
-
-    // API nests tweets inside data.data
-    const apiData = data.data || data;
-    console.log(`[${account}] Parsed data:`, { status: data.status, tweetCount: apiData.tweets?.length, hasNext: apiData.has_next_page });
-
-    if (data.status === 'error' || (data.status !== 'success' && data.message)) {
-      throw new Error(data.message || data.msg || 'API error');
-    }
+    
+    consecutiveErrors = 0; // Reset on success
 
     const tweets = apiData.tweets || [];
     if (!tweets.length) {
-      console.log(`[${account}] No tweets in response`);
+      console.log(`[${account}] No more tweets`);
       break;
     }
 
@@ -879,18 +989,92 @@ async function fetchTweets(account, days) {
     if (!apiData.has_next_page || !apiData.next_cursor) break;
     cursor = apiData.next_cursor;
     pages++;
-    // Delay between pagination requests
+    
+    // Small delay between pagination
     await new Promise(r => setTimeout(r, 100));
+  }
+
+  // Cache the results
+  if (allTweets.length > 0) {
+    tweetCache.set(cacheKey, allTweets);
+    console.log(`[${account}] Cached ${allTweets.length} tweets`);
   }
 
   return allTweets;
 }
 
+// Legacy alias for compatibility
+async function fetchTweets(account, days) {
+  return fetchTweetsWithRetry(account, days);
+}
+
+// ============================================================================
+// TEXT SANITIZATION & JSON PARSING - Bulletproof handling
+// ============================================================================
+
 // Remove invalid Unicode (orphan surrogates) that break JSON
 function sanitizeText(str) {
   if (!str) return '';
+  if (typeof str !== 'string') return String(str);
+  
   // Remove lone surrogates (characters in range U+D800 to U+DFFF that aren't properly paired)
-  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+  // Also remove other problematic characters
+  return str
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '') // orphan high surrogates
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') // orphan low surrogates
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // control characters
+    .replace(/\uFFFD/g, ''); // replacement character
+}
+
+// Safe JSON parsing with multiple fallbacks
+function safeParseSignals(text) {
+  if (!text) return [];
+  
+  // Clean the text
+  let clean = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+  
+  // Try to extract JSON array
+  const arrayMatch = clean.match(/\[[\s\S]*\]/);
+  if (!arrayMatch) {
+    console.warn('No JSON array found in response');
+    return [];
+  }
+  
+  let jsonStr = arrayMatch[0];
+  
+  // Attempt 1: Direct parse
+  try {
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) {
+    console.warn('Direct JSON parse failed, attempting fixes...');
+  }
+  
+  // Attempt 2: Fix common issues
+  try {
+    // Fix trailing commas
+    jsonStr = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
+    // Fix unescaped newlines in strings
+    jsonStr = jsonStr.replace(/([^\\])\\n(?=")/g, '$1\\\\n');
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) {
+    console.warn('Fixed JSON parse failed:', e.message);
+  }
+  
+  // Attempt 3: Sanitize and try again
+  try {
+    jsonStr = sanitizeText(jsonStr);
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) {
+    console.error('All JSON parse attempts failed:', e.message);
+  }
+  
+  return [];
 }
 
 function formatTweetForAnalysis(tw) {
@@ -922,13 +1106,60 @@ function formatTweetForAnalysis(tw) {
   return parts.join('\n');
 }
 
-// --- Anthropic API ---
-async function anthropicCall(body, retries) {
+// ============================================================================
+// ROBUST API LAYER - Bulletproof retry logic with exponential backoff + jitter
+// ============================================================================
+
+const API_CONFIG = {
+  anthropic: {
+    baseUrl: 'https://api.anthropic.com/v1/messages',
+    maxRetries: 5,
+    baseDelay: 2000,
+    maxDelay: 120000, // 2 minutes max wait
+    jitterFactor: 0.3,
+  }
+};
+
+// Sleep with exponential backoff + jitter (prevents thundering herd)
+function backoffDelay(attempt, baseDelay = 2000, maxDelay = 60000, jitter = 0.3) {
+  const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  const jitterAmount = exponentialDelay * jitter * Math.random();
+  return exponentialDelay + jitterAmount;
+}
+
+// Update status safely
+function updateStatus(msg, animate = false) {
+  const el = document.getElementById('tweetCount');
+  if (!el) return;
+  if (!msg) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="tweet-count">${msg}${animate ? '<span class="dots"></span>' : ''}</div>`;
+}
+
+// Categorize errors for appropriate handling
+function categorizeError(error, status) {
+  if (status === 429 || status === 529) return 'rate_limit';
+  if (error?.type === 'overloaded_error') return 'overloaded';
+  if (error?.type === 'rate_limit_error') return 'rate_limit';
+  if (error?.message?.includes('quota')) return 'quota';
+  if (error?.message?.includes('rate')) return 'rate_limit';
+  if (error?.message?.includes('limit')) return 'rate_limit';
+  if (error?.message?.includes('prompt is too long')) return 'input_too_large';
+  if (error?.type === 'not_found_error') return 'model_not_found';
+  if (error?.type === 'authentication_error') return 'auth_error';
+  if (error?.type === 'invalid_request_error') return 'invalid_request';
+  return 'unknown';
+}
+
+// Robust Anthropic API call with intelligent retry
+async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries) {
   const key = getAnKey();
-  if (!key) throw new Error('no Anthropic API key');
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
+  
+  let lastError = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch(API_CONFIG.anthropic.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -938,52 +1169,72 @@ async function anthropicCall(body, retries) {
         },
         body: JSON.stringify(body),
       });
-      if (res.status === 429 || res.status === 529) {
-        await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
-        continue;
-      }
+      
       const data = await res.json();
-      console.log('Anthropic response:', res.status, data);
-      // Log full error details
-      if (data.error) console.error('Anthropic error:', JSON.stringify(data.error, null, 2));
-      if (data.error?.type === 'overloaded_error' || data.error?.type === 'rate_limit_error') {
-        await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
+      
+      // Success
+      if (!data.error) {
+        if (attempt > 0) console.log(`✓ Anthropic succeeded on attempt ${attempt + 1}`);
+        return data;
+      }
+      
+      // Error handling
+      const errorType = categorizeError(data.error, res.status);
+      console.warn(`Anthropic error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, data.error?.message);
+      
+      // Non-retryable errors - fail immediately
+      if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request'].includes(errorType)) {
+        const messages = {
+          input_too_large: 'Input too large. Try fewer accounts or a shorter time range.',
+          model_not_found: 'Model not available. Your API key may not have access to this model.',
+          auth_error: 'Invalid API key. Please check your Anthropic API key in Settings.',
+          invalid_request: data.error?.message || 'Invalid request to Anthropic API.',
+        };
+        throw new Error(messages[errorType] || data.error?.message);
+      }
+      
+      // Retryable errors - wait with backoff
+      if (['rate_limit', 'overloaded', 'quota'].includes(errorType)) {
+        if (attempt >= maxRetries) {
+          throw new Error(`API rate limited after ${maxRetries + 1} attempts. Please wait a few minutes and try again.`);
+        }
+        
+        // Longer waits for quota/rate limit errors
+        const baseWait = errorType === 'quota' ? 45000 : 15000;
+        const waitMs = backoffDelay(attempt, baseWait, API_CONFIG.anthropic.maxDelay);
+        const waitSecs = Math.ceil(waitMs / 1000);
+        
+        updateStatus(`Rate limited · Retry ${attempt + 2}/${maxRetries + 1} in ${waitSecs}s`, true);
+        console.log(`Waiting ${waitSecs}s before retry...`);
+        await new Promise(r => setTimeout(r, waitMs));
         continue;
       }
-      // Handle specific error types
-      if (data.error?.type === 'invalid_request_error') {
-        if (data.error?.message?.includes('prompt is too long')) {
-          throw new Error(`Too many tweets to analyze. Try fewer accounts or shorter time range.`);
-        }
-        // Quota/rate limit - wait and retry
-        if (data.error?.message?.includes('quota') || data.error?.message?.includes('rate') || data.error?.message?.includes('limit')) {
-          const waitSecs = 30 + (attempt * 15);
-          console.log(`Rate/quota limit hit (attempt ${attempt + 1}), waiting ${waitSecs}s...`);
-          // Update UI to show waiting status
-          const statusEl = document.getElementById('tweetCount');
-          if (statusEl) {
-            const origHtml = statusEl.innerHTML;
-            statusEl.innerHTML = `<div class="tweet-count">Rate limited · Waiting ${waitSecs}s before retry...</div>`;
-            await new Promise(r => setTimeout(r, waitSecs * 1000));
-            statusEl.innerHTML = origHtml;
-          } else {
-            await new Promise(r => setTimeout(r, waitSecs * 1000));
-          }
-          continue;
-        }
+      
+      // Unknown error - store and retry with shorter backoff
+      lastError = data.error;
+      if (attempt < maxRetries) {
+        const waitMs = backoffDelay(attempt, 2000, 30000);
+        await new Promise(r => setTimeout(r, waitMs));
       }
-      if (data.error?.type === 'not_found_error') {
-        throw new Error(`Model not available. Check your API key permissions.`);
-      }
-      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-      return data;
+      
     } catch (e) {
-      if (e.message.includes('no Anthropic') || e.message.includes('no API')) throw e;
-      if (attempt >= retries) throw e;
-      await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      // Network errors, JSON parse errors, etc.
+      if (e.message.includes('No Anthropic') || e.message.includes('Invalid API') || 
+          e.message.includes('Input too large') || e.message.includes('Model not available')) {
+        throw e; // Don't retry these
+      }
+      
+      lastError = e;
+      console.warn(`Anthropic fetch error (attempt ${attempt + 1}):`, e.message);
+      
+      if (attempt < maxRetries) {
+        const waitMs = backoffDelay(attempt, 3000, 30000);
+        await new Promise(r => setTimeout(r, waitMs));
+      }
     }
   }
-  throw new Error('max retries reached');
+  
+  throw new Error(lastError?.message || 'Failed to connect to Anthropic API after multiple attempts.');
 }
 
 function extractText(content) {
@@ -993,11 +1244,145 @@ function extractText(content) {
   return content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('\n');
 }
 
+// ============================================================================
+// SCAN ENGINE - Orchestrates the complete scan workflow
+// ============================================================================
+
+// Scan state for abort support
+let currentScanAbort = null;
+
+function abortCurrentScan() {
+  if (currentScanAbort) {
+    currentScanAbort.abort();
+    currentScanAbort = null;
+  }
+}
+
+// Fetch all accounts' tweets with progress tracking
+async function fetchAllTweets(accounts, days, onProgress) {
+  const BATCH_SIZE = 2; // Parallel fetch count
+  const accountTweets = [];
+  
+  for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+    const batch = accounts.slice(i, i + BATCH_SIZE);
+    const progress = Math.round((i / accounts.length) * 100);
+    onProgress?.(`Fetching ${i + 1}-${Math.min(i + batch.length, accounts.length)} of ${accounts.length}`);
+    
+    const results = await Promise.all(batch.map(async (account) => {
+      try {
+        const tweets = await fetchTweetsWithRetry(account, days);
+        return { account, tweets, error: null };
+      } catch (e) {
+        console.warn(`[${account}] Fetch failed:`, e.message);
+        return { account, tweets: [], error: e.message };
+      }
+    }));
+    
+    accountTweets.push(...results);
+    
+    // Small delay between batches (prevent rate limiting)
+    if (i + BATCH_SIZE < accounts.length) {
+      await new Promise(r => setTimeout(r, 150));
+    }
+  }
+  
+  return accountTweets;
+}
+
+// Analyze tweets with intelligent batching
+async function analyzeWithBatching(accountData, totalTweets, onProgress) {
+  const prompt = getPrompt();
+  const MAX_BATCH_CHARS = 640000; // ~160k tokens
+  const promptChars = prompt.length;
+  
+  // Pre-calculate batches for accurate progress
+  const batches = [];
+  let currentBatch = [];
+  let currentSize = promptChars;
+  
+  for (const a of accountData) {
+    const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+    const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
+    const accountText = `${header}\n${body}`;
+    const accountSize = accountText.length + 20;
+    
+    if (currentBatch.length > 0 && currentSize + accountSize > MAX_BATCH_CHARS) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentSize = promptChars;
+    }
+    
+    currentBatch.push({ account: a.account, text: accountText, size: accountSize });
+    currentSize += accountSize;
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+  
+  console.log(`Analysis batches: ${batches.length} (${accountData.length} accounts, ~${Math.round(currentSize/1000)}k chars)`);
+  
+  // Process batches
+  const allSignals = [];
+  
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    const batchNum = i + 1;
+    
+    if (batches.length > 1) {
+      onProgress?.(`Analyzing batch ${batchNum}/${batches.length}`);
+    } else {
+      onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
+    }
+    
+    const batchContent = sanitizeText(`${prompt}\n\n${batch.map(b => b.text).join('\n\n======\n\n')}`);
+    
+    try {
+      const data = await anthropicCall({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16384,
+        messages: [{ role: 'user', content: batchContent }],
+      }, 5);
+      
+      const txt = extractText(data.content);
+      logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
+      
+      // Parse signals from response using safe parser
+      const batchSignals = safeParseSignals(txt);
+      if (batchSignals.length > 0) {
+        allSignals.push(...batchSignals);
+        console.log(`Batch ${batchNum}: ${batchSignals.length} signals parsed`);
+      } else {
+        console.warn(`Batch ${batchNum}: No signals extracted`);
+        logs.push({ a: `_parse_warn_${batchNum}`, len: 0, pre: 'No signals extracted from response' });
+      }
+      
+      // Delay between batch API calls (rate limit protection)
+      if (i < batches.length - 1) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      
+    } catch (e) {
+      console.error(`Batch ${batchNum} analysis error:`, e);
+      throw e; // Re-throw to stop the scan
+    }
+  }
+  
+  return allSignals;
+}
+
 // --- Main flow ---
+let lastRunTime = 0;
 async function run() {
+  // Debounce - prevent rapid repeated calls
+  const now = Date.now();
+  if (now - lastRunTime < 1000) return;
+  lastRunTime = now;
+  
   const accounts = getAllAccounts();
   if (!accounts.length || busy) return;
   if (!bothKeys()) { openModal(); return; }
+
+  // Setup abort controller for this scan
+  abortCurrentScan();
+  currentScanAbort = new AbortController();
 
   setLoading(true);
   $('notices').innerHTML = '';
@@ -1016,38 +1401,17 @@ async function run() {
   }
 
   const days = RANGES[range].days;
-  const done = { count: 0 };
-  const accountTweets = [];
 
   try {
-    // Step 1: Fetch tweets in parallel batches of 2
-    const BATCH_SIZE = 2;
-    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
-      const batch = accounts.slice(i, i + BATCH_SIZE);
-      setStatus(`Fetching ${i + 1}-${Math.min(i + batch.length, accounts.length)} of ${accounts.length}`, true);
-      
-      const results = await Promise.all(batch.map(async (a) => {
-        try {
-          const tweets = await fetchTweets(a, days);
-          return { account: a, tweets, error: null };
-        } catch (e) {
-          return { account: a, tweets: [], error: e.message };
-        }
-      }));
-      
-      accountTweets.push(...results);
-      done.count += batch.length;
-      
-      // Small delay between batches
-      if (i + BATCH_SIZE < accounts.length) await new Promise(r => setTimeout(r, 200));
-    }
+    // Step 1: Fetch tweets
+    const accountTweets = await fetchAllTweets(accounts, days, (msg) => setStatus(msg, true));
 
-    // Tally
+    // Tally results
     const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
     const fails = accountTweets.filter(a => a.error);
     const empties = accountTweets.filter(a => !a.error && !a.tweets.length);
 
-    // Log
+    // Build debug logs
     for (const a of accountTweets) {
       logs.push({
         a: a.account,
@@ -1058,6 +1422,7 @@ async function run() {
       });
     }
 
+    // Handle no tweets case
     if (totalTweets === 0) {
       let msg = 'no tweets found for this time range';
       if (fails.length) msg += ` — errors: ${fails.map(f => `${f.account} (${f.error})`).join(', ')}`;
@@ -1065,90 +1430,15 @@ async function run() {
       setLoading(false); setStatus(''); renderDebug(); return;
     }
 
-    // Show notices
+    // Show warnings for partial failures
     const parts = [];
     if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
     if (empties.length) parts.push(`<span style="color:var(--amber)">No posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
     if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
 
-    // Tweet count
-    setStatus(`${totalTweets} tweets fetched · Analyzing`, true);
-
-    // Step 2: Format and send to Claude for analysis (with batching if needed)
-    const prompt = getPrompt();
+    // Step 2: Analyze with Claude
     const accountData = accountTweets.filter(a => a.tweets.length);
-    
-    // Max input tokens: 200k, use 160k to be safe (1 token ≈ 4 chars = 640k chars)
-    const MAX_BATCH_CHARS = 640000;
-    const promptChars = prompt.length;
-    
-    let allSignals = [];
-    let currentBatch = [];
-    let currentBatchSize = promptChars;
-    let batchNum = 1;
-    
-    for (const a of accountData) {
-      const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
-      const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
-      const accountText = `${header}\n${body}`;
-      const accountSize = accountText.length + 20; // +20 for separators
-      
-      // If adding this account exceeds limit, process current batch first
-      if (currentBatch.length > 0 && currentBatchSize + accountSize > MAX_BATCH_CHARS) {
-        setStatus(`Analyzing batch ${batchNum}/${Math.ceil(accountData.length / currentBatch.length)}`, true);
-        const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
-        const data = await anthropicCall({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 16384,
-          messages: [{ role: 'user', content: batchContent }],
-        }, 3);
-        
-        const txt = extractText(data.content);
-        logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
-        
-        try {
-          const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
-          const batchSignals = m ? JSON.parse(m[0]) : [];
-          allSignals.push(...batchSignals);
-        } catch (e) {
-          console.warn(`Batch ${batchNum} parse error:`, e);
-        }
-        
-        // Reset for next batch
-        currentBatch = [];
-        currentBatchSize = promptChars;
-        batchNum++;
-      }
-      
-      currentBatch.push(accountText);
-      currentBatchSize += accountSize;
-    }
-    
-    // Process final batch
-    if (currentBatch.length > 0) {
-      if (batchNum > 1) setStatus(`Analyzing batch ${batchNum}/${batchNum}`, true);
-      else setStatus(`${totalTweets} tweets fetched · Analyzing`, true);
-      
-      const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
-      const data = await anthropicCall({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 16384,
-        messages: [{ role: 'user', content: batchContent }],
-      }, 3);
-      
-      const txt = extractText(data.content);
-      logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
-      
-      try {
-        const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
-        const batchSignals = m ? JSON.parse(m[0]) : [];
-        allSignals.push(...batchSignals);
-      } catch (e) {
-        console.warn(`Batch ${batchNum} parse error:`, e);
-      }
-    }
-    
-    const signals = allSignals;
+    const signals = await analyzeWithBatching(accountData, totalTweets, (msg) => setStatus(msg, true));
 
     // Store scan result
     lastScanResult = {
@@ -1170,24 +1460,82 @@ async function run() {
     renderTickers(signals);
     renderSignals(signals);
     renderDebug();
+    
   } catch (e) {
-    setStatus(''); // Clear analyzing status
-    $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+    if (e.name === 'AbortError') {
+      setStatus('Scan cancelled');
+    } else {
+      setStatus(''); // Clear analyzing status
+      $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+    }
     renderDebug();
   } finally {
     setLoading(false);
+    currentScanAbort = null;
   }
 }
 
 // --- Scan Storage ---
+// Create a lightweight version for storage (no full tweet content)
+function createStorableScan(scan) {
+  // Only store essential tweet metadata for tooltips, not full tweet objects
+  const tweetMeta = {};
+  if (scan.rawTweets) {
+    scan.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        tweetMeta[url] = {
+          text: (tw.text || '').slice(0, 500), // Truncate long tweets
+          author: a.account,
+          time: tw.createdAt
+        };
+      });
+    });
+  }
+  
+  return {
+    date: scan.date,
+    range: scan.range,
+    days: scan.days,
+    accounts: scan.accounts,
+    totalTweets: scan.totalTweets,
+    signals: scan.signals,
+    tweetMeta // Much smaller than rawTweets
+  };
+}
+
 function saveScan(scan) {
-  const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
-  history.unshift(scan);
-  // Keep last 20 scans
-  if (history.length > 20) history.pop();
-  localStorage.setItem(LS_SCANS, JSON.stringify(history));
-  // Also save as current for page refresh persistence
-  localStorage.setItem(LS_CURRENT, JSON.stringify(scan));
+  try {
+    const storable = createStorableScan(scan);
+    
+    // Save current scan
+    localStorage.setItem(LS_CURRENT, JSON.stringify(storable));
+    
+    // Update history (keep only last 5 to save space)
+    const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+    // Only store minimal info in history (no tweetMeta)
+    const historyEntry = {
+      date: scan.date,
+      range: scan.range,
+      accounts: scan.accounts.length,
+      totalTweets: scan.totalTweets,
+      signalCount: scan.signals.length
+    };
+    history.unshift(historyEntry);
+    if (history.length > 5) history.pop();
+    localStorage.setItem(LS_SCANS, JSON.stringify(history));
+  } catch (e) {
+    console.warn('Failed to save scan to localStorage:', e.message);
+    // Clear old data and try again
+    try {
+      localStorage.removeItem(LS_SCANS);
+      localStorage.setItem(LS_CURRENT, JSON.stringify(createStorableScan(scan)));
+    } catch (e2) {
+      console.error('Storage quota exceeded, clearing storage');
+      localStorage.removeItem(LS_CURRENT);
+      localStorage.removeItem(LS_SCANS);
+    }
+  }
 }
 
 function loadCurrentScan() {
@@ -1200,22 +1548,53 @@ function getScanHistory() {
   return JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
 }
 
-function downloadScan(scan, filename) {
-  const blob = new Blob([JSON.stringify(scan, null, 2)], { type: 'application/json' });
+function downloadLastScan() {
+  if (!lastScanResult) return;
+  
+  // Build tweet lookup for original text
+  const tweetText = {};
+  if (lastScanResult.rawTweets) {
+    lastScanResult.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        tweetText[url] = tw.text || '';
+      });
+    });
+  } else if (lastScanResult.tweetMeta) {
+    Object.entries(lastScanResult.tweetMeta).forEach(([url, meta]) => {
+      tweetText[url] = meta.text || '';
+    });
+  }
+  
+  // Create clean export
+  const cleanExport = {
+    date: lastScanResult.date,
+    range: lastScanResult.range,
+    accounts: lastScanResult.accounts,
+    signals: lastScanResult.signals.map(s => ({
+      title: s.title,
+      summary: s.summary,
+      category: s.category,
+      tickers: (s.tickers || []).map(t => ({
+        symbol: t.symbol,
+        action: t.action
+      })),
+      source: s.source,
+      tweet: tweetText[s.tweet_url] || '',
+      links: s.links || []
+    }))
+  };
+  
+  const date = new Date(lastScanResult.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const blob = new Blob([JSON.stringify(cleanExport, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename || `scan-${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `sentry-${date}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-function downloadLastScan() {
-  if (!lastScanResult) return;
-  const date = new Date(lastScanResult.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-  downloadScan(lastScanResult, `sentry-${date}.json`);
 }
 
 // --- Renderers ---
@@ -1250,7 +1629,7 @@ function renderTickers(signals) {
     const hasSell = t.acts.has('sell');
     const pa = (hasBuy && hasSell) ? 'mixed' : ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
     const url = tickerUrl(t.s);
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item"><span class="ticker-sym">${esc(t.s)}</span><span class="ticker-act" style="color:${ACT_C[pa]}">${pa}</span>${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}</a>`;
   }).join('');
 }
 
@@ -1263,9 +1642,10 @@ function renderSignals(signals) {
   filters = { category: null }; // reset filters
   if (!signals.length) { el.innerHTML = '<div class="empty-state">No signals extracted</div>'; renderScanActions(); renderFilters(); $('footer').innerHTML = ''; return; }
   
-  // Build tweet URL to info map from rawTweets
+  // Build tweet URL to info map from rawTweets or tweetMeta
   const tweetMap = {};
   if (lastScanResult?.rawTweets) {
+    // Full data available (current session)
     lastScanResult.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {
         const url = tw.url || `https://x.com/i/status/${tw.id}`;
@@ -1278,11 +1658,22 @@ function renderSignals(signals) {
         };
       });
     });
+  } else if (lastScanResult?.tweetMeta) {
+    // Loaded from storage (lighter format)
+    Object.entries(lastScanResult.tweetMeta).forEach(([url, meta]) => {
+      const date = meta.time ? new Date(meta.time) : null;
+      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+      tweetMap[url] = {
+        text: meta.text || '',
+        author: meta.author || '',
+        time: timeStr
+      };
+    });
   }
   
   let h = '';
   signals.forEach((item, i) => {
-    const cc = CAT_C[item.category] || 'var(--text-muted)';
+    const cat = normCat(item.category);
     const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || {}) : {};
     const source = (item.source || '').replace(/^@/, '');
     const time = tweetInfo.time || '';
@@ -1290,12 +1681,17 @@ function renderSignals(signals) {
     const tickers = (item.tickers && item.tickers.length)
       ? item.tickers.map(t => {
           const url = tickerUrl(t.symbol || '');
-          return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || 'var(--text-muted)'}">${esc(t.symbol)}<span class="a">${t.action}</span></a>`;
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}</a>`;
         }).join('')
       : '';
     
     const extLinks = (item.links && item.links.length)
-      ? item.links.map(l => `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(l).hostname.replace('www.',''))}</a>`).join(' ')
+      ? item.links.map(l => {
+          try {
+            const hostname = new URL(l).hostname.replace('www.','');
+            return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+          } catch { return ''; }
+        }).filter(Boolean).join(' ')
       : '';
     
     const sourceLink = item.tweet_url 
@@ -1303,18 +1699,15 @@ function renderSignals(signals) {
       : `@${esc(source)}`;
     
     const seePost = item.tweet_url
-      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}">See post</a>`
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>`
       : '';
     
-    h += `<div class="signal" data-category="${esc(item.category || '')}">
-      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}</span>${seePost}</div>
+    h += `<div class="signal" data-category="${esc(cat || '')}">
+      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span>${seePost}</div>
       ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
       <div class="sig-title">${esc(item.title || '')}</div>
       <div class="sig-summary">${esc(item.summary || '')}</div>
       ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
-      <div class="sig-bottom">
-        <span class="sig-cat" style="color:${cc}">${esc(item.category || '')}</span>
-      </div>
     </div>`;
   });
   el.innerHTML = h;
@@ -1398,24 +1791,40 @@ function renderFilters() {
   el.innerHTML = h;
 }
 
-// --- Init ---
-setTheme(getTheme());
-setFont(getFont());
-setCase(getCase());
-loadAccountsData();
-loadLoadedPresets();
-render();
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
-// Load previous scan on refresh
-const savedScan = loadCurrentScan();
-if (savedScan) {
-  lastScanResult = savedScan;
-  const d = new Date(savedScan.date);
-  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
-  renderTickers(savedScan.signals);
-  renderSignals(savedScan.signals);
-}
+// Initialize app
+(function init() {
+  // Apply settings
+  setTheme(getTheme());
+  setFont(getFont());
+  setCase(getCase());
+  
+  // Load user data
+  loadAccountsData();
+  loadLoadedPresets();
+  
+  // Cleanup old cache entries
+  cleanupCache();
+  
+  // Render UI
+  render();
+
+  // Load previous scan on refresh
+  const savedScan = loadCurrentScan();
+  if (savedScan) {
+    lastScanResult = savedScan;
+    const d = new Date(savedScan.date);
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
+    renderTickers(savedScan.signals);
+    renderSignals(savedScan.signals);
+  }
+  
+  console.log('✓ Sentry initialized');
+})();
 </script>
 </body>
 </html>
