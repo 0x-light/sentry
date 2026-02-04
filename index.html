@@ -1085,7 +1085,7 @@ async function run() {
         setStatus(`Analyzing batch ${batchNum}/${Math.ceil(accountData.length / currentBatch.length)}`, true);
         const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
         const data = await anthropicCall({
-          model: 'claude-3-5-sonnet-20240620',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 16384,
           messages: [{ role: 'user', content: batchContent }],
         }, 1);
@@ -1118,7 +1118,7 @@ async function run() {
       
       const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
       const data = await anthropicCall({
-        model: 'claude-3-5-sonnet-20240620',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 16384,
         messages: [{ role: 'user', content: batchContent }],
       }, 1);
