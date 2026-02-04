@@ -34,7 +34,12 @@
   --blue: #2255bb; --blue-10: rgba(34,85,187,0.1);
   --purple: #7733aa; --purple-10: rgba(119,51,170,0.1);
   --amber: #996600; --amber-10: rgba(153,102,0,0.1);
+  /* Font sizes */
+  --fs: 13px; --fs-sm: 11px; --fs-xs: 10px; --fs-lg: 14px; --fs-xl: 15px;
 }
+[data-font-size="small"] { --fs: 12px; --fs-sm: 10px; --fs-xs: 9px; --fs-lg: 13px; --fs-xl: 14px; }
+[data-font-size="large"] { --fs: 14px; --fs-sm: 12px; --fs-xs: 11px; --fs-lg: 15px; --fs-xl: 16px; }
+[data-font-size="xlarge"] { --fs: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-lg: 16px; --fs-xl: 17px; }
 [data-theme="dark"] {
   --bg: #0a0a0a; --bg-alt: #151515; --text: #888; --text-strong: #ddd; --text-strong-rgb: 221,221,221; --text-muted: #555;
   --text-10: rgba(136,136,136,0.1); --text-20: rgba(136,136,136,0.2);
@@ -57,7 +62,7 @@
 body {
   background: var(--bg); color: var(--text);
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px; -webkit-font-smoothing: antialiased;
+  font-size: var(--fs); -webkit-font-smoothing: antialiased;
 }
 [data-font="system"], [data-font="system"] * {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -70,7 +75,8 @@ body {
 [data-case="lower"] .chip-header, [data-case="lower"] .chip-x, [data-case="lower"] .clear-btn,
 [data-case="lower"] .scan-btn, [data-case="lower"] .cancel-btn, [data-case="lower"] .sig-cat,
 [data-case="lower"] .dl-btn, [data-case="lower"] .footer,
-[data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3, [data-case="lower"] label,
+[data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3,
+[data-case="lower"] .modal label, [data-case="lower"] .modal-sm-btn, [data-case="lower"] #cacheSize,
 [data-case="lower"] .modal-actions button, [data-case="lower"] .preset-list-item button,
 [data-case="lower"] input::placeholder, [data-case="lower"] textarea::placeholder { text-transform: lowercase; }
 ::selection { background: var(--bg-alt); color: var(--green); }
@@ -85,9 +91,9 @@ button { font-family: inherit; cursor: pointer; }
 .dot { font-size: 8px; color: var(--text-strong); line-height: 1; }
 .dot.loading { animation: pulse 0.6s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-.logo-text { font-size: 13px; font-weight: 500; color: var(--text-strong); }
+.logo-text { font-size: var(--fs); font-weight: 500; color: var(--text-strong); }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
-.top-btn { background: none; border: none; font-size: 13px; color: var(--text-muted); padding: 3px 6px; }
+.top-btn { background: none; border: none; font-size: var(--fs); color: var(--text-muted); padding: 3px 6px; }
 .top-btn:hover { color: var(--text); }
 .top-btn.warn { color: var(--amber); }
 
@@ -104,13 +110,13 @@ button { font-family: inherit; cursor: pointer; }
 }
 .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1; }
 .modal-close:hover { color: var(--text-strong); }
-.modal h3 { font-size: 15px; font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
-.modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
+.modal h3 { font-size: var(--fs-xl); font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
+.modal p { font-size: var(--fs); color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
 .modal p a { color: var(--blue); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
-.modal label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
+.modal label { display: block; font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
 .modal label:first-of-type { margin-top: 0; }
-.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-left: 8px; text-transform: lowercase; }
+.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; margin-left: 8px; text-transform: lowercase; }
 .reset-prompt:hover { color: var(--text-strong); }
 .modal input, .modal select, .modal textarea {
   width: 100%; border: 1px solid var(--chip-border); padding: 10px 12px;
@@ -131,52 +137,52 @@ button { font-family: inherit; cursor: pointer; }
 .modal-actions { display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end; }
 .modal-actions button {
   background: none; border: 1px solid var(--chip-border);
-  font-size: 13px; padding: 3px 6px; color: var(--text);
+  font-size: var(--fs); padding: 3px 6px; color: var(--text);
 }
 .modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .modal-actions button:last-child { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg); }
 .modal-actions button:last-child:hover { opacity: 0.9; }
 .modal-actions button.danger { color: var(--red); margin-right: auto; }
 .modal-actions button.danger:hover { border-color: var(--red); }
-.modal-sm-btn { background: none; border: 1px solid var(--chip-border); font-size: 13px; padding: 6px 12px; color: var(--text); cursor: pointer; }
+.modal-sm-btn { background: none; border: 1px solid var(--chip-border); font-size: var(--fs); padding: 3px 6px; color: var(--text); cursor: pointer; }
 .modal-sm-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
   display: flex; align-items: center; justify-content: space-between; padding: 10px 0;
-  border-bottom: 1px solid var(--border-light); font-size: 13px;
+  border-bottom: 1px solid var(--border-light); font-size: var(--fs);
 }
 .preset-list-item:last-child { border-bottom: none; }
 .preset-list-item span { color: var(--text-strong); }
-.preset-list-item small { color: var(--text-muted); margin-left: 8px; font-size: 12px; }
+.preset-list-item small { color: var(--text-muted); margin-left: 8px; font-size: var(--fs-sm); }
 .preset-list-item.editing { background: var(--bg-alt); margin: 0 -8px; padding: 10px 8px; }
 .preset-list-actions { display: flex; gap: 8px; }
-.preset-list-item button { background: none; border: none; color: var(--text-muted); font-size: 12px; padding: 4px 0; }
+.preset-list-item button { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); padding: 4px 0; }
 .preset-list-item button:hover { color: var(--text-strong); }
 .preset-list-item button.danger:hover { color: var(--red); }
 
 .controls { padding: 20px; border-bottom: 1px solid var(--border); }
 .input-row { display: flex; gap: 6px; align-items: center; margin-bottom: 20px; }
-.input-row .at { color: var(--text-muted); font-size: 13px; }
+.input-row .at { color: var(--text-muted); font-size: var(--fs); }
 .input-row input {
   flex: 1; background: transparent; border: none; outline: none;
   color: var(--text-strong); font-size: inherit; font-family: inherit;
 }
-.add-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; display: none; }
+.add-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; display: none; }
 .add-btn.vis { display: inline; }
 
 .presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
 .preset-btn {
   background: none; border: 1px solid var(--chip-border);
-  color: var(--text-muted); font-size: 13px; padding: 3px 6px;
+  color: var(--text-muted); font-size: var(--fs); padding: 3px 6px;
 }
 .preset-btn:hover { color: var(--text-strong); border-color: var(--text-muted); }
 .preset-btn.active { color: var(--text-strong); border-color: var(--text-strong); }
-.preset-manage { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
+.preset-manage { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
 .preset-manage:hover { color: var(--text-strong); }
 
 .suggested { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
 .suggested:empty { margin-bottom: 0; }
-.sug { background: none; border: none; color: var(--text-muted); font-size: 13px; }
+.sug { background: none; border: none; color: var(--text-muted); font-size: var(--fs); }
 .sug:hover { color: var(--text-strong); }
 .sug.used { opacity: .35; cursor: default; }
 
@@ -184,7 +190,7 @@ button { font-family: inherit; cursor: pointer; }
 .ranges.mb { margin-bottom: 20px; }
 .rng {
   background: none; border: none; border-bottom: 1px solid transparent;
-  color: var(--text-muted); font-size: 13px;
+  color: var(--text-muted); font-size: var(--fs);
 }
 .rng:hover { color: var(--text-strong); }
 .rng.on { color: var(--text-strong); border-bottom-color: var(--text-strong); }
@@ -192,34 +198,34 @@ button { font-family: inherit; cursor: pointer; }
 .chips { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chips.vis { display: flex; }
 .chip {
-  font-size: 13px; color: var(--text-strong); background: var(--bg-alt); border: 1px solid var(--bg-alt);
+  font-size: var(--fs); color: var(--text-strong); background: var(--bg-alt); border: 1px solid var(--bg-alt);
   padding: 3px 6px; display: inline-flex; align-items: center; gap: 6px;
 }
 .chip-group.expanded .chip { border-color: rgba(var(--text-strong-rgb), 0.1); }
-.chip .x { cursor: pointer; color: var(--text-muted); font-size: 10px; }
+.chip .x { cursor: pointer; color: var(--text-muted); font-size: var(--fs-xs); }
 .chip-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; background: var(--bg-alt); }
 .chip-group.expanded { flex-wrap: wrap; }
 .chip-summary { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 0 3px 6px; }
-.chip-count { color: var(--text-muted); font-size: 13px; }
-.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: 13px; }
-.chip-x { background: none; border: none; color: var(--text-muted); font-size: 10px; padding: 2px 6px 2px 0px; cursor: pointer; }
+.chip-count { color: var(--text-muted); font-size: var(--fs); }
+.chip-header { cursor: pointer; color: var(--text-strong); border: none; background: none; padding: 3px 6px; font-size: var(--fs); }
+.chip-x { background: none; border: none; color: var(--text-muted); font-size: var(--fs-xs); padding: 2px 6px 2px 0px; cursor: pointer; }
 .chip-x:hover { color: var(--red); }
-.clear-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
+.clear-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
 .clear-btn:hover { color: var(--red); }
 .scan-btns { margin-left: auto; display: flex; gap: 6px; }
 .scan-btn {
-  background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: 13px; padding: 3px 6px;
+  background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: var(--fs); padding: 3px 6px;
 }
 .scan-btn:hover:not(:disabled) { opacity: .8; }
 .scan-btn:disabled { opacity: .5; cursor: default; }
-.cancel-btn { background: none; border: 1px solid var(--red); color: var(--red); font-size: 13px; padding: 3px 6px; }
+.cancel-btn { background: none; border: 1px solid var(--red); color: var(--red); font-size: var(--fs); padding: 3px 6px; }
 .cancel-btn:hover { background: var(--red-10); }
 
-.notice { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.notice { padding: 12px 20px; font-size: var(--fs); border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--red); }
 .notice.warn { color: var(--text-muted); }
 
-.tweet-count { padding: 10px 20px; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+.tweet-count { padding: 10px 20px; font-size: var(--fs); color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .tweet-count:empty { display: none; }
 #tweetCount:empty, #notices:empty, #tickerBar:empty, #scanActions:empty, #filterBar:empty, #results:empty { display: none; }
 .tweet-count .dl-btn { margin-left: auto; }
@@ -230,9 +236,9 @@ button { font-family: inherit; cursor: pointer; }
   padding: 14px 20px; border-bottom: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
-.ticker-item { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 500; }
+.ticker-item { font-size: var(--fs); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 500; }
 .ticker-item:hover { opacity: .7; }
-.ticker-cnt { font-size: 11px; opacity: .6; }
+.ticker-cnt { font-size: var(--fs-sm); opacity: .6; }
 
 .filter-bar {
   padding: 12px 20px; border-bottom: 1px solid var(--border);
@@ -243,21 +249,21 @@ button { font-family: inherit; cursor: pointer; }
   padding: 20px; border-bottom: 1px solid var(--border);
 }
 .signal.hidden { display: none; }
-.sig-top { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.sig-top { font-size: var(--fs); color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
 .sig-top a { color: var(--text-muted); text-decoration: none; }
 .sig-top a:hover { color: var(--text-strong); }
 .sig-tickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.ticker-tag { font-size: 13px; font-weight: 500; text-decoration: none; }
+.ticker-tag { font-size: var(--fs); font-weight: 500; text-decoration: none; }
 .ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { display: none; }
-.sig-title { font-size: 14px; color: var(--text-strong); font-weight: 500; line-height: 1.4; margin-bottom: 6px; }
-.sig-summary { font-size: 13px; color: var(--text); line-height: 1.55; }
+.sig-title { font-size: var(--fs-lg); color: var(--text-strong); font-weight: 500; line-height: 1.4; margin-bottom: 6px; }
+.sig-summary { font-size: var(--fs); color: var(--text); line-height: 1.55; }
 .sig-links { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-.ext-link { font-size: 13px; color: var(--text); text-decoration: none; background: var(--text-10); }
+.ext-link { font-size: var(--fs); color: var(--text); text-decoration: none; background: var(--text-10); }
 .ext-link:hover { background: var(--text-20); }
-.sig-bottom { margin-top: 10px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.sig-bottom { margin-top: 10px; font-size: var(--fs-sm); color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .sig-cat { color: inherit; }
-.see-post { color: var(--text-muted); text-decoration: none; font-size: 13px; }
+.see-post { color: var(--text-muted); text-decoration: none; font-size: var(--fs); }
 .see-post:hover { color: var(--text-strong); }
 .see-post .arrow { display: none; }
 @media (max-width: 700px) {
@@ -266,38 +272,38 @@ button { font-family: inherit; cursor: pointer; }
 }
 .tweet-tooltip {
   position: fixed; z-index: 1000; max-width: 320px; padding: 12px 14px;
-  background: var(--text-strong); color: var(--bg); font-size: 13px; line-height: 1.5;
+  background: var(--text-strong); color: var(--bg); font-size: var(--fs); line-height: 1.5;
   pointer-events: none; opacity: 0; border: 1px solid var(--text-strong);
 }
 .tweet-tooltip.vis { opacity: 1; }
-.empty-state { padding: 48px 20px; font-size: 13px; color: var(--text-muted); text-align: center; }
+.empty-state { padding: 48px 20px; font-size: var(--fs); color: var(--text-muted); text-align: center; }
 
 .history:empty { display: none; }
 .hist-item { padding: 10px 20px; border-bottom: 1px solid var(--border); }
 .hist-item:last-child { border-bottom: none; }
 .hist-item.open { padding-bottom: 0; }
 .hist-header { display: flex; align-items: center; justify-content: space-between; }
-.hist-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0; cursor: pointer; }
+.hist-toggle { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 0; cursor: pointer; }
 .hist-toggle:hover { color: var(--text-strong); }
 .hist-actions { display: flex; gap: 12px; }
-.hist-actions button { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0 6px; cursor: pointer; }
+.hist-actions button { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 0 6px; cursor: pointer; }
 .hist-actions button:hover { color: var(--text-strong); }
 .hist-actions .delete:hover { color: var(--red); }
 .hist-body { display: none; margin-left: 0; margin-top: 8px; }
-.hist-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
+.hist-meta { color: var(--text-muted); font-size: var(--fs); margin-bottom: 10px; }
 .hist-cards .signal { margin-top: 0; padding-right: 0; border-left: 1px solid var(--border); }
 .hist-cards .signal:last-child { border-bottom: none; }
 .hist-item.open .hist-body { display: block; }
 
 .scan-actions { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
-.scan-actions .meta { font-size: 13px; color: var(--text-muted); flex: 1; }
+.scan-actions .meta { font-size: var(--fs); color: var(--text-muted); flex: 1; }
 .dl-btn {
   background: none; border: none;
-  color: var(--text-muted); font-size: 13px; cursor: pointer;
+  color: var(--text-muted); font-size: var(--fs); cursor: pointer;
 }
 .dl-btn:hover { color: var(--text-strong); }
 
-.footer { padding: 20px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+.footer { padding: 20px; font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.6; }
 .footer:empty { display: none; }
 .footer a { color: var(--text-muted); }
 .footer a:hover { color: var(--text); }
@@ -346,6 +352,13 @@ button { font-family: inherit; cursor: pointer; }
       <option value="mono">Monospace</option>
       <option value="system">System</option>
     </select>
+    <label>Font size</label>
+    <select id="fontSizeProvider">
+      <option value="small">Small</option>
+      <option value="medium">Medium</option>
+      <option value="large">Large</option>
+      <option value="xlarge">Extra Large</option>
+    </select>
     <label>Text style</label>
     <select id="caseProvider">
       <option value="lower">lowercase</option>
@@ -361,7 +374,7 @@ button { font-family: inherit; cursor: pointer; }
     <label>Cache</label>
     <div style="display:flex;gap:8px;align-items:center">
       <button type="button" class="modal-sm-btn" onclick="clearCache()">Clear cache</button>
-      <span id="cacheSize" style="font-size:12px;color:var(--text-muted)"></span>
+      <span id="cacheSize" style="font-size:var(--fs-sm);color:var(--text-muted)"></span>
     </div>
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">Clear all</button>
@@ -478,6 +491,7 @@ const LS_PRESETS = 'signal_presets';
 const LS_THEME = 'signal_theme';
 const LS_FINANCE = 'signal_finance_provider';
 const LS_FONT = 'signal_font';
+const LS_FONT_SIZE = 'signal_font_size';
 const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
 const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
@@ -631,7 +645,7 @@ function savePreset() {
 function renderPresetList() {
   const el = $('presetList');
   const presets = getPresets();
-  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;margin-top:8px">No presets yet</p>'; return; }
+  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:var(--fs);margin-top:8px">No presets yet</p>'; return; }
   el.innerHTML = presets.map(p => {
     const isEditing = editingPresetName === p.name;
     return `
@@ -713,6 +727,11 @@ function setFont(f) {
   localStorage.setItem(LS_FONT, f);
   document.documentElement.setAttribute('data-font', f);
 }
+function getFontSize() { return localStorage.getItem(LS_FONT_SIZE) || 'medium'; }
+function setFontSize(s) {
+  localStorage.setItem(LS_FONT_SIZE, s);
+  document.documentElement.setAttribute('data-font-size', s);
+}
 function getCase() { return localStorage.getItem(LS_CASE) || 'lower'; }
 function setCase(c) {
   localStorage.setItem(LS_CASE, c);
@@ -790,6 +809,7 @@ function openModal() {
   $('keyInput').value = getAnKey();
   $('financeProvider').value = getFinanceProvider();
   $('fontProvider').value = getFont();
+  $('fontSizeProvider').value = getFontSize();
   $('caseProvider').value = getCase();
   $('promptInput').value = getPrompt();
   updateCacheSizeDisplay();
@@ -815,12 +835,14 @@ function saveKeys() {
   const an = $('keyInput').value.trim();
   const fp = $('financeProvider').value;
   const font = $('fontProvider').value;
+  const fontSize = $('fontSizeProvider').value;
   const textCase = $('caseProvider').value;
   const prompt = $('promptInput').value.trim();
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
   localStorage.setItem(LS_FINANCE, fp);
   setFont(font);
+  setFontSize(fontSize);
   setCase(textCase);
   setPrompt(prompt || DEFAULT_PROMPT);
   updateKeyBtn();
@@ -846,6 +868,7 @@ async function exportData(btn) {
     settings: {
       theme: getTheme(),
       font: getFont(),
+      fontSize: getFontSize(),
       textCase: getCase(),
       financeProvider: getFinanceProvider(),
       prompt: getPrompt(),
@@ -873,6 +896,7 @@ async function importData(btn) {
     if (data.settings) {
       if (data.settings.theme) setTheme(data.settings.theme);
       if (data.settings.font) setFont(data.settings.font);
+      if (data.settings.fontSize) setFontSize(data.settings.fontSize);
       if (data.settings.textCase) setCase(data.settings.textCase);
       if (data.settings.financeProvider) localStorage.setItem(LS_FINANCE, data.settings.financeProvider);
       if (data.settings.prompt) setPrompt(data.settings.prompt);
@@ -891,6 +915,7 @@ async function importData(btn) {
     $('keyInput').value = getAnKey();
     $('financeProvider').value = getFinanceProvider();
     $('fontProvider').value = getFont();
+    $('fontSizeProvider').value = getFontSize();
     $('caseProvider').value = getCase();
     $('promptInput').value = getPrompt();
     updateKeyBtn();
@@ -2310,6 +2335,7 @@ function renderFilters() {
   // Apply settings
   setTheme(getTheme());
   setFont(getFont());
+  setFontSize(getFontSize());
   setCase(getCase());
   
   // Load user data
