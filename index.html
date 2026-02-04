@@ -950,9 +950,17 @@ async function anthropicCall(body, retries) {
         await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
         continue;
       }
-      // Don't retry quota/billing errors
-      if (data.error?.type === 'invalid_request_error' && data.error?.message?.includes('quota')) {
-        throw new Error(data.error.message);
+      // Don't retry quota/billing/model errors
+      if (data.error?.type === 'invalid_request_error') {
+        if (data.error?.message?.includes('quota')) {
+          throw new Error(data.error.message);
+        }
+        if (data.error?.message?.includes('prompt is too long')) {
+          throw new Error(`Too many tweets to analyze in one request. Try selecting fewer accounts or a shorter time range.`);
+        }
+      }
+      if (data.error?.type === 'not_found_error') {
+        throw new Error(`Model not available. Please check your API key has access to Claude 3.5 Sonnet.`);
       }
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       return data;
@@ -1053,36 +1061,81 @@ async function run() {
     // Tweet count
     setStatus(`${totalTweets} tweets fetched · Analyzing`, true);
 
-    // Step 2: Format and send to Claude for analysis
-
-    const combined = accountTweets
-      .filter(a => a.tweets.length)
-      .map(a => {
-        const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
-        const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
-        return `${header}\n${body}`;
-      })
-      .join('\n\n======\n\n');
-
+    // Step 2: Format and send to Claude for analysis (with batching if needed)
     const prompt = getPrompt();
-    const content = sanitizeText(`${prompt}\n\n${combined}`);
-    const data = await anthropicCall({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: content,
-      }],
-    }, 1);
-
-    const txt = extractText(data.content);
-    logs.push({ a: '_analysis', len: txt.length, pre: txt.slice(0, 400) });
-
-    let signals = [];
-    try {
-      const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
-      signals = m ? JSON.parse(m[0]) : [];
-    } catch { signals = []; }
+    const accountData = accountTweets.filter(a => a.tweets.length);
+    
+    // Max input tokens: 200k, use 160k to be safe (1 token ≈ 4 chars = 640k chars)
+    const MAX_BATCH_CHARS = 640000;
+    const promptChars = prompt.length;
+    
+    let allSignals = [];
+    let currentBatch = [];
+    let currentBatchSize = promptChars;
+    let batchNum = 1;
+    
+    for (const a of accountData) {
+      const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+      const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
+      const accountText = `${header}\n${body}`;
+      const accountSize = accountText.length + 20; // +20 for separators
+      
+      // If adding this account exceeds limit, process current batch first
+      if (currentBatch.length > 0 && currentBatchSize + accountSize > MAX_BATCH_CHARS) {
+        setStatus(`Analyzing batch ${batchNum}/${Math.ceil(accountData.length / currentBatch.length)}`, true);
+        const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
+        const data = await anthropicCall({
+          model: 'claude-3-5-sonnet-20240620',
+          max_tokens: 16384,
+          messages: [{ role: 'user', content: batchContent }],
+        }, 1);
+        
+        const txt = extractText(data.content);
+        logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
+        
+        try {
+          const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
+          const batchSignals = m ? JSON.parse(m[0]) : [];
+          allSignals.push(...batchSignals);
+        } catch (e) {
+          console.warn(`Batch ${batchNum} parse error:`, e);
+        }
+        
+        // Reset for next batch
+        currentBatch = [];
+        currentBatchSize = promptChars;
+        batchNum++;
+      }
+      
+      currentBatch.push(accountText);
+      currentBatchSize += accountSize;
+    }
+    
+    // Process final batch
+    if (currentBatch.length > 0) {
+      if (batchNum > 1) setStatus(`Analyzing batch ${batchNum}/${batchNum}`, true);
+      else setStatus(`${totalTweets} tweets fetched · Analyzing`, true);
+      
+      const batchContent = sanitizeText(`${prompt}\n\n${currentBatch.join('\n\n======\n\n')}`);
+      const data = await anthropicCall({
+        model: 'claude-3-5-sonnet-20240620',
+        max_tokens: 16384,
+        messages: [{ role: 'user', content: batchContent }],
+      }, 1);
+      
+      const txt = extractText(data.content);
+      logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
+      
+      try {
+        const m = txt.replace(/```json|```/g, '').trim().match(/\[[\s\S]*\]/);
+        const batchSignals = m ? JSON.parse(m[0]) : [];
+        allSignals.push(...batchSignals);
+      } catch (e) {
+        console.warn(`Batch ${batchNum} parse error:`, e);
+      }
+    }
+    
+    const signals = allSignals;
 
     // Store scan result
     lastScanResult = {
