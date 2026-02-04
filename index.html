@@ -950,17 +950,30 @@ async function anthropicCall(body, retries) {
         await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
         continue;
       }
-      // Don't retry quota/billing/model errors
+      // Handle specific error types
       if (data.error?.type === 'invalid_request_error') {
-        if (data.error?.message?.includes('quota')) {
-          throw new Error(data.error.message);
-        }
         if (data.error?.message?.includes('prompt is too long')) {
-          throw new Error(`Too many tweets to analyze in one request. Try selecting fewer accounts or a shorter time range.`);
+          throw new Error(`Too many tweets to analyze. Try fewer accounts or shorter time range.`);
+        }
+        // Quota/rate limit - wait and retry
+        if (data.error?.message?.includes('quota') || data.error?.message?.includes('rate') || data.error?.message?.includes('limit')) {
+          const waitSecs = 30 + (attempt * 15);
+          console.log(`Rate/quota limit hit (attempt ${attempt + 1}), waiting ${waitSecs}s...`);
+          // Update UI to show waiting status
+          const statusEl = document.getElementById('tweetCount');
+          if (statusEl) {
+            const origHtml = statusEl.innerHTML;
+            statusEl.innerHTML = `<div class="tweet-count">Rate limited · Waiting ${waitSecs}s before retry...</div>`;
+            await new Promise(r => setTimeout(r, waitSecs * 1000));
+            statusEl.innerHTML = origHtml;
+          } else {
+            await new Promise(r => setTimeout(r, waitSecs * 1000));
+          }
+          continue;
         }
       }
       if (data.error?.type === 'not_found_error') {
-        throw new Error(`Model not available. Please check your API key has access to Claude 3.5 Sonnet.`);
+        throw new Error(`Model not available. Check your API key permissions.`);
       }
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       return data;
@@ -1088,7 +1101,7 @@ async function run() {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 16384,
           messages: [{ role: 'user', content: batchContent }],
-        }, 1);
+        }, 3);
         
         const txt = extractText(data.content);
         logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
@@ -1121,7 +1134,7 @@ async function run() {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 16384,
         messages: [{ role: 'user', content: batchContent }],
-      }, 1);
+      }, 3);
       
       const txt = extractText(data.content);
       logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
