@@ -273,8 +273,8 @@ button { font-family: inherit; cursor: pointer; }
 .hist-header { display: flex; align-items: center; justify-content: space-between; }
 .hist-toggle { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 0; cursor: pointer; }
 .hist-toggle:hover { color: var(--text-strong); }
-.hist-actions { display: flex; gap: 12px; }
-.hist-actions button { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 0 6px; cursor: pointer; }
+.hist-actions { display: flex; gap: 16px; }
+.hist-actions button { background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; }
 .hist-actions button:hover { color: var(--text-strong); }
 .hist-actions .delete:hover { color: var(--red); }
 .hist-body { display: none; margin-left: 0; margin-top: 8px; }
@@ -297,7 +297,7 @@ button { font-family: inherit; cursor: pointer; }
 .footer a:hover { color: var(--text); }
 
 @media (max-width: 700px) {
-  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .signal, .footer {
+  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .signal, .footer, .hist-item {
     padding-left: 16px; padding-right: 16px;
   }
   .hide-mobile { display: none; }
