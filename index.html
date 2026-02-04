@@ -880,7 +880,7 @@ async function fetchTweets(account, days) {
     cursor = apiData.next_cursor;
     pages++;
     // Delay between pagination requests
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 100));
   }
 
   return allTweets;
@@ -993,19 +993,26 @@ async function run() {
   const accountTweets = [];
 
   try {
-    // Step 1: Fetch tweets from all accounts (sequential to avoid rate limits)
-    for (const a of accounts) {
-      setStatus(`Fetching @${a} (${done.count + 1}/${accounts.length})`, true);
-      try {
-        const tweets = await fetchTweets(a, days);
-        done.count++;
-        accountTweets.push({ account: a, tweets, error: null });
-      } catch (e) {
-        done.count++;
-        accountTweets.push({ account: a, tweets: [], error: e.message });
-      }
-      // Small delay between accounts to avoid rate limits
-      if (done.count < accounts.length) await new Promise(r => setTimeout(r, 500));
+    // Step 1: Fetch tweets in parallel batches of 2
+    const BATCH_SIZE = 2;
+    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+      const batch = accounts.slice(i, i + BATCH_SIZE);
+      setStatus(`Fetching ${i + 1}-${Math.min(i + batch.length, accounts.length)} of ${accounts.length}`, true);
+      
+      const results = await Promise.all(batch.map(async (a) => {
+        try {
+          const tweets = await fetchTweets(a, days);
+          return { account: a, tweets, error: null };
+        } catch (e) {
+          return { account: a, tweets: [], error: e.message };
+        }
+      }));
+      
+      accountTweets.push(...results);
+      done.count += batch.length;
+      
+      // Small delay between batches
+      if (i + BATCH_SIZE < accounts.length) await new Promise(r => setTimeout(r, 200));
     }
 
     // Tally
