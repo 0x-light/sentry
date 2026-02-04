@@ -3,7 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="AI-powered trading signal scanner. Extract actionable signals from Twitter accounts using Claude AI.">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph / Social -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sentry — AI Trading Signal Scanner">
+<meta property="og:description" content="Extract actionable trading signals from Twitter accounts using Claude AI. Scan multiple accounts, filter by category, and export your findings.">
+<meta property="og:image" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'><rect fill='%230a0a0a' width='1200' height='630'/><text x='600' y='280' font-size='120' text-anchor='middle' dominant-baseline='central' fill='%23ffffff'>■</text><text x='600' y='420' font-size='60' font-family='system-ui' text-anchor='middle' fill='%23ddd'>Sentry</text></svg>">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sentry — AI Trading Signal Scanner">
+<meta name="twitter:description" content="Extract actionable trading signals from Twitter using Claude AI.">
+
 <title>sentry</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0a0a' width='100' height='100' rx='16'/><text x='50' y='50' font-size='45' text-anchor='middle' dominant-baseline='central' fill='%23ffffff'>■</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0a0a' width='100' height='100' rx='20'/><text x='50' y='50' font-size='45' text-anchor='middle' dominant-baseline='central' fill='%23ffffff'>■</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -28,6 +46,14 @@
   --amber: #fbbf24; --amber-10: rgba(251,191,36,0.1);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* minimal scrollbars */
+::-webkit-scrollbar { width: 1px; height: 1px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-muted); }
+::-webkit-scrollbar-thumb:hover { background: var(--text); }
+* { scrollbar-width: thin; scrollbar-color: var(--text-muted) transparent; }
+
 body {
   background: var(--bg); color: var(--text);
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -42,8 +68,8 @@ body {
 [data-case="lower"] .preset-btn, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
 [data-case="lower"] .rng, [data-case="lower"] .chip, [data-case="lower"] .chip-summary, 
 [data-case="lower"] .chip-header, [data-case="lower"] .chip-x, [data-case="lower"] .clear-btn,
-[data-case="lower"] .scan-btn, [data-case="lower"] .sig-cat,
-[data-case="lower"] .debug-toggle, [data-case="lower"] .dl-btn, [data-case="lower"] .footer,
+[data-case="lower"] .scan-btn, [data-case="lower"] .cancel-btn, [data-case="lower"] .sig-cat,
+[data-case="lower"] .dl-btn, [data-case="lower"] .footer,
 [data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3, [data-case="lower"] label,
 [data-case="lower"] .modal-actions button, [data-case="lower"] .preset-list-item button,
 [data-case="lower"] input::placeholder, [data-case="lower"] textarea::placeholder { text-transform: lowercase; }
@@ -52,7 +78,7 @@ input::placeholder { color: var(--text-muted); }
 button { font-family: inherit; cursor: pointer; }
 
 .topbar {
-  padding: 20px; border-bottom: 1px solid var(--border);
+  padding: 10px 20px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
@@ -73,7 +99,7 @@ button { font-family: inherit; cursor: pointer; }
 .modal-bg.open { display: flex; }
 .modal {
   background: var(--bg); border: 1px solid var(--border);
-  padding: 24px; width: 100%; max-width: 420px; max-height: calc(100vh - 32px); overflow-y: auto;
+  padding: 24px; width: 100%; max-width: 600px; max-height: calc(100vh - 32px); overflow-y: auto;
   position: relative;
 }
 .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1; }
@@ -112,6 +138,8 @@ button { font-family: inherit; cursor: pointer; }
 .modal-actions button:last-child:hover { opacity: 0.9; }
 .modal-actions button.danger { color: var(--red); margin-right: auto; }
 .modal-actions button.danger:hover { border-color: var(--red); }
+.modal-sm-btn { background: none; border: 1px solid var(--chip-border); font-size: 13px; padding: 6px 12px; color: var(--text); cursor: pointer; }
+.modal-sm-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
   display: flex; align-items: center; justify-content: space-between; padding: 10px 0;
@@ -178,11 +206,14 @@ button { font-family: inherit; cursor: pointer; }
 .chip-x:hover { color: var(--red); }
 .clear-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
 .clear-btn:hover { color: var(--red); }
+.scan-btns { margin-left: auto; display: flex; gap: 6px; }
 .scan-btn {
-  margin-left: auto; background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: 13px; padding: 3px 6px;
+  background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: 13px; padding: 3px 6px;
 }
 .scan-btn:hover:not(:disabled) { opacity: .8; }
 .scan-btn:disabled { opacity: .5; cursor: default; }
+.cancel-btn { background: none; border: 1px solid var(--red); color: var(--red); font-size: 13px; padding: 3px 6px; }
+.cancel-btn:hover { background: var(--red-10); }
 
 .notice { padding: 12px 20px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .notice.err { color: var(--red); }
@@ -190,6 +221,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .tweet-count { padding: 10px 20px; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .tweet-count:empty { display: none; }
+#tweetCount:empty, #notices:empty, #tickerBar:empty, #scanActions:empty, #filterBar:empty, #results:empty { display: none; }
 .tweet-count .dl-btn { margin-left: auto; }
 .dots::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
@@ -240,25 +272,38 @@ button { font-family: inherit; cursor: pointer; }
 .tweet-tooltip.vis { opacity: 1; }
 .empty-state { padding: 48px 20px; font-size: 13px; color: var(--text-muted); text-align: center; }
 
-.debug-section { padding: 16px 20px; }
-.debug-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 3px 6px; }
-.debug-content { margin-top: 8px; font-size: 13px; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; display: none; }
-.debug-content.open { display: block; }
-.debug-entry { margin-bottom: 10px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px; }
+.history:empty { display: none; }
+.hist-item { padding: 10px 20px; border-bottom: 1px solid var(--border); }
+.hist-item:last-child { border-bottom: none; }
+.hist-item.open { padding-bottom: 0; }
+.hist-header { display: flex; align-items: center; justify-content: space-between; }
+.hist-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0; cursor: pointer; }
+.hist-toggle:hover { color: var(--text-strong); }
+.hist-actions { display: flex; gap: 12px; }
+.hist-actions button { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0 6px; cursor: pointer; }
+.hist-actions button:hover { color: var(--text-strong); }
+.hist-actions .delete:hover { color: var(--red); }
+.hist-body { display: none; margin-left: 0; margin-top: 8px; }
+.hist-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
+.hist-cards .signal { margin-top: 0; padding-right: 0; border-left: 1px solid var(--border); }
+.hist-cards .signal:last-child { border-bottom: none; }
+.hist-item.open .hist-body { display: block; }
 
 .scan-actions { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
 .scan-actions .meta { font-size: 13px; color: var(--text-muted); flex: 1; }
 .dl-btn {
   background: none; border: none;
-  color: var(--text-muted); font-size: 13px; padding: 3px 6px; cursor: pointer;
+  color: var(--text-muted); font-size: 13px; cursor: pointer;
 }
 .dl-btn:hover { color: var(--text-strong); }
 
-.footer { padding: 20px; font-size: 10px; color: var(--text-muted); }
+.footer { padding: 20px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
 .footer:empty { display: none; }
+.footer a { color: var(--text-muted); }
+.footer a:hover { color: var(--text); }
 
 @media (max-width: 700px) {
-  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .signal, .debug-section, .footer {
+  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .signal, .footer {
     padding-left: 16px; padding-right: 16px;
   }
   .hide-mobile { display: none; }
@@ -272,15 +317,21 @@ button { font-family: inherit; cursor: pointer; }
 </style>
 </head>
 <body>
+<noscript>
+  <div style="padding:40px;text-align:center;font-family:system-ui;color:#888">
+    <h2 style="color:#ddd;margin-bottom:16px">JavaScript Required</h2>
+    <p>Sentry requires JavaScript to function. Please enable JavaScript in your browser settings.</p>
+  </div>
+</noscript>
 
 <!-- key modal -->
 <div class="modal-bg" id="modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
     <h3>Settings</h3>
-    <p>Keys are stored in your browser only and are never sent anywhere except to their respective APIs.<br>
+    <p>Your API keys are stored locally in your browser (localStorage) and are only sent directly to their respective APIs — never to any third-party servers.<br>
     Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
-    Get an Anthropic API key at <a href="https://platform.claude.com/settings/keys" target="_blank">platform.claude.com</a>.</p>
+    Get an Anthropic API key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
     <label>Twitter API key (twitterapi.io)</label>
     <input type="password" id="twKeyInput" placeholder="Your twitterapi.io key">
     <label>Anthropic API key</label>
@@ -302,6 +353,16 @@ button { font-family: inherit; cursor: pointer; }
     </select>
     <label>Analyst prompt <button type="button" class="reset-prompt" onclick="resetPrompt()">reset</button></label>
     <textarea id="promptInput" style="height:150px" placeholder="Custom instructions for the AI analyst..."></textarea>
+    <label>Backup</label>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="modal-sm-btn" id="exportBtn" onclick="exportData(this)">Export</button>
+      <button type="button" class="modal-sm-btn" id="importBtn" onclick="importData(this)">Import</button>
+    </div>
+    <label>Cache</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" class="modal-sm-btn" onclick="clearCache()">Clear cache</button>
+      <span id="cacheSize" style="font-size:12px;color:var(--text-muted)"></span>
+    </div>
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">Clear all</button>
       <button onclick="closeModal()">Cancel</button>
@@ -357,7 +418,7 @@ button { font-family: inherit; cursor: pointer; }
 <div id="scanActions"></div>
 <div id="filterBar"></div>
 <div id="results"></div>
-<div id="debugSection"></div>
+<div id="historySection"></div>
 <div class="footer" id="footer"></div>
 <div class="tweet-tooltip" id="tweetTooltip"></div>
 
@@ -365,7 +426,7 @@ button { font-family: inherit; cursor: pointer; }
 // --- Config ---
 const DEFAULT_PRESETS = [
   { name: 'tradfi', accounts: ['ayz_yzyz', 'citrini7', 'jukan05', 'nicholastreece', 'zephyr_z9'] },
-  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkyle__', '0xNairolf', '__bleeker', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'blknoiz06', 'Bluntz_Capital', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'Cryptopathic', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DegenPing', 'delucinator', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'goodalexander', 'hansolar21', 'HsakaTrades', 'Husslin_', 'ieaturfoods', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'maruushae', 'mert', 'mlmabc', 'NyuuRoe', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'ThinkingUSD', 'trading_axe', 'TreeNewsFeed', 'tzedonn', 'velo_xyz', 'xmgnr', 'zoomerfied'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkyle__', '0xNairolf', '__bleeker', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'blknoiz06', 'Bluntz_Capital', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DegenPing', 'delucinator', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'goodalexander', 'hansolar21', 'HsakaTrades', 'Husslin_', 'ieaturfoods', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'maruushae', 'mert', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'ThinkingUSD', 'trading_axe', 'TreeNewsFeed', 'tzedonn', 'velo_xyz', 'xmgnr', 'zoomerfied'] },
 ];
 const MAX_RECENTS = 10; // how many recent accounts to show
 const RANGES = [
@@ -387,12 +448,26 @@ const LS_CURRENT = 'signal_current_scan';
 const LS_PROMPT = 'signal_custom_prompt';
 const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
 
+ACCURACY & INFERENCE RULES:
+- Ground every signal in the specific tweet text associated with its tweet_url. Do NOT mix facts from other tweets.
+- Inference is allowed but must be clearly framed (use "implies", "suggests", "seems to").
+- Do NOT invent concrete claims (products, events, metrics, partnerships) not present in the tweet.
+- If a tweet is vague, keep your summary appropriately vague.
+- If a tweet quotes/replies to another, consider BOTH but clearly distinguish the source's opinion from the quoted content.
+
+WRITING STYLE:
+- Write for a smart generalist, not a finance insider.
+- Avoid jargon unless essential — if you use it, briefly clarify (e.g. "TVL (total value locked)").
+- Prefer plain language: "price looks cheap" over "valuation compressed", "buying opportunity" over "constructive setup".
+- Titles should be scannable and self-explanatory in under 3 seconds.
+- Summaries should answer: what's the opinion, and why?
+
 Return a JSON array. Each signal:
-- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints ease, buy signal", "Nanya, Winbond: Memory supercycle beneficiaries", "AT&S undervalued despite momentum". NO generic titles.
-- "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
+- "title": A clear headline capturing the tweet's intent. Lead with ticker/company when relevant. Signal inference when present ("price drop may be overblown").
+- "summary": 1-2 plain-language sentences summarizing the opinion and reasoning. Quote key phrases when useful; do not fabricate specifics.
 - "category": "Trade" | "Tool" | "Insight" | "Resource"
 - "source": twitter handle (no @)
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Use Yahoo Finance format: US stocks just the symbol (e.g. "$AAPL", "$UBER"), Taiwan add .TW (e.g. "$2408.TW"), Hong Kong add .HK, Japan add .T, Korea add .KS, crypto just symbol (e.g. "$BTC").
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Yahoo Finance format: US stocks = symbol only ($AAPL), Taiwan = .TW ($2408.TW), Hong Kong = .HK, Japan = .T, Korea = .KS, crypto = symbol only ($BTC, $ETH).
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks). Empty array if none.
 
@@ -405,6 +480,8 @@ const LS_FINANCE = 'signal_finance_provider';
 const LS_FONT = 'signal_font';
 const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
+const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
+const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let customAccounts = [];      // manually added accounts
@@ -645,6 +722,56 @@ function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT;
 function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
 function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
 
+// --- Analysis Cache ---
+const MAX_CACHE_ENTRIES = 2000;
+function hashString(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i);
+    h |= 0;
+  }
+  return (h >>> 0).toString(16);
+}
+function getPromptHash() {
+  return hashString(`${ANALYSIS_MODEL}\n${getPrompt()}`);
+}
+function loadAnalysisCache() {
+  try {
+    const raw = localStorage.getItem(LS_ANALYSIS_CACHE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && parsed.entries) return parsed;
+  } catch {}
+  return { v: 1, entries: {} };
+}
+function saveAnalysisCache(cache) {
+  try {
+    localStorage.setItem(LS_ANALYSIS_CACHE, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('Failed to save analysis cache:', e.message);
+  }
+}
+function cacheKey(promptHash, tweetUrl) {
+  return `${promptHash}:${tweetUrl}`;
+}
+function getCachedSignals(cache, promptHash, tweetUrl) {
+  if (!tweetUrl) return null;
+  const entry = cache.entries[cacheKey(promptHash, tweetUrl)];
+  return entry ? entry.signals || [] : null;
+}
+function setCachedSignals(cache, promptHash, tweetUrl, signals) {
+  if (!tweetUrl) return;
+  cache.entries[cacheKey(promptHash, tweetUrl)] = { signals: signals || [], ts: Date.now() };
+}
+function pruneCache(cache) {
+  const keys = Object.keys(cache.entries);
+  if (keys.length <= MAX_CACHE_ENTRIES) return;
+  keys.sort((a, b) => (cache.entries[a]?.ts || 0) - (cache.entries[b]?.ts || 0));
+  const removeCount = keys.length - MAX_CACHE_ENTRIES;
+  for (let i = 0; i < removeCount; i++) {
+    delete cache.entries[keys[i]];
+  }
+}
+
 // Cache cleanup (called on init)
 function cleanupCache() {
   // Clear old tweet cache entries (older than 2 hours)
@@ -665,9 +792,22 @@ function openModal() {
   $('fontProvider').value = getFont();
   $('caseProvider').value = getCase();
   $('promptInput').value = getPrompt();
+  updateCacheSizeDisplay();
   $('modal').classList.add('open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
   setTimeout(() => $('twKeyInput').focus(), 50);
+}
+
+function updateCacheSizeDisplay() {
+  const cache = loadAnalysisCache();
+  const count = Object.keys(cache.entries || {}).length;
+  $('cacheSize').textContent = count ? `${count} tweets cached` : 'empty';
+}
+
+function clearCache() {
+  if (!confirm('Clear all cached analysis results?')) return;
+  localStorage.removeItem(LS_ANALYSIS_CACHE);
+  updateCacheSizeDisplay();
 }
 function closeModal() { $('modal').classList.remove('open'); }
 function saveKeys() {
@@ -693,6 +833,83 @@ function clearKeys() {
   $('keyInput').value = '';
   updateKeyBtn();
   closeModal();
+}
+function encodeBackup(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function decodeBackup(str) {
+  return decodeURIComponent(escape(atob(str)));
+}
+async function exportData(btn) {
+  const data = {
+    v: 1,
+    settings: {
+      theme: getTheme(),
+      font: getFont(),
+      textCase: getCase(),
+      financeProvider: getFinanceProvider(),
+      prompt: getPrompt(),
+    },
+    keys: { twitter: getTwKey(), anthropic: getAnKey() },
+    presets: getPresets(),
+    accounts: customAccounts,
+    loadedPresets: loadedPresets,
+    recents: getRecents(),
+  };
+  const encoded = encodeBackup(JSON.stringify(data));
+  await navigator.clipboard.writeText(encoded);
+  if (btn) {
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Export'; }, 1500);
+  }
+}
+async function importData(btn) {
+  try {
+    const encoded = await navigator.clipboard.readText();
+    const json = decodeBackup(encoded.trim());
+    const data = JSON.parse(json);
+    if (!data.v && !data.version) throw new Error('Invalid backup format');
+    
+    if (data.settings) {
+      if (data.settings.theme) setTheme(data.settings.theme);
+      if (data.settings.font) setFont(data.settings.font);
+      if (data.settings.textCase) setCase(data.settings.textCase);
+      if (data.settings.financeProvider) localStorage.setItem(LS_FINANCE, data.settings.financeProvider);
+      if (data.settings.prompt) setPrompt(data.settings.prompt);
+    }
+    if (data.keys) {
+      if (data.keys.twitter) localStorage.setItem(LS_TW, data.keys.twitter);
+      if (data.keys.anthropic) localStorage.setItem(LS_AN, data.keys.anthropic);
+    }
+    if (data.presets) savePresetsData(data.presets);
+    if (data.accounts) { customAccounts = data.accounts; saveAccounts(); }
+    if (data.loadedPresets) { loadedPresets = data.loadedPresets; saveLoadedPresets(); }
+    if (data.recents) localStorage.setItem(LS_RECENTS, JSON.stringify(data.recents));
+    
+    // Refresh modal inputs
+    $('twKeyInput').value = getTwKey();
+    $('keyInput').value = getAnKey();
+    $('financeProvider').value = getFinanceProvider();
+    $('fontProvider').value = getFont();
+    $('caseProvider').value = getCase();
+    $('promptInput').value = getPrompt();
+    updateKeyBtn();
+    render();
+    
+    if (btn) {
+      btn.textContent = 'Success';
+      btn.style.color = 'var(--green)';
+      setTimeout(() => { btn.textContent = 'Import'; btn.style.color = ''; }, 1500);
+    }
+  } catch (err) {
+    console.warn('Import failed:', err);
+    if (btn) {
+      const msg = err.message.includes('clipboard') ? 'Clipboard error' : 'Invalid backup';
+      btn.textContent = msg;
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.textContent = 'Import'; btn.style.color = ''; }, 2000);
+    }
+  }
 }
 function updateKeyBtn() {
   const ok = bothKeys();
@@ -821,12 +1038,28 @@ function renderChips() {
     el.appendChild(clearBtn);
   }
   
+  const btns = document.createElement('div');
+  btns.className = 'scan-btns';
+  
+  if (busy) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'cancel-btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => {
+      abortCurrentScan();
+      setLoading(false);
+      setStatus('Scan cancelled');
+    });
+    btns.appendChild(cancelBtn);
+  }
+  
   const btn = document.createElement('button');
   btn.className = 'scan-btn';
   btn.disabled = busy;
   btn.textContent = busy ? 'Scanning...' : 'Scan';
   btn.addEventListener('click', run);
-  el.appendChild(btn);
+  btns.appendChild(btn);
+  el.appendChild(btns);
 }
 
 function clearAllAccounts() {
@@ -846,7 +1079,7 @@ function setLoading(v) {
 function setStatus(t, animate = false, showDownload = false) {
   const el = $('tweetCount');
   if (!t) { el.innerHTML = ''; return; }
-  const dl = showDownload ? `<button class="dl-btn" onclick="downloadLastScan()">↓ Download JSON</button>` : '';
+  const dl = showDownload ? `<button class="dl-btn" onclick="downloadLastScan()">↓ Download</button>` : '';
   el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${dl}</div>`;
 }
 
@@ -863,7 +1096,7 @@ function getCacheKey(account, days) {
   return `${account}:${days}:${hour}`;
 }
 
-async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
+async function fetchTweetsWithRetry(account, days, maxRetries = 3, signal = null) {
   const cacheKey = getCacheKey(account, days);
   
   // Return cached data if available (from this session)
@@ -885,6 +1118,9 @@ async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
   let consecutiveErrors = 0;
 
   while (pages < MAX_PAGES) {
+    // Check for abort at start of each page
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    
     const params = new URLSearchParams({ userName: account });
     if (cursor) params.set('cursor', cursor);
 
@@ -895,6 +1131,7 @@ async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
     let pageRetries = 0;
     
     while (pageRetries <= maxRetries) {
+      if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
       try {
         res = await fetch(fetchUrl, {
           method: 'GET',
@@ -902,6 +1139,7 @@ async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
             'X-API-Key': key,
             'Accept': 'application/json',
           },
+          signal,
         });
 
         // Auth errors - fail immediately, no retry
@@ -946,6 +1184,8 @@ async function fetchTweetsWithRetry(account, days, maxRetries = 3) {
         break; // Success, exit retry loop
         
       } catch (e) {
+        // AbortError - don't retry, just throw
+        if (e.name === 'AbortError') throw e;
         if (e.message.includes('auth error') || e.message.includes('No Twitter API')) {
           throw e; // Don't retry auth errors
         }
@@ -1013,17 +1253,36 @@ async function fetchTweets(account, days) {
 // ============================================================================
 
 // Remove invalid Unicode (orphan surrogates) that break JSON
+// Safari-compatible version (no lookbehind assertions)
 function sanitizeText(str) {
   if (!str) return '';
   if (typeof str !== 'string') return String(str);
   
-  // Remove lone surrogates (characters in range U+D800 to U+DFFF that aren't properly paired)
-  // Also remove other problematic characters
-  return str
-    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '') // orphan high surrogates
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') // orphan low surrogates
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // control characters
-    .replace(/\uFFFD/g, ''); // replacement character
+  // Remove lone surrogates and problematic characters
+  // Process character by character for Safari compatibility
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    // Skip control characters
+    if ((code >= 0x00 && code <= 0x08) || code === 0x0B || code === 0x0C || 
+        (code >= 0x0E && code <= 0x1F) || code === 0x7F || code === 0xFFFD) continue;
+    // Handle surrogates
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      // High surrogate - check if followed by low surrogate
+      const next = str.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        result += str[i] + str[i + 1];
+        i++; // Skip the low surrogate
+      }
+      // else: orphan high surrogate, skip it
+    } else if (code >= 0xDC00 && code <= 0xDFFF) {
+      // Orphan low surrogate (not preceded by high), skip it
+      continue;
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
 }
 
 // Safe JSON parsing with multiple fallbacks
@@ -1077,10 +1336,14 @@ function safeParseSignals(text) {
   return [];
 }
 
+function getTweetUrl(tw) {
+  return tw.url || `https://x.com/i/status/${tw.id}`;
+}
+
 function formatTweetForAnalysis(tw) {
   const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
   const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
-  const url = tw.url || `https://x.com/i/status/${tw.id}`;
+  const url = getTweetUrl(tw);
   let text = sanitizeText(tw.text || '');
 
   // collect external URLs (exclude twitter/x.com links)
@@ -1101,7 +1364,11 @@ function formatTweetForAnalysis(tw) {
   const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
   if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
   if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
-  if (tw.quoted_tweet) parts.push(`(quoting: "${tw.quoted_tweet.text?.slice(0, 120) || ''}")`);
+  if (tw.quoted_tweet) {
+    const quotedText = sanitizeText(tw.quoted_tweet.text || '');
+    const quotedAuthor = tw.quoted_tweet.author?.userName || 'unknown';
+    parts.push(`--- QUOTED TWEET from @${quotedAuthor} ---\n${quotedText}\n--- END QUOTED TWEET ---`);
+  }
 
   return parts.join('\n');
 }
@@ -1151,13 +1418,14 @@ function categorizeError(error, status) {
 }
 
 // Robust Anthropic API call with intelligent retry
-async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries) {
+async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries, signal = null) {
   const key = getAnKey();
   if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
   
   let lastError = null;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
     try {
       const res = await fetch(API_CONFIG.anthropic.baseUrl, {
         method: 'POST',
@@ -1168,6 +1436,7 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries)
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify(body),
+        signal,
       });
       
       const data = await res.json();
@@ -1218,6 +1487,9 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries)
       }
       
     } catch (e) {
+      // AbortError - don't retry, just throw
+      if (e.name === 'AbortError') throw e;
+      
       // Network errors, JSON parse errors, etc.
       if (e.message.includes('No Anthropic') || e.message.includes('Invalid API') || 
           e.message.includes('Input too large') || e.message.includes('Model not available')) {
@@ -1259,20 +1531,25 @@ function abortCurrentScan() {
 }
 
 // Fetch all accounts' tweets with progress tracking
-async function fetchAllTweets(accounts, days, onProgress) {
+async function fetchAllTweets(accounts, days, onProgress, signal) {
   const BATCH_SIZE = 2; // Parallel fetch count
   const accountTweets = [];
   
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+    // Check for abort before starting batch
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    
     const batch = accounts.slice(i, i + BATCH_SIZE);
     const progress = Math.round((i / accounts.length) * 100);
     onProgress?.(`Fetching ${i + 1}-${Math.min(i + batch.length, accounts.length)} of ${accounts.length}`);
     
     const results = await Promise.all(batch.map(async (account) => {
+      if (signal?.aborted) return { account, tweets: [], error: 'Cancelled' };
       try {
-        const tweets = await fetchTweetsWithRetry(account, days);
+        const tweets = await fetchTweetsWithRetry(account, days, 3, signal);
         return { account, tweets, error: null };
       } catch (e) {
+        if (e.name === 'AbortError') throw e;
         console.warn(`[${account}] Fetch failed:`, e.message);
         return { account, tweets: [], error: e.message };
       }
@@ -1290,81 +1567,140 @@ async function fetchAllTweets(accounts, days, onProgress) {
 }
 
 // Analyze tweets with intelligent batching
-async function analyzeWithBatching(accountData, totalTweets, onProgress) {
-  const prompt = getPrompt();
-  const MAX_BATCH_CHARS = 640000; // ~160k tokens
-  const promptChars = prompt.length;
-  
-  // Pre-calculate batches for accurate progress
-  const batches = [];
-  let currentBatch = [];
-  let currentSize = promptChars;
-  
-  for (const a of accountData) {
+const ANALYSIS_CONCURRENCY = 2;
+const MAX_BATCH_CHARS = 640000; // ~160k tokens
+const BATCH_SEPARATOR = '\n\n======\n\n';
+
+function buildBatches(accountData, promptChars) {
+  const items = accountData.map(a => {
     const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
     const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
     const accountText = `${header}\n${body}`;
-    const accountSize = accountText.length + 20;
-    
-    if (currentBatch.length > 0 && currentSize + accountSize > MAX_BATCH_CHARS) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentSize = promptChars;
+    const tweetUrls = a.tweets.map(getTweetUrl).filter(Boolean);
+    return { account: a.account, text: accountText, size: accountText.length, tweetUrls };
+  });
+
+  // First-fit decreasing for tighter packing without trimming content
+  items.sort((a, b) => b.size - a.size);
+  const batches = [];
+
+  items.forEach(item => {
+    let placed = false;
+    for (const batch of batches) {
+      const extra = (batch.items.length ? BATCH_SEPARATOR.length : 0) + item.size;
+      if (batch.size + extra <= MAX_BATCH_CHARS) {
+        batch.items.push(item);
+        batch.size += extra;
+        batch.tweetUrls.push(...item.tweetUrls);
+        placed = true;
+        break;
+      }
     }
-    
-    currentBatch.push({ account: a.account, text: accountText, size: accountSize });
-    currentSize += accountSize;
-  }
-  if (currentBatch.length > 0) batches.push(currentBatch);
-  
-  console.log(`Analysis batches: ${batches.length} (${accountData.length} accounts, ~${Math.round(currentSize/1000)}k chars)`);
-  
-  // Process batches
+    if (!placed) {
+      batches.push({
+        items: [item],
+        size: promptChars + item.size,
+        tweetUrls: [...item.tweetUrls],
+      });
+    }
+  });
+
+  return batches.map(b => ({
+    text: b.items.map(i => i.text).join(BATCH_SEPARATOR),
+    tweetUrls: [...new Set(b.tweetUrls)],
+    accounts: b.items.map(i => i.account),
+    size: b.size,
+  }));
+}
+
+function groupSignalsByTweet(signals) {
+  const map = new Map();
+  signals.forEach(s => {
+    const url = s.tweet_url;
+    if (!url) return;
+    if (!map.has(url)) map.set(url, []);
+    map.get(url).push(s);
+  });
+  return map;
+}
+
+function dedupeSignals(signals) {
+  const seen = new Set();
+  return signals.filter(s => {
+    const key = `${s.tweet_url || ''}|${s.title || ''}|${s.summary || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function analyzeWithBatching(accountData, totalTweets, onProgress, promptHash, cache, signal = null) {
+  const prompt = getPrompt();
+  const promptChars = prompt.length;
+
+  const batches = buildBatches(accountData, promptChars);
+  console.log(`Analysis batches: ${batches.length} (${accountData.length} accounts)`);
+  if (!batches.length) return [];
+
   const allSignals = [];
-  
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    const batchNum = i + 1;
-    
-    if (batches.length > 1) {
-      onProgress?.(`Analyzing batch ${batchNum}/${batches.length}`);
-    } else {
-      onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
-    }
-    
-    const batchContent = sanitizeText(`${prompt}\n\n${batch.map(b => b.text).join('\n\n======\n\n')}`);
-    
-    try {
-      const data = await anthropicCall({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 16384,
-        messages: [{ role: 'user', content: batchContent }],
-      }, 5);
+  const results = [];
+  let nextIndex = 0;
+  const concurrency = Math.min(ANALYSIS_CONCURRENCY, batches.length);
+
+  async function runBatchWorker() {
+    while (true) {
+      // Check for abort before processing batch
+      if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
       
-      const txt = extractText(data.content);
-      logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
-      
-      // Parse signals from response using safe parser
-      const batchSignals = safeParseSignals(txt);
-      if (batchSignals.length > 0) {
-        allSignals.push(...batchSignals);
-        console.log(`Batch ${batchNum}: ${batchSignals.length} signals parsed`);
+      const i = nextIndex++;
+      if (i >= batches.length) break;
+
+      const batch = batches[i];
+      const batchNum = i + 1;
+      if (batches.length > 1) {
+        onProgress?.(`Analyzing batch ${batchNum}/${batches.length}`);
       } else {
-        console.warn(`Batch ${batchNum}: No signals extracted`);
-        logs.push({ a: `_parse_warn_${batchNum}`, len: 0, pre: 'No signals extracted from response' });
+        onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
       }
-      
-      // Delay between batch API calls (rate limit protection)
-      if (i < batches.length - 1) {
-        await new Promise(r => setTimeout(r, 1500));
+
+      const batchContent = sanitizeText(`${prompt}\n\n${batch.text}`);
+      try {
+        const data = await anthropicCall({
+          model: ANALYSIS_MODEL,
+          max_tokens: 16384,
+          messages: [{ role: 'user', content: batchContent }],
+        }, 5, signal);
+
+        const txt = extractText(data.content);
+        logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
+
+        const batchSignals = safeParseSignals(txt);
+        if (batchSignals.length > 0) {
+          console.log(`Batch ${batchNum}: ${batchSignals.length} signals parsed`);
+        } else {
+          console.warn(`Batch ${batchNum}: No signals extracted`);
+          logs.push({ a: `_parse_warn_${batchNum}`, len: 0, pre: 'No signals extracted from response' });
+        }
+
+        results.push({ i, signals: batchSignals, tweetUrls: batch.tweetUrls });
+      } catch (e) {
+        console.error(`Batch ${batchNum} analysis error:`, e);
+        throw e;
       }
-      
-    } catch (e) {
-      console.error(`Batch ${batchNum} analysis error:`, e);
-      throw e; // Re-throw to stop the scan
     }
   }
-  
+
+  await Promise.all(Array.from({ length: concurrency }, () => runBatchWorker()));
+  results.sort((a, b) => a.i - b.i);
+
+  results.forEach(res => {
+    allSignals.push(...res.signals);
+    const grouped = groupSignalsByTweet(res.signals);
+    res.tweetUrls.forEach(url => {
+      setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
+    });
+  });
+
   return allSignals;
 }
 
@@ -1391,7 +1727,6 @@ async function run() {
   $('scanActions').innerHTML = '';
   $('filterBar').innerHTML = '';
   $('results').innerHTML = '';
-  $('debugSection').innerHTML = '';
   logs = [];
   
   // Save custom accounts to recents
@@ -1402,9 +1737,11 @@ async function run() {
 
   const days = RANGES[range].days;
 
+  const signal = currentScanAbort?.signal;
+  
   try {
     // Step 1: Fetch tweets
-    const accountTweets = await fetchAllTweets(accounts, days, (msg) => setStatus(msg, true));
+    const accountTweets = await fetchAllTweets(accounts, days, (msg) => setStatus(msg, true), signal);
 
     // Tally results
     const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
@@ -1433,12 +1770,42 @@ async function run() {
     // Show warnings for partial failures
     const parts = [];
     if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
-    if (empties.length) parts.push(`<span style="color:var(--amber)">No posts: ${esc(empties.map(e => e.account).join(', '))}</span>`);
     if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
 
-    // Step 2: Analyze with Claude
+    // Step 2: Analyze with Claude (with caching)
     const accountData = accountTweets.filter(a => a.tweets.length);
-    const signals = await analyzeWithBatching(accountData, totalTweets, (msg) => setStatus(msg, true));
+    const promptHash = getPromptHash();
+    const analysisCache = loadAnalysisCache();
+    let cachedSignals = [];
+    let cachedTweetCount = 0;
+
+    const uncachedAccountData = accountData.map(a => {
+      const uncachedTweets = [];
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        const cached = getCachedSignals(analysisCache, promptHash, url);
+        if (cached) {
+          cachedTweetCount++;
+          cachedSignals.push(...cached);
+        } else {
+          uncachedTweets.push(tw);
+        }
+      });
+      return { account: a.account, tweets: uncachedTweets };
+    }).filter(a => a.tweets.length);
+
+
+    let signals = [];
+    if (uncachedAccountData.length) {
+      const newSignals = await analyzeWithBatching(uncachedAccountData, totalTweets, (msg) => setStatus(msg, true), promptHash, analysisCache, signal);
+      signals = dedupeSignals([...cachedSignals, ...newSignals]);
+    } else {
+      setStatus(`${totalTweets} tweets fetched · Using cache`, false, true);
+      signals = dedupeSignals(cachedSignals);
+    }
+
+    pruneCache(analysisCache);
+    saveAnalysisCache(analysisCache);
 
     // Store scan result
     lastScanResult = {
@@ -1483,7 +1850,7 @@ function createStorableScan(scan) {
   if (scan.rawTweets) {
     scan.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {
-        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        const url = getTweetUrl(tw);
         tweetMeta[url] = {
           text: (tw.text || '').slice(0, 500), // Truncate long tweets
           author: a.account,
@@ -1513,17 +1880,32 @@ function saveScan(scan) {
     
     // Update history (keep only last 5 to save space)
     const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
-    // Only store minimal info in history (no tweetMeta)
+    // Build tweet time lookup
+    const tweetTimes = {};
+    if (scan.rawTweets) {
+      scan.rawTweets.forEach(a => {
+        (a.tweets || []).forEach(tw => {
+          const url = getTweetUrl(tw);
+          if (tw.createdAt) tweetTimes[url] = tw.createdAt;
+        });
+      });
+    }
+    // Store signals with timestamps
     const historyEntry = {
       date: scan.date,
       range: scan.range,
       accounts: scan.accounts.length,
       totalTweets: scan.totalTweets,
-      signalCount: scan.signals.length
+      signalCount: scan.signals.length,
+      signals: scan.signals.map(s => ({
+        ...s,
+        tweet_time: tweetTimes[s.tweet_url] || null
+      }))
     };
     history.unshift(historyEntry);
     if (history.length > 5) history.pop();
     localStorage.setItem(LS_SCANS, JSON.stringify(history));
+    renderHistory();
   } catch (e) {
     console.warn('Failed to save scan to localStorage:', e.message);
     // Clear old data and try again
@@ -1556,7 +1938,7 @@ function downloadLastScan() {
   if (lastScanResult.rawTweets) {
     lastScanResult.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {
-        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        const url = getTweetUrl(tw);
         tweetText[url] = tw.text || '';
       });
     });
@@ -1566,31 +1948,38 @@ function downloadLastScan() {
     });
   }
   
-  // Create clean export
-  const cleanExport = {
-    date: lastScanResult.date,
-    range: lastScanResult.range,
-    accounts: lastScanResult.accounts,
-    signals: lastScanResult.signals.map(s => ({
-      title: s.title,
-      summary: s.summary,
-      category: s.category,
-      tickers: (s.tickers || []).map(t => ({
-        symbol: t.symbol,
-        action: t.action
-      })),
-      source: s.source,
-      tweet: tweetText[s.tweet_url] || '',
-      links: s.links || []
-    }))
-  };
+  // Generate Markdown
+  const d = new Date(lastScanResult.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  
+  let md = `# Trading Signals\n\n`;
+  md += `**Date:** ${dateStr}\n`;
+  md += `**Range:** ${lastScanResult.range}\n`;
+  md += `**Accounts:** ${lastScanResult.accounts.length}\n`;
+  md += `**Signals:** ${lastScanResult.signals.length}\n\n---\n\n`;
+  
+  lastScanResult.signals.forEach((s, i) => {
+    const cat = normCat(s.category);
+    const tickers = (s.tickers || []).map(t => `${t.symbol} (${t.action})`).join(', ');
+    const tweet = tweetText[s.tweet_url] || '';
+    const links = (s.links || []).length ? s.links.join(', ') : '';
+    
+    md += `## ${s.title}\n\n`;
+    md += `${s.summary}\n\n`;
+    if (tickers) md += `**Tickers:** ${tickers}\n`;
+    md += `**Category:** ${cat}\n`;
+    md += `**Source:** @${s.source}\n`;
+    if (tweet) md += `**Tweet:** "${tweet}"\n`;
+    if (links) md += `**Links:** ${links}\n`;
+    if (i < lastScanResult.signals.length - 1) md += `\n---\n\n`;
+  });
   
   const date = new Date(lastScanResult.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-  const blob = new Blob([JSON.stringify(cleanExport, null, 2)], { type: 'application/json' });
+  const blob = new Blob([md], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `sentry-${date}.json`;
+  a.download = `sentry-${date}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1648,7 +2037,7 @@ function renderSignals(signals) {
     // Full data available (current session)
     lastScanResult.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {
-        const url = tw.url || `https://x.com/i/status/${tw.id}`;
+        const url = getTweetUrl(tw);
         const date = tw.createdAt ? new Date(tw.createdAt) : null;
         const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
         tweetMap[url] = {
@@ -1713,9 +2102,8 @@ function renderSignals(signals) {
   el.innerHTML = h;
   renderScanActions();
   renderFilters();
-  $('footer').innerHTML = 'Not financial advice';
+  $('footer').innerHTML = 'Not financial advice · API keys stored locally in your browser only';
   setupTweetTooltips();
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function setupTweetTooltips() {
@@ -1746,21 +2134,143 @@ function setupTweetTooltips() {
   });
 }
 
-function renderDebug() {
-  const el = $('debugSection');
-  if (!logs.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="debug-section">
-    <button class="debug-toggle" id="debugToggle">▸ Debug</button>
-    <div class="debug-content" id="debugContent">
-      ${logs.map(l => `<div class="debug-entry"><span style="color:var(--text-muted)">@${esc(l.a)}</span> — ${l.len} ${l.a === '_analysis' ? 'chars' : 'tweets'}<div style="color:var(--text);margin-top:2px">${esc(l.pre)}</div></div>`).join('')}
-    </div>
-  </div>`;
-  $('debugToggle').addEventListener('click', function() {
-    const c = $('debugContent');
-    const open = c.classList.toggle('open');
-    this.textContent = (open ? '▾' : '▸') + ' Debug';
+function renderHistory() {
+  const el = $('historySection');
+  const history = getScanHistory();
+  if (!history.length) { el.innerHTML = ''; return; }
+  
+  let h = '<div class="history">';
+  history.forEach((scan, i) => {
+    const d = new Date(scan.date);
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const label = `Scan ${dateStr}`;
+    const range = scan.range || '—';
+    const accounts = Number.isFinite(scan.accounts) ? scan.accounts : '—';
+    const tweets = Number.isFinite(scan.totalTweets) ? scan.totalTweets : '—';
+    const signals = Number.isFinite(scan.signalCount) ? scan.signalCount : '—';
+    const details = `Range: ${esc(range)} · Accounts: ${accounts} · Tweets: ${tweets} · Signals: ${signals}`;
+    const cards = (scan.signals && scan.signals.length)
+      ? scan.signals.map(item => {
+          const cat = normCat(item.category);
+          const tickers = (item.tickers && item.tickers.length)
+            ? item.tickers.map(t => {
+                const url = tickerUrl(t.symbol || '');
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}</a>`;
+              }).join('')
+            : '';
+          const source = (item.source || '').replace(/^@/, '');
+          const sourceLink = item.tweet_url
+            ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+            : `@${esc(source)}`;
+          const tweetTime = item.tweet_time ? new Date(item.tweet_time) : null;
+          const timeStr = tweetTime ? tweetTime.toLocaleDateString() + ' ' + tweetTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+          const extLinks = (item.links && item.links.length)
+            ? item.links.map(l => {
+                try {
+                  const hostname = new URL(l).hostname.replace('www.','');
+                  return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+                } catch { return ''; }
+              }).filter(Boolean).join(' ')
+            : '';
+          return `<div class="signal" data-category="${esc(cat || '')}">
+            <div class="sig-top"><span>${sourceLink}${timeStr ? ` · ${timeStr}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span></div>
+            ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+            <div class="sig-title">${esc(item.title || '')}</div>
+            <div class="sig-summary">${esc(item.summary || '')}</div>
+            ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+          </div>`;
+        }).join('')
+      : '<div class="empty-state">No signals in this scan</div>';
+    h += `<div class="hist-item" data-index="${i}">
+      <div class="hist-header">
+        <button class="hist-toggle" data-label="${esc(label)}">▸ ${esc(label)}</button>
+        <div class="hist-actions">
+          <button class="delete" title="Delete">×</button>
+          <button class="download" title="Download">↓</button>
+        </div>
+      </div>
+      <div class="hist-body"><div class="hist-meta">${details}</div><div class="hist-cards">${cards}</div></div>
+    </div>`;
+  });
+  h += '</div>';
+  el.innerHTML = h;
+  
+  el.querySelectorAll('.hist-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.hist-item');
+      const open = item.classList.toggle('open');
+      const label = btn.dataset.label || btn.textContent.replace(/^▸\s|^▾\s/, '');
+      btn.textContent = (open ? '▾ ' : '▸ ') + label;
+    });
+  });
+  
+  el.querySelectorAll('.hist-actions .download').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.closest('.hist-item').dataset.index);
+      downloadHistoryScan(index);
+    });
+  });
+  
+  el.querySelectorAll('.hist-actions .delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.closest('.hist-item').dataset.index);
+      deleteHistoryScan(index);
+    });
   });
 }
+
+function downloadHistoryScan(index) {
+  const history = getScanHistory();
+  const scan = history[index];
+  if (!scan) return;
+  
+  // Generate Markdown
+  const d = new Date(scan.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  
+  let md = `# Trading Signals\n\n`;
+  md += `**Date:** ${dateStr}\n`;
+  md += `**Range:** ${scan.range || '—'}\n`;
+  md += `**Accounts:** ${scan.accounts || '—'}\n`;
+  md += `**Signals:** ${scan.signalCount || (scan.signals?.length || 0)}\n\n---\n\n`;
+  
+  (scan.signals || []).forEach((s, i) => {
+    const cat = normCat(s.category);
+    const tickers = (s.tickers || []).map(t => `${t.symbol} (${t.action})`).join(', ');
+    const links = (s.links || []).length ? s.links.join(', ') : '';
+    
+    md += `## ${s.title}\n\n`;
+    md += `${s.summary}\n\n`;
+    if (tickers) md += `**Tickers:** ${tickers}\n`;
+    md += `**Category:** ${cat}\n`;
+    md += `**Source:** @${s.source}\n`;
+    if (links) md += `**Links:** ${links}\n`;
+    if (i < scan.signals.length - 1) md += `\n---\n\n`;
+  });
+  
+  const date = new Date(scan.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sentry-${date}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function deleteHistoryScan(index) {
+  const history = getScanHistory();
+  if (index < 0 || index >= history.length) return;
+  history.splice(index, 1);
+  localStorage.setItem(LS_SCANS, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderDebug() {}
 
 // --- Filters ---
 function setFilter(type, value) {
@@ -1811,6 +2321,7 @@ function renderFilters() {
   
   // Render UI
   render();
+  renderHistory();
 
   // Load previous scan on refresh
   const savedScan = loadCurrentScan();
@@ -1821,6 +2332,11 @@ function renderFilters() {
     setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
     renderTickers(savedScan.signals);
     renderSignals(savedScan.signals);
+  }
+  
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
   
   console.log('✓ Sentry initialized');
