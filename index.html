@@ -79,6 +79,8 @@ button { font-family: inherit; cursor: pointer; }
 .modal p a:hover { text-decoration: underline; }
 .modal label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
 .modal label:first-of-type { margin-top: 0; }
+.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-left: 8px; text-transform: lowercase; }
+.reset-prompt:hover { color: var(--text-strong); }
 .modal input, .modal select, .modal textarea {
   width: 100%; border: 1px solid var(--chip-border); padding: 10px 12px;
   font-family: inherit; font-size: 13px; color: var(--text-strong); outline: none;
@@ -290,6 +292,8 @@ button { font-family: inherit; cursor: pointer; }
       <option value="lower">lowercase</option>
       <option value="sentence">Sentence case</option>
     </select>
+    <label>Analyst prompt <button type="button" class="reset-prompt" onclick="resetPrompt()">reset</button></label>
+    <textarea id="promptInput" style="height:150px" placeholder="Custom instructions for the AI analyst..."></textarea>
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">Clear all</button>
       <button onclick="closeModal()">Cancel</button>
@@ -367,6 +371,19 @@ const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
 const LS_CURRENT = 'signal_current_scan';
+const LS_PROMPT = 'signal_custom_prompt';
+const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
+
+Return a JSON array. Each signal:
+- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints ease, buy signal", "Nanya, Winbond: Memory supercycle beneficiaries", "AT&S undervalued despite momentum". NO generic titles.
+- "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
+- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
+- "source": twitter handle (no @)
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Use Yahoo Finance format: US stocks just the symbol (e.g. "$AAPL", "$UBER"), Taiwan add .TW (e.g. "$2408.TW"), Hong Kong add .HK, Japan add .T, Korea add .KS, crypto just symbol (e.g. "$BTC").
+- "tweet_url": exact tweet_url from data
+- "links": external URLs mentioned (articles, substacks). Empty array if none.
+
+Return ONLY valid JSON array. No markdown, no explanation.`;
 const LS_ACCOUNTS = 'signal_accounts';
 const LS_LOADED_PRESETS = 'signal_loaded_presets';
 const LS_PRESETS = 'signal_presets';
@@ -590,6 +607,9 @@ function setCase(c) {
   localStorage.setItem(LS_CASE, c);
   document.documentElement.setAttribute('data-case', c);
 }
+function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT; }
+function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
+function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
 
 function openModal() {
   $('twKeyInput').value = getTwKey();
@@ -597,6 +617,7 @@ function openModal() {
   $('financeProvider').value = getFinanceProvider();
   $('fontProvider').value = getFont();
   $('caseProvider').value = getCase();
+  $('promptInput').value = getPrompt();
   $('modal').classList.add('open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
   setTimeout(() => $('twKeyInput').focus(), 50);
@@ -608,11 +629,13 @@ function saveKeys() {
   const fp = $('financeProvider').value;
   const font = $('fontProvider').value;
   const textCase = $('caseProvider').value;
+  const prompt = $('promptInput').value.trim();
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
   localStorage.setItem(LS_FINANCE, fp);
   setFont(font);
   setCase(textCase);
+  setPrompt(prompt || DEFAULT_PROMPT);
   updateKeyBtn();
   closeModal();
 }
@@ -862,21 +885,29 @@ async function fetchTweets(account, days) {
   return allTweets;
 }
 
+// Remove invalid Unicode (orphan surrogates) that break JSON
+function sanitizeText(str) {
+  if (!str) return '';
+  // Remove lone surrogates (characters in range U+D800 to U+DFFF that aren't properly paired)
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 function formatTweetForAnalysis(tw) {
   const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
   const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
   const url = tw.url || `https://x.com/i/status/${tw.id}`;
-  let text = tw.text || '';
+  let text = sanitizeText(tw.text || '');
 
   // collect external URLs (exclude twitter/x.com links)
   const externalLinks = [];
   if (tw.entities?.urls) {
     for (const u of tw.entities.urls) {
       if (u.url && u.expanded_url) {
-        text = text.replace(u.url, u.expanded_url);
+        const expandedUrl = sanitizeText(u.expanded_url);
+        text = text.replace(u.url, expandedUrl);
         // filter out twitter/x.com internal links
-        if (!u.expanded_url.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
-          externalLinks.push(u.expanded_url);
+        if (!expandedUrl.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
+          externalLinks.push(expandedUrl);
         }
       }
     }
@@ -1019,25 +1050,14 @@ async function run() {
       })
       .join('\n\n======\n\n');
 
+    const prompt = getPrompt();
+    const content = sanitizeText(`${prompt}\n\n${combined}`);
     const data = await anthropicCall({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 8192,
       messages: [{
         role: 'user',
-        content: `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
-
-${combined}
-
-Return a JSON array. Each signal:
-- "title": A compelling, specific headline like a Bloomberg terminal alert. Lead with the ticker/company when relevant. Examples: "NVDA: Supply constraints ease, buy signal", "Nanya, Winbond: Memory supercycle beneficiaries", "AT&S undervalued despite momentum". NO generic titles.
-- "summary": 1-2 punchy sentences with the core thesis and reasoning. Be specific about why.
-- "category": "Investment Idea" | "Tool / Product" | "Insight" | "Resource"
-- "source": twitter handle (no @)
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned. Use Yahoo Finance format: US stocks just the symbol (e.g. "$AAPL", "$UBER"), Taiwan add .TW (e.g. "$2408.TW"), Hong Kong add .HK, Japan add .T, Korea add .KS, crypto just symbol (e.g. "$BTC").
-- "tweet_url": exact tweet_url from data
-- "links": external URLs mentioned (articles, substacks). Empty array if none.
-
-Return ONLY valid JSON array. No markdown, no explanation.`,
+        content: content,
       }],
     }, 1);
 
