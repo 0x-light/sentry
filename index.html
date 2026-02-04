@@ -944,9 +944,15 @@ async function anthropicCall(body, retries) {
       }
       const data = await res.json();
       console.log('Anthropic response:', res.status, data);
+      // Log full error details
+      if (data.error) console.error('Anthropic error:', JSON.stringify(data.error, null, 2));
       if (data.error?.type === 'overloaded_error' || data.error?.type === 'rate_limit_error') {
         await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 6000)));
         continue;
+      }
+      // Don't retry quota/billing errors
+      if (data.error?.type === 'invalid_request_error' && data.error?.message?.includes('quota')) {
+        throw new Error(data.error.message);
       }
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
       return data;
@@ -1061,7 +1067,7 @@ async function run() {
     const prompt = getPrompt();
     const content = sanitizeText(`${prompt}\n\n${combined}`);
     const data = await anthropicCall({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 8192,
       messages: [{
         role: 'user',
@@ -1099,6 +1105,7 @@ async function run() {
     renderSignals(signals);
     renderDebug();
   } catch (e) {
+    setStatus(''); // Clear analyzing status
     $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
     renderDebug();
   } finally {
