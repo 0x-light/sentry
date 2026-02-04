@@ -329,10 +329,10 @@ button { font-family: inherit; cursor: pointer; }
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
     <h3>Settings</h3>
-    <p>Your API keys are stored locally in your browser (localStorage) and are only sent directly to their respective APIs — never to any third-party servers.<br>
+    <p>Your API keys are stored locally in your browser and are only sent to their respective APIs — never to any third-party servers.<br>
     Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
     Get an Anthropic API key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
-    <label>Twitter API key (twitterapi.io)</label>
+    <label>X/Twitter API key (twitterapi.io)</label>
     <input type="password" id="twKeyInput" placeholder="Your twitterapi.io key">
     <label>Anthropic API key</label>
     <input type="password" id="keyInput" placeholder="sk-ant-...">
@@ -2102,7 +2102,7 @@ function renderSignals(signals) {
   el.innerHTML = h;
   renderScanActions();
   renderFilters();
-  $('footer').innerHTML = 'Not financial advice · API keys stored locally in your browser only';
+  $('footer').innerHTML = 'Not financial advice';
   setupTweetTooltips();
 }
 
