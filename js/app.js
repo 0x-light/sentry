@@ -77,6 +77,7 @@ const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
 const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
 const LS_LIVE_MODE = 'signal_live_mode';
+const LS_LIVE_ENABLED = 'signal_live_enabled';
 const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
 
 // Live feed config
@@ -308,6 +309,20 @@ function setCase(c) {
 function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT; }
 function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
 function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
+function isLiveEnabled() { return localStorage.getItem(LS_LIVE_ENABLED) === 'true'; }
+function setLiveEnabled(v) {
+  if (v) {
+    localStorage.setItem(LS_LIVE_ENABLED, 'true');
+  } else {
+    localStorage.removeItem(LS_LIVE_ENABLED);
+    stopLiveFeed();
+  }
+  updateLiveButton();
+}
+function updateLiveButton() {
+  const btn = $('liveBtn');
+  if (btn) btn.style.display = isLiveEnabled() ? 'flex' : 'none';
+}
 
 // --- Analysis Cache ---
 const MAX_CACHE_ENTRIES = 2000;
@@ -386,6 +401,7 @@ function openModal() {
   $('fontProvider').value = originalSettings.font;
   $('fontSizeProvider').value = originalSettings.fontSize;
   $('caseProvider').value = originalSettings.textCase;
+  $('liveEnabledToggle').checked = isLiveEnabled();
   $('promptInput').value = getPrompt();
   updateCacheSizeDisplay();
   $('modal').classList.add('open');
@@ -419,6 +435,7 @@ function saveKeys() {
   const font = $('fontProvider').value;
   const fontSize = $('fontSizeProvider').value;
   const textCase = $('caseProvider').value;
+  const liveEnabled = $('liveEnabledToggle').checked;
   const prompt = $('promptInput').value.trim();
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
@@ -427,6 +444,7 @@ function saveKeys() {
   setFont(font);
   setFontSize(fontSize);
   setCase(textCase);
+  setLiveEnabled(liveEnabled);
   setPrompt(prompt || DEFAULT_PROMPT);
   updateKeyBtn();
   $('modal').classList.remove('open');
@@ -1895,6 +1913,10 @@ function renderSharedSignal(signal) {
 // ============================================================================
 
 function toggleLive() {
+  if (!isLiveEnabled()) {
+    openModal();
+    return;
+  }
   if (isLiveMode) {
     stopLiveFeed();
   } else {
@@ -1920,12 +1942,22 @@ function startLiveFeed() {
   liveAccountIndex = 0;
   liveAccountLastCheck = {};
   
-  // Initialize seen tweets from current scan
+  // Initialize seen tweets from current scan and signals
   if (lastScanResult?.rawTweets) {
     lastScanResult.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {
         seenTweetUrls.add(getTweetUrl(tw));
       });
+    });
+  }
+  if (lastScanResult?.signals) {
+    lastScanResult.signals.forEach(s => {
+      if (s.tweet_url) seenTweetUrls.add(s.tweet_url);
+    });
+  }
+  if (lastScanResult?.tweetMeta) {
+    Object.keys(lastScanResult.tweetMeta).forEach(url => {
+      seenTweetUrls.add(url);
     });
   }
   
@@ -2215,6 +2247,29 @@ async function analyzeLiveTweets(tweets, signal) {
 function prependSignals(newSignals, newTweets) {
   if (!newSignals.length) return;
   
+  // Dedupe against existing signals
+  const knownUrls = new Set();
+  const knownKeys = new Set();
+  if (lastScanResult?.signals) {
+    lastScanResult.signals.forEach(s => {
+      if (s.tweet_url) knownUrls.add(s.tweet_url);
+      knownKeys.add(`${s.tweet_url || ''}|${s.title || ''}|${s.summary || ''}`);
+    });
+  }
+  
+  newSignals = newSignals.filter(s => {
+    const key = `${s.tweet_url || ''}|${s.title || ''}|${s.summary || ''}`;
+    if (knownKeys.has(key)) return false;
+    if (s.tweet_url && knownUrls.has(s.tweet_url)) return false;
+    knownKeys.add(key);
+    return true;
+  });
+  
+  if (!newSignals.length) {
+    console.log('[Live] All signals were duplicates, skipping');
+    return;
+  }
+  
   // Build tweet map for the new tweets
   const tweetMap = {};
   newTweets.forEach(tw => {
@@ -2428,8 +2483,11 @@ function initEventListeners() {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   
-  // Restore live mode if it was active
-  if (localStorage.getItem(LS_LIVE_MODE) === 'true' && savedScan) {
+  // Update live button visibility
+  updateLiveButton();
+  
+  // Restore live mode if it was active and feature is enabled
+  if (isLiveEnabled() && localStorage.getItem(LS_LIVE_MODE) === 'true' && savedScan) {
     setTimeout(() => {
       startLiveFeed();
     }, 1000);

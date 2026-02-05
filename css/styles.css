@@ -49,7 +49,7 @@ body {
 /* Lowercase mode - UI elements only */
 [data-case="lower"] .logo-text, [data-case="lower"] .top-btn, [data-case="lower"] .live-btn, [data-case="lower"] .add-btn,
 [data-case="lower"] .preset-chip, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
-[data-case="lower"] .rng, [data-case="lower"] .clear-btn,
+[data-case="lower"] .rng, [data-case="lower"] .clear-btn, [data-case="lower"] .tweet-count,
 [data-case="lower"] .scan-btn, [data-case="lower"] .cancel-btn, [data-case="lower"] .sig-cat,
 [data-case="lower"] .dl-btn, [data-case="lower"] .new-badge, [data-case="lower"] .footer,
 [data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3,
@@ -72,7 +72,6 @@ button { font-family: inherit; cursor: pointer; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 .top-btn { background: none; border: none; font-size: var(--fs); color: var(--text-muted); }
 .top-btn:hover { color: var(--text); }
-.top-btn.warn { color: var(--amber); }
 
 /* modal */
 .modal-bg {
@@ -124,6 +123,10 @@ body.modal-open { overflow: hidden; }
 .modal-actions button.danger:hover { border-color: var(--red); }
 .modal-sm-btn { border: none; background: var(--bg-alt); font-size: var(--fs); color: var(--text); cursor: pointer; }
 .modal-sm-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
+.beta-tag { font-size: var(--fs-xs); color: var(--amber); background: var(--amber-10); padding: 1px 5px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.toggle-row { display: flex; align-items: flex-start; gap: 10px; }
+.toggle-row input[type="checkbox"] { margin-top: 3px; accent-color: var(--green); width: 16px; height: 16px; cursor: pointer; }
+.toggle-desc { font-size: var(--fs); color: var(--text-muted); line-height: 1.5; }
 .preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
   display: flex; align-items: center; justify-content: space-between; padding: 10px 0;
@@ -346,7 +349,7 @@ body.modal-open { overflow: hidden; }
 
 .live-btn {
   background: none; border: none; font-size: var(--fs); color: var(--text-muted);
-  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  display: none; align-items: center; gap: 6px; cursor: pointer;
 }
 .live-btn:hover { color: var(--text); }
 .live-btn.active { color: var(--green); }

@@ -72,6 +72,11 @@
     </select>
     <label>Analyst prompt <button type="button" class="modal-sm-btn reset-prompt" onclick="resetPrompt()">reset</button></label>
     <textarea id="promptInput" style="height:150px" placeholder="Custom instructions for the AI analyst..."></textarea>
+    <label>Live feed <span class="beta-tag">beta</span></label>
+    <div class="toggle-row">
+      <input type="checkbox" id="liveEnabledToggle">
+      <span class="toggle-desc">Passively monitor accounts for new posts. Uses ~3x more API credits than manual scans.</span>
+    </div>
     <label>Backup</label>
     <div style="display:flex;gap:8px">
       <button type="button" class="modal-sm-btn" id="exportBtn" onclick="exportData(this)">Export</button>
