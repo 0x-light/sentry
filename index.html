@@ -88,7 +88,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
-.dot { font-size: var(--fs); color: var(--text-strong); line-height: 1; }
+.dot { font-size: var(--fs); background: var(--text-strong); color: var(--bg); }
 .dot.loading { animation: pulse 0.6s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 .logo-text { font-size: var(--fs); font-weight: 500; color: var(--text-strong); }
@@ -99,36 +99,36 @@ button { font-family: inherit; cursor: pointer; }
 
 /* modal */
 .modal-bg {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100;
+  display: none; position: fixed; inset: 0; background: rgba(61, 61, 61, 0.5); z-index: 100;
   align-items: center; justify-content: center; padding: 16px;
 }
 .modal-bg.open { display: flex; }
 .modal {
-  background: var(--bg); border: 1px solid var(--border);
+  background: var(--bg);
   padding: 24px; width: 100%; max-width: 600px; max-height: calc(100vh - 32px); overflow-y: auto;
   position: relative;
 }
-.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; padding: 4px 8px; line-height: 1; }
+.modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; line-height: 1; }
 .modal-close:hover { color: var(--text-strong); }
 .modal h3 { font-size: var(--fs-xl); font-weight: 500; color: var(--text-strong); margin-bottom: 8px; }
 .modal p { font-size: var(--fs); color: var(--text-muted); margin-bottom: 24px; line-height: 1.6; }
 .modal p a { color: var(--blue); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
-.modal label { display: block; font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
+.modal label { display: flex; align-items: center; font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 6px; margin-top: 16px; text-transform: uppercase; }
 .modal label:first-of-type { margin-top: 0; }
-.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; margin-left: 8px; text-transform: lowercase; }
+.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; margin-left: auto; text-transform: lowercase; }
 .reset-prompt:hover { color: var(--text-strong); }
 .modal input, .modal select, .modal textarea {
-  width: 100%; border: 1px solid var(--chip-border); padding: 10px 12px;
+  width: 100%; border: none;
   font-family: inherit; font-size: inherit; color: var(--text-strong); outline: none;
-  background: var(--bg); resize: vertical;
+  background: var(--bg-alt); resize: vertical;
 }
 .modal select {
-  padding-right: 36px; cursor: pointer;
+  cursor: pointer;
   appearance: none; -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: right 0 center;
 }
 [data-theme="dark"] .modal select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
@@ -136,15 +136,15 @@ button { font-family: inherit; cursor: pointer; }
 .modal input:focus, .modal textarea:focus { border-color: var(--text-muted); }
 .modal-actions { display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end; }
 .modal-actions button {
-  background: none; border: 1px solid var(--chip-border);
-  font-size: var(--fs); padding: 3px 6px; color: var(--text);
+  background: none; border: none;
+  font-size: var(--fs); color: var(--text);
 }
 .modal-actions button:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .modal-actions button:last-child { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg); }
 .modal-actions button:last-child:hover { opacity: 0.9; }
-.modal-actions button.danger { color: var(--red); margin-right: auto; }
+.modal-actions button.danger { color: var(--red); margin-right: auto; background: var(--red-10); }
 .modal-actions button.danger:hover { border-color: var(--red); }
-.modal-sm-btn { background: none; border: 1px solid var(--chip-border); font-size: var(--fs); padding: 3px 6px; color: var(--text); cursor: pointer; }
+.modal-sm-btn { border: none; background: var(--bg-alt); font-size: var(--fs); color: var(--text); cursor: pointer; }
 .modal-sm-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
 .preset-list { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .preset-list-item {
@@ -215,7 +215,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .tweet-count { padding: 10px 20px; font-size: var(--fs); color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .tweet-count:empty { display: none; }
-#tweetCount:empty, #notices:empty, #tickerBar:empty, #scanActions:empty, #filterBar:empty, #results:empty { display: none; }
+#tweetCount:empty, #notices:empty, #tickerBar:empty, #scanActions:empty, #filterBar:empty, #results:empty, #sharedBanner:empty { display: none; }
 .tweet-count .dl-btn { margin-left: auto; }
 .dots::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
@@ -254,6 +254,9 @@ button { font-family: inherit; cursor: pointer; }
 .see-post { color: var(--text-muted); text-decoration: none; font-size: var(--fs); }
 .see-post:hover { color: var(--text-strong); }
 .see-post .arrow { display: none; }
+.share-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; padding: 0; }
+.share-btn:hover { color: var(--text-strong); }
+.share-btn.copied { color: var(--green); }
 @media (max-width: 700px) {
   .see-post .text { display: none; }
   .see-post .arrow { display: inline; }
@@ -264,7 +267,40 @@ button { font-family: inherit; cursor: pointer; }
   pointer-events: none; opacity: 0; border: 1px solid var(--text-strong);
 }
 .tweet-tooltip.vis { opacity: 1; }
+
+/* Mobile tweet expand */
+.tweet-expand { display: none; }
+.tweet-expand-btn {
+  background: none; border: none; color: var(--text-muted); font-size: var(--fs);
+  cursor: pointer; padding: 0; margin-top: 10px;
+}
+.tweet-expand-btn:hover { color: var(--text-strong); }
+.tweet-expand-content {
+  display: none; margin-top: 8px; padding: 10px;
+  background: var(--bg-alt); font-size: var(--fs); line-height: 1.5; color: var(--text);
+}
+.tweet-expand-content.open { display: block; }
+.tweet-expand-author { color: var(--text-muted); margin-bottom: 6px; }
+@media (max-width: 700px) {
+  .tweet-expand { display: block; }
+}
+
 .empty-state { padding: 48px 20px; font-size: var(--fs); color: var(--text-muted); text-align: center; }
+
+.shared-banner {
+  padding: 10px 20px; background: var(--blue-10);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.shared-banner-text { font-size: var(--fs); color: var(--blue); }
+.shared-banner a { color: var(--blue); font-size: var(--fs); text-decoration: none; }
+.shared-banner a:hover { color: var(--text-strong); }
+
+/* Shared view overrides */
+[data-shared] .topbar { border-bottom: none; }
+[data-shared] .signal { padding: 10px 20px; }
+[data-shared] .shared-banner, [data-shared] .shared-banner *,
+[data-shared] .sig-top, [data-shared] .sig-cat, [data-shared] .see-post,
+[data-shared] .footer, [data-shared] .footer * { text-transform: lowercase !important; }
 
 .history:empty { display: none; }
 .hist-item { padding: 10px 20px; border-bottom: 1px solid var(--border); }
@@ -297,16 +333,31 @@ button { font-family: inherit; cursor: pointer; }
 .footer a:hover { color: var(--text); }
 
 @media (max-width: 700px) {
-  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .signal, .footer, .hist-item {
+  .topbar, .controls, .notice, .tweet-count, .ticker-bar, .scan-actions, .filter-bar, .footer, .hist-item, .shared-banner {
     padding-left: 16px; padding-right: 16px;
   }
+  .signal { padding: 16px; }
+  [data-shared] .signal { padding: 10px 16px; }
   .hide-mobile { display: none; }
   .modal input, .modal textarea, .modal select, .input-row input { font-size: 16px !important; } /* prevent iOS zoom on focus */
   .modal-bg { align-items: flex-end; padding: 0; }
   .modal { max-width: 100%; max-height: 85vh; border: none; border-top: 1px solid var(--border); padding: 20px; }
-  .modal-actions { flex-direction: column-reverse; }
-  .modal-actions button { width: 100%; padding: 12px; }
-  .modal-actions button.danger { margin-right: 0; margin-top: 8px; }
+  .modal-actions { flex-direction: row; margin-top: 16px; }
+  .modal-actions button.danger { margin-right: auto; }
+}
+
+/* Disable hover states on touch devices */
+@media (hover: none) {
+  .top-btn:hover, .modal-close:hover, .reset-prompt:hover, .modal-actions button:hover,
+  .modal-sm-btn:hover, .preset-list-item button:hover, .preset-chip:hover, .preset-manage:hover,
+  .sug:hover, .rng:hover, .clear-btn:hover, .scan-btn:hover:not(:disabled), .cancel-btn:hover,
+  .ticker-item:hover, .sig-top a:hover, .ticker-tag:hover, .ext-link:hover, .see-post:hover,
+  .share-btn:hover, .tweet-expand-btn:hover, .shared-banner a:hover, .hist-toggle:hover,
+  .hist-actions button:hover, .dl-btn:hover, .footer a:hover {
+    color: inherit; opacity: inherit; background: inherit; border-color: inherit;
+  }
+  .modal-actions button:last-child:hover { opacity: 1; }
+  .ext-link:hover { background: var(--text-10); }
 }
 </style>
 </head>
@@ -334,6 +385,7 @@ button { font-family: inherit; cursor: pointer; }
     <select id="financeProvider">
       <option value="yahoo">Yahoo Finance</option>
       <option value="google">Google Finance</option>
+      <option value="tradingview">TradingView</option>
     </select>
     <label>Font</label>
     <select id="fontProvider">
@@ -353,7 +405,7 @@ button { font-family: inherit; cursor: pointer; }
       <option value="lower">lowercase</option>
       <option value="sentence">Sentence case</option>
     </select>
-    <label>Analyst prompt <button type="button" class="reset-prompt" onclick="resetPrompt()">reset</button></label>
+    <label>Analyst prompt <button type="button" class="modal-sm-btn reset-prompt" onclick="resetPrompt()">reset</button></label>
     <textarea id="promptInput" style="height:150px" placeholder="Custom instructions for the AI analyst..."></textarea>
     <label>Backup</label>
     <div style="display:flex;gap:8px">
@@ -393,7 +445,7 @@ button { font-family: inherit; cursor: pointer; }
 
 <div class="topbar">
   <div class="logo">
-    <span class="dot" id="dot">█</span>
+    <span class="dot" id="dot">&nbsp;</span>
     <span class="logo-text">Sentry</span>
   </div>
   <div class="topbar-right">
@@ -413,6 +465,7 @@ button { font-family: inherit; cursor: pointer; }
   <div class="ranges" id="rangesRow"></div>
 </div>
 
+<div id="sharedBanner"></div>
 <div id="tweetCount"></div>
 <div id="notices"></div>
 <div id="tickerBar"></div>
@@ -426,8 +479,8 @@ button { font-family: inherit; cursor: pointer; }
 <script>
 // --- Config ---
 const DEFAULT_PRESETS = [
-  { name: 'tradfi', accounts: ['ayz_yzyz', 'citrini7', 'jukan05', 'nicholastreece', 'zephyr_z9'] },
-  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkyle__', '0xNairolf', '33b345', '__bleeker', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'blknoiz06', 'Bluntz_Capital', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DegenPing', 'delucinator', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'goodalexander', 'hansolar21', 'HsakaTrades', 'Husslin_', 'ieaturfoods', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'maruushae', 'mert', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'ThinkingUSD', 'trading_axe', 'TreeNewsFeed', 'tzedonn', 'velo_xyz', 'xmgnr', 'zoomerfied'] },
+  { name: 'tradfi', accounts: ['abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'MartinShkreli', 'nicholastreece', 'zephyr_z9'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
 ];
 const MAX_RECENTS = 10; // how many recent accounts to show
 const RANGES = [
@@ -447,7 +500,17 @@ const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
 const LS_CURRENT = 'signal_current_scan';
 const LS_PROMPT = 'signal_custom_prompt';
-const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be thorough — every tweet with a tradeable opinion counts.
+const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be selective — only tweets with genuine trading opinions count.
+
+WHAT TO SKIP (return nothing for these):
+- Pure memes/shitposts with no underlying thesis (but note: alpha can be hidden in humor — extract the insight if there's a real opinion beneath the joke)
+- General commentary without actionable insight
+- Personal life updates, announcements unrelated to markets
+- Engagement bait or vague hype without substance
+
+IMAGES:
+- Tweet images may be included. Use them to understand context (charts, screenshots, memes).
+- If an image is purely comedic with no market insight, skip. But if humor wraps a real take, extract it.
 
 ACCURACY & INFERENCE RULES:
 - Ground every signal in the specific tweet text associated with its tweet_url. Do NOT mix facts from other tweets.
@@ -711,7 +774,7 @@ function validateApiKey(key, type) {
   return true;
 }
 
-function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'yahoo'; }
+function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'tradingview'; }
 function getFont() { return localStorage.getItem(LS_FONT) || 'mono'; }
 function setFont(f) {
   localStorage.setItem(LS_FONT, f);
@@ -794,13 +857,23 @@ function cleanupCache() {
   }
 }
 
+// Store original settings for preview/revert
+let originalSettings = {};
+
 function openModal() {
+  // Store original values for revert on cancel
+  originalSettings = {
+    font: getFont(),
+    fontSize: getFontSize(),
+    textCase: getCase(),
+  };
+  
   $('twKeyInput').value = getTwKey();
   $('keyInput').value = getAnKey();
   $('financeProvider').value = getFinanceProvider();
-  $('fontProvider').value = getFont();
-  $('fontSizeProvider').value = getFontSize();
-  $('caseProvider').value = getCase();
+  $('fontProvider').value = originalSettings.font;
+  $('fontSizeProvider').value = originalSettings.fontSize;
+  $('caseProvider').value = originalSettings.textCase;
   $('promptInput').value = getPrompt();
   updateCacheSizeDisplay();
   $('modal').classList.add('open');
@@ -819,7 +892,13 @@ function clearCache() {
   localStorage.removeItem(LS_ANALYSIS_CACHE);
   updateCacheSizeDisplay();
 }
-function closeModal() { $('modal').classList.remove('open'); }
+function closeModal() {
+  // Revert to original settings on close/cancel
+  if (originalSettings.font) setFont(originalSettings.font);
+  if (originalSettings.fontSize) setFontSize(originalSettings.fontSize);
+  if (originalSettings.textCase) setCase(originalSettings.textCase);
+  $('modal').classList.remove('open');
+}
 function saveKeys() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
@@ -831,12 +910,19 @@ function saveKeys() {
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
   localStorage.setItem(LS_FINANCE, fp);
+  // Update original settings so closeModal doesn't revert
+  originalSettings = { font, fontSize, textCase };
   setFont(font);
   setFontSize(fontSize);
   setCase(textCase);
   setPrompt(prompt || DEFAULT_PROMPT);
   updateKeyBtn();
-  closeModal();
+  $('modal').classList.remove('open'); // Close without reverting
+  // Re-render results if any exist (updates ticker links for new provider)
+  if (lastScanResult && lastScanResult.signals) {
+    renderTickers(lastScanResult.signals);
+    renderSignals(lastScanResult.signals);
+  }
 }
 function clearKeys() {
   localStorage.removeItem(LS_TW);
@@ -940,6 +1026,10 @@ $('modal').addEventListener('click', e => {
 });
 $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
 $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
+// Live preview for visual settings
+$('fontProvider').addEventListener('change', e => setFont(e.target.value));
+$('fontSizeProvider').addEventListener('change', e => setFontSize(e.target.value));
+$('caseProvider').addEventListener('change', e => setCase(e.target.value));
 updateKeyBtn();
 
 // --- Accounts ---
@@ -1297,6 +1387,18 @@ function getTweetUrl(tw) {
   return tw.url || `https://x.com/i/status/${tw.id}`;
 }
 
+// Extract first image URL from tweet (for vision analysis)
+function getTweetImageUrl(tw) {
+  // Try extendedEntities first (higher quality), then entities
+  const media = tw.extendedEntities?.media || tw.entities?.media || tw.media || [];
+  for (const m of media) {
+    if (m.type === 'photo' || m.type === 'image') {
+      return m.media_url_https || m.url || null;
+    }
+  }
+  return null;
+}
+
 function formatTweetForAnalysis(tw) {
   const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
   const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
@@ -1526,6 +1628,8 @@ async function fetchAllTweets(accounts, days, onProgress, signal) {
 // Analyze tweets with intelligent batching
 const ANALYSIS_CONCURRENCY = 2;
 const MAX_BATCH_CHARS = 640000; // ~160k tokens
+const MAX_BATCH_CHARS_WITH_IMAGES = 400000; // ~100k tokens (leave room for images)
+const MAX_IMAGES_PER_BATCH = 5; // ~5k tokens each = ~25k tokens for images
 const BATCH_SEPARATOR = '\n\n======\n\n';
 
 function buildBatches(accountData, promptChars) {
@@ -1534,8 +1638,14 @@ function buildBatches(accountData, promptChars) {
     const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
     const accountText = `${header}\n${body}`;
     const tweetUrls = a.tweets.map(getTweetUrl).filter(Boolean);
-    return { account: a.account, text: accountText, size: accountText.length, tweetUrls };
+    // Collect image URLs (max 1 per tweet)
+    const imageUrls = a.tweets.map(getTweetImageUrl).filter(Boolean);
+    return { account: a.account, text: accountText, size: accountText.length, tweetUrls, imageUrls };
   });
+
+  // Check if any tweets have images - use smaller batch size to leave room for image tokens
+  const hasAnyImages = items.some(i => i.imageUrls.length > 0);
+  const maxChars = hasAnyImages ? MAX_BATCH_CHARS_WITH_IMAGES : MAX_BATCH_CHARS;
 
   // First-fit decreasing for tighter packing without trimming content
   items.sort((a, b) => b.size - a.size);
@@ -1545,10 +1655,11 @@ function buildBatches(accountData, promptChars) {
     let placed = false;
     for (const batch of batches) {
       const extra = (batch.items.length ? BATCH_SEPARATOR.length : 0) + item.size;
-      if (batch.size + extra <= MAX_BATCH_CHARS) {
+      if (batch.size + extra <= maxChars) {
         batch.items.push(item);
         batch.size += extra;
         batch.tweetUrls.push(...item.tweetUrls);
+        batch.imageUrls.push(...item.imageUrls);
         placed = true;
         break;
       }
@@ -1558,6 +1669,7 @@ function buildBatches(accountData, promptChars) {
         items: [item],
         size: promptChars + item.size,
         tweetUrls: [...item.tweetUrls],
+        imageUrls: [...item.imageUrls],
       });
     }
   });
@@ -1565,6 +1677,8 @@ function buildBatches(accountData, promptChars) {
   return batches.map(b => ({
     text: b.items.map(i => i.text).join(BATCH_SEPARATOR),
     tweetUrls: [...new Set(b.tweetUrls)],
+    // Cap images per batch to stay within context limits (~5k tokens each)
+    imageUrls: [...new Set(b.imageUrls)].slice(0, MAX_IMAGES_PER_BATCH),
     accounts: b.items.map(i => i.account),
     size: b.size,
   }));
@@ -1620,12 +1734,27 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
       }
 
-      const batchContent = sanitizeText(`${prompt}\n\n${batch.text}`);
+      const textContent = sanitizeText(`${prompt}\n\n${batch.text}`);
+      
+      // Build message content - use multi-part format if images exist
+      let messageContent;
+      if (batch.imageUrls && batch.imageUrls.length > 0) {
+        messageContent = [
+          { type: 'text', text: textContent },
+          ...batch.imageUrls.map(url => ({
+            type: 'image',
+            source: { type: 'url', url }
+          }))
+        ];
+      } else {
+        messageContent = textContent;
+      }
+      
       try {
         const data = await anthropicCall({
           model: ANALYSIS_MODEL,
           max_tokens: 16384,
-          messages: [{ role: 'user', content: batchContent }],
+          messages: [{ role: 'user', content: messageContent }],
         }, 5, signal);
 
         const txt = extractText(data.content);
@@ -1944,16 +2073,58 @@ function downloadLastScan() {
 }
 
 // --- Renderers ---
+// Common crypto symbols -> CoinGecko slugs
+const CRYPTO_SLUGS = {
+  BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', DOGE: 'dogecoin', XRP: 'ripple',
+  ADA: 'cardano', AVAX: 'avalanche-2', DOT: 'polkadot', MATIC: 'matic-network', POL: 'matic-network',
+  LINK: 'chainlink', UNI: 'uniswap', ATOM: 'cosmos', LTC: 'litecoin', BCH: 'bitcoin-cash',
+  XLM: 'stellar', ALGO: 'algorand', VET: 'vechain', FIL: 'filecoin', ICP: 'internet-computer',
+  NEAR: 'near', APT: 'aptos', ARB: 'arbitrum', OP: 'optimism', SUI: 'sui',
+  SEI: 'sei-network', INJ: 'injective-protocol', TIA: 'celestia', PEPE: 'pepe', WIF: 'dogwifcoin',
+  BONK: 'bonk', SHIB: 'shiba-inu', FTM: 'fantom', SAND: 'the-sandbox', MANA: 'decentraland',
+  APE: 'apecoin', CRV: 'curve-dao-token', AAVE: 'aave', MKR: 'maker', SNX: 'havven',
+  COMP: 'compound-governance-token', LDO: 'lido-dao', RPL: 'rocket-pool', GMX: 'gmx',
+  DYDX: 'dydx', JUP: 'jupiter-exchange-solana', JTO: 'jito-governance-token', PYTH: 'pyth-network',
+  WLD: 'worldcoin-wld', RENDER: 'render-token', RNDR: 'render-token', FET: 'fetch-ai', AGIX: 'singularitynet',
+  TAO: 'bittensor', GALA: 'gala', IMX: 'immutable-x', BLUR: 'blur', ENS: 'ethereum-name-service',
+  STX: 'blockstack', RUNE: 'thorchain', OSMO: 'osmosis', KAVA: 'kava', ROSE: 'oasis-network',
+  ZEC: 'zcash', EOS: 'eos', XMR: 'monero', EGLD: 'elrond-erd-2', HBAR: 'hedera-hashgraph',
+  QNT: 'quant-network', THETA: 'theta-token', XTZ: 'tezos', FLOW: 'flow', NEO: 'neo',
+  KAS: 'kaspa', TON: 'the-open-network', TRX: 'tron', USDT: 'tether', USDC: 'usd-coin',
+  DAI: 'dai', BUSD: 'binance-usd', TUSD: 'true-usd', FRAX: 'frax', LUSD: 'liquity-usd',
+};
+
 function tickerUrl(sym) {
   const s = sym.replace(/^\$/, '').toUpperCase();
-  if (getFinanceProvider() === 'google') {
-    // Google Finance needs exchange, try to infer from suffix
+  const provider = getFinanceProvider();
+  
+  // TradingView for both crypto and stocks
+  if (provider === 'tradingview') {
+    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${s}USDT`;
+  }
+  
+  // Crypto fallback to CoinGecko for other providers
+  if (CRYPTO_SLUGS[s]) {
+    return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;
+  }
+  
+  // Stocks: use selected provider
+  if (provider === 'tradingview') {
+    if (s.endsWith('.TW')) return `https://www.tradingview.com/chart/?symbol=TWSE:${s.replace('.TW', '')}`;
+    if (s.endsWith('.HK')) return `https://www.tradingview.com/chart/?symbol=HKEX:${s.replace('.HK', '')}`;
+    if (s.endsWith('.T')) return `https://www.tradingview.com/chart/?symbol=TSE:${s.replace('.T', '')}`;
+    if (s.endsWith('.KS')) return `https://www.tradingview.com/chart/?symbol=KRX:${s.replace('.KS', '')}`;
+    return `https://www.tradingview.com/chart/?symbol=${s}`;
+  }
+  
+  if (provider === 'google') {
     if (s.endsWith('.TW')) return `https://www.google.com/finance/quote/${s.replace('.TW', '')}:TPE?window=6M`;
     if (s.endsWith('.HK')) return `https://www.google.com/finance/quote/${s.replace('.HK', '')}:HKG?window=6M`;
     if (s.endsWith('.T')) return `https://www.google.com/finance/quote/${s.replace('.T', '')}:TYO?window=6M`;
     if (s.endsWith('.KS')) return `https://www.google.com/finance/quote/${s.replace('.KS', '')}:KRX?window=6M`;
     return `https://www.google.com/finance/quote/${s}?window=6M`;
   }
+  
   return `https://finance.yahoo.com/quote/${encodeURIComponent(s)}`;
 }
 
@@ -2048,12 +2219,23 @@ function renderSignals(signals) {
       ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>`
       : '';
     
-    h += `<div class="signal" data-category="${esc(cat || '')}">
-      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span>${seePost}</div>
+    const tweetExpandId = `tweet-expand-${i}`;
+    const tweetExpand = tweetInfo.text ? `
+      <div class="tweet-expand">
+        <button class="tweet-expand-btn" onclick="toggleTweetExpand('${tweetExpandId}', this)">show tweet ▸</button>
+        <div class="tweet-expand-content" id="${tweetExpandId}">
+          <div class="tweet-expand-author">@${esc(source)}${time ? ` · ${time}` : ''}</div>
+          ${esc(tweetInfo.text)}
+        </div>
+      </div>` : '';
+    
+    h += `<div class="signal" data-category="${esc(cat || '')}" data-index="${i}">
+      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span><span style="display:flex;gap:12px;align-items:center"><button class="share-btn" onclick="shareSignal(${i})" title="Share">share</button>${seePost}</span></div>
       ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
       <div class="sig-title">${esc(item.title || '')}</div>
       <div class="sig-summary">${esc(item.summary || '')}</div>
       ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+      ${tweetExpand}
     </div>`;
   });
   el.innerHTML = h;
@@ -2061,6 +2243,13 @@ function renderSignals(signals) {
   renderFilters();
   $('footer').innerHTML = 'Not financial advice';
   setupTweetTooltips();
+}
+
+function toggleTweetExpand(id, btn) {
+  const content = document.getElementById(id);
+  if (!content) return;
+  const isOpen = content.classList.toggle('open');
+  btn.textContent = isOpen ? 'hide tweet ▾' : 'show tweet ▸';
 }
 
 function setupTweetTooltips() {
@@ -2259,6 +2448,157 @@ function renderFilters() {
 }
 
 // ============================================================================
+// SHARING - URL-based card sharing
+// ============================================================================
+
+function encodeSignal(signal) {
+  // Compact format to keep URL short
+  const compact = {
+    t: signal.title || '',
+    s: signal.summary || '',
+    c: signal.category || '',
+    src: (signal.source || '').replace(/^@/, ''),
+    tk: (signal.tickers || []).map(t => ({ s: t.symbol, a: t.action })),
+    u: signal.tweet_url || '',
+  };
+  if (signal.links?.length) compact.ln = signal.links;
+  
+  const json = JSON.stringify(compact);
+  // Use base64url encoding (URL-safe)
+  return btoa(unescape(encodeURIComponent(json)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeSignal(encoded) {
+  try {
+    // Restore base64 padding and standard chars
+    let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    
+    const json = decodeURIComponent(escape(atob(b64)));
+    const compact = JSON.parse(json);
+    
+    return {
+      title: compact.t || '',
+      summary: compact.s || '',
+      category: compact.c || '',
+      source: compact.src || '',
+      tickers: (compact.tk || []).map(t => ({ symbol: t.s, action: t.a })),
+      tweet_url: compact.u || '',
+      links: compact.ln || [],
+    };
+  } catch (e) {
+    console.warn('Failed to decode shared signal:', e);
+    return null;
+  }
+}
+
+function shareSignal(index) {
+  if (!lastScanResult?.signals?.[index]) return;
+  
+  const signal = lastScanResult.signals[index];
+  const encoded = encodeSignal(signal);
+  const url = `${location.origin}${location.pathname}#s=${encoded}`;
+  
+  navigator.clipboard.writeText(url).then(() => {
+    // Visual feedback
+    const btn = document.querySelector(`.signal[data-index="${index}"] .share-btn`);
+    if (btn) {
+      btn.classList.add('copied');
+      btn.textContent = 'copied';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.textContent = 'share';
+      }, 1500);
+    }
+  }).catch(err => {
+    console.warn('Failed to copy:', err);
+  });
+}
+
+function checkSharedSignal() {
+  const hash = location.hash;
+  if (!hash.startsWith('#s=')) return false;
+  
+  const encoded = hash.slice(3);
+  const signal = decodeSignal(encoded);
+  if (!signal) return false;
+  
+  // Mark as shared view
+  document.body.setAttribute('data-shared', '');
+  
+  // Show shared banner
+  $('sharedBanner').innerHTML = `
+    <div class="shared-banner">
+      <span class="shared-banner-text">shared signal</span>
+      <a href="${location.pathname}">← back to sentry</a>
+    </div>
+  `;
+  
+  // Hide controls for shared view
+  document.querySelector('.controls').style.display = 'none';
+  
+  // Render the single shared signal
+  renderSharedSignal(signal);
+  
+  return true;
+}
+
+function renderSharedSignal(signal) {
+  const cat = normCat(signal.category)?.toLowerCase();
+  const source = (signal.source || '').replace(/^@/, '');
+  
+  const tickers = (signal.tickers?.length)
+    ? signal.tickers.map(t => {
+        const url = tickerUrl(t.symbol || '');
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}</a>`;
+      }).join('')
+    : '';
+  
+  const extLinks = (signal.links?.length)
+    ? signal.links.map(l => {
+        try {
+          const hostname = new URL(l).hostname.replace('www.','').toLowerCase();
+          return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+        } catch { return ''; }
+      }).filter(Boolean).join(' ')
+    : '';
+  
+  const sourceLink = signal.tweet_url 
+    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+    : `@${esc(source)}`;
+  
+  // Use summary as tooltip preview (original tweet not available in shared URL)
+  const tooltipText = signal.summary || signal.title || '';
+  const seePost = signal.tweet_url
+    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tooltipText)}" data-author="${esc(source)}"><span class="text">see post</span><span class="arrow">↗</span></a>`
+    : '';
+  
+  // Mobile expand (use summary since original tweet not in shared URL)
+  const tweetExpand = tooltipText ? `
+    <div class="tweet-expand">
+      <button class="tweet-expand-btn" onclick="toggleTweetExpand('shared-tweet-expand', this)">show tweet ▸</button>
+      <div class="tweet-expand-content" id="shared-tweet-expand">
+        <div class="tweet-expand-author">@${esc(source)}</div>
+        ${esc(tooltipText)}
+      </div>
+    </div>` : '';
+  
+  const h = `<div class="signal">
+    <div class="sig-top"><span>${sourceLink}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span>${seePost}</div>
+    ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+    <div class="sig-title">${esc(signal.title || '')}</div>
+    <div class="sig-summary">${esc(signal.summary || '')}</div>
+    ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+    ${tweetExpand}
+  </div>`;
+  
+  $('results').innerHTML = h;
+  $('footer').innerHTML = 'shared from <a href="' + location.pathname + '">sentry</a> · not financial advice';
+  setupTweetTooltips();
+}
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -2269,6 +2609,12 @@ function renderFilters() {
   setFont(getFont());
   setFontSize(getFontSize());
   setCase(getCase());
+  
+  // Check for shared signal in URL first
+  if (checkSharedSignal()) {
+    console.log('✓ Sentry initialized (shared view)');
+    return; // Don't load normal UI
+  }
   
   // Load user data
   loadAccountsData();
