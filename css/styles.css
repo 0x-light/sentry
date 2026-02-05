@@ -270,7 +270,7 @@ body.modal-open { overflow: hidden; }
 .empty-state { padding: 48px 15px; font-size: var(--fs); color: var(--text-muted); text-align: center; }
 
 .shared-banner {
-  padding: 10px 15px; background: var(--blue-10);
+  padding: 10px; background: var(--blue-10);
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .shared-banner-text { font-size: var(--fs); color: var(--blue); }
