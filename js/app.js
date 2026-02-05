@@ -1352,6 +1352,26 @@ const CRYPTO_SLUGS = {
 const priceCache = {};
 const PRICE_CACHE_TTL = 60000;
 
+// Map common index names to Yahoo Finance symbols
+const INDEX_MAP = {
+  'SPX': '^GSPC', 'SP500': '^GSPC', 'SPY': 'SPY',
+  'NDX': '^NDX', 'NASDAQ': '^IXIC', 'QQQ': 'QQQ', 'COMPQ': '^IXIC',
+  'DJI': '^DJI', 'DJIA': '^DJI', 'DOW': '^DJI', 'DIA': 'DIA',
+  'RUT': '^RUT', 'IWM': 'IWM',
+  'VIX': '^VIX', 'UVXY': 'UVXY', 'VXX': 'VXX',
+  'TNX': '^TNX', 'TLT': 'TLT', 'TBT': 'TBT',
+  'DXY': 'DX-Y.NYB', 'UUP': 'UUP',
+  'GLD': 'GLD', 'SLV': 'SLV', 'USO': 'USO', 'UNG': 'UNG',
+  'XLF': 'XLF', 'XLE': 'XLE', 'XLK': 'XLK', 'XLV': 'XLV', 'XLI': 'XLI', 'XLP': 'XLP', 'XLU': 'XLU', 'XLY': 'XLY', 'XLB': 'XLB', 'XLRE': 'XLRE',
+  'ARKK': 'ARKK', 'ARKG': 'ARKG', 'ARKW': 'ARKW', 'ARKF': 'ARKF',
+  'SMH': 'SMH', 'SOXX': 'SOXX', 'XBI': 'XBI', 'IBB': 'IBB',
+};
+
+function normalizeSymbol(sym) {
+  const clean = sym.replace(/^\$/, '').toUpperCase();
+  return INDEX_MAP[clean] || clean;
+}
+
 function isCrypto(sym) {
   return !!CRYPTO_SLUGS[sym.replace(/^\$/, '').toUpperCase()];
 }
@@ -1397,12 +1417,14 @@ async function fetchCryptoPrices(symbols) {
   } catch (e) { /* silent fail */ }
 }
 
-async function fetchStockPrice(sym) {
+async function fetchStockPrice(sym, originalSym = null) {
+  const cacheKey = originalSym || sym;
   const now = Date.now();
-  const cached = priceCache[sym];
+  const cached = priceCache[cacheKey];
   if (cached && (now - cached.ts < PRICE_CACHE_TTL)) return;
   try {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
+    const yahooSym = normalizeSymbol(sym);
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=2d`;
     const url = `https://proxy.sentry.is/?url=${encodeURIComponent(yahooUrl)}`;
     const resp = await fetch(url);
     if (!resp.ok) return;
@@ -1413,7 +1435,7 @@ async function fetchStockPrice(sym) {
     const prevClose = result.meta?.chartPreviousClose || result.meta?.previousClose;
     if (price == null) return;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
-    priceCache[sym] = { price, change, ts: now };
+    priceCache[cacheKey] = { price, change, ts: now };
   } catch (e) { /* silent fail */ }
 }
 
@@ -1427,7 +1449,7 @@ async function fetchAllPrices(symbols) {
   });
   const promises = [];
   if (cryptoSyms.length) promises.push(fetchCryptoPrices(cryptoSyms));
-  stockSyms.forEach(s => promises.push(fetchStockPrice(s)));
+  stockSyms.forEach(s => promises.push(fetchStockPrice(s, s)));
   await Promise.all(promises);
 }
 
