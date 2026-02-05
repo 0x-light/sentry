@@ -1,0 +1,1947 @@
+// ============================================================================
+// SENTRY - Trading Signal Scanner
+// ============================================================================
+
+// --- Config ---
+const DEFAULT_PRESETS = [
+  { name: 'tradfi', accounts: ['abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'MartinShkreli', 'nicholastreece', 'zephyr_z9'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
+];
+const MAX_RECENTS = 10;
+const RANGES = [
+  { label: 'Today', days: 1 },
+  { label: 'This week', days: 7 },
+  { label: 'This month', days: 30 },
+];
+const CATEGORIES = ['Trade', 'Tool', 'Insight', 'Resource'];
+const CAT_C = { Trade: 'var(--green)', Tool: 'var(--blue)', Insight: 'var(--purple)', Resource: 'var(--amber)' };
+const CAT_MIGRATE = { 'Investment Idea': 'Trade', 'Tool / Product': 'Tool' };
+function normCat(c) { return CAT_MIGRATE[c] || c; }
+const ACT_C = { buy: 'var(--green)', sell: 'var(--red)', hold: 'var(--amber)', watch: 'var(--blue)', mixed: 'var(--purple)' };
+const ACT_BG = { buy: 'var(--green-10)', sell: 'var(--red-10)', hold: 'var(--amber-10)', watch: 'var(--blue-10)', mixed: 'var(--purple-10)' };
+const LS_TW = 'signal_twitter_key';
+const LS_AN = 'signal_anthropic_key';
+const LS_SCANS = 'signal_scan_history';
+const LS_CURRENT = 'signal_current_scan';
+const LS_PROMPT = 'signal_custom_prompt';
+const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be selective — only tweets with genuine trading opinions count.
+
+WHAT TO SKIP (return nothing for these):
+- Pure memes/shitposts with no underlying thesis (but note: alpha can be hidden in humor — extract the insight if there's a real opinion beneath the joke)
+- General commentary without actionable insight
+- Personal life updates, announcements unrelated to markets
+- Engagement bait or vague hype without substance
+
+IMAGES:
+- Tweet images may be included. Use them to understand context (charts, screenshots, memes).
+- If an image is purely comedic with no market insight, skip. But if humor wraps a real take, extract it.
+
+ACCURACY & INFERENCE RULES:
+- Ground every signal in the specific tweet text associated with its tweet_url. Do NOT mix facts from other tweets.
+- Inference is allowed but must be clearly framed (use "implies", "suggests", "seems to").
+- Do NOT invent concrete claims (products, events, metrics, partnerships) not present in the tweet.
+- If a tweet is vague, keep your summary appropriately vague.
+- If a tweet quotes/replies to another, consider BOTH but clearly distinguish the source's opinion from the quoted content.
+
+WRITING STYLE:
+- Write for a smart generalist, not a finance insider.
+- Avoid jargon unless essential — if you use it, briefly clarify (e.g. "TVL (total value locked)").
+- Prefer plain language: "price looks cheap" over "valuation compressed", "buying opportunity" over "constructive setup".
+- Titles should be scannable and self-explanatory in under 3 seconds.
+- Summaries should answer: what's the opinion, and why?
+
+Return a JSON array. Each signal:
+- "title": A clear headline capturing the tweet's intent. Lead with ticker/company when relevant. Signal inference when present ("price drop may be overblown").
+- "summary": 1-2 plain-language sentences summarizing the opinion and reasoning. Quote key phrases when useful; do not fabricate specifics.
+- "category": "Trade" | "Tool" | "Insight" | "Resource"
+- "source": twitter handle (no @)
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned, including when they appear as abbreviations (NVDA, MSFT), company names (Samsung → $005930.KS, Nvidia → $NVDA), or informal references. Look up the correct ticker symbol. Yahoo Finance format: US stocks = symbol only ($AAPL), Taiwan = .TW ($2408.TW), Hong Kong = .HK, Japan = .T, Korea = .KS, crypto = symbol only ($BTC, $ETH). NEVER skip a tradeable asset mentioned in the tweet.
+- "tweet_url": exact tweet_url from data
+- "links": external URLs mentioned (articles, substacks). Empty array if none.
+
+Return ONLY valid JSON array. No markdown, no explanation.`;
+const LS_ACCOUNTS = 'signal_accounts';
+const LS_LOADED_PRESETS = 'signal_loaded_presets';
+const LS_PRESETS = 'signal_presets';
+const LS_THEME = 'signal_theme';
+const LS_FINANCE = 'signal_finance_provider';
+const LS_FONT = 'signal_font';
+const LS_FONT_SIZE = 'signal_font_size';
+const LS_CASE = 'signal_case';
+const LS_RECENTS = 'signal_recent_accounts';
+const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
+const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
+const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
+
+let customAccounts = [];
+let loadedPresets = [];
+let range = 1;
+let lastScanResult = null;
+let busy = false;
+let logs = [];
+let filters = { category: null };
+
+function getAllAccounts() {
+  const all = [...customAccounts];
+  const presets = getPresets();
+  for (const name of loadedPresets) {
+    const p = presets.find(p => p.name === name);
+    if (p) all.push(...p.accounts);
+  }
+  return [...new Set(all)];
+}
+
+function hasAnyAccounts() {
+  return customAccounts.length > 0 || loadedPresets.length > 0;
+}
+
+// --- DOM ---
+const $ = id => document.getElementById(id);
+const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+// --- Theme ---
+function getTheme() { return localStorage.getItem(LS_THEME) || 'light'; }
+function setTheme(t) {
+  localStorage.setItem(LS_THEME, t);
+  document.documentElement.setAttribute('data-theme', t);
+}
+function toggleTheme() { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }
+
+// --- Presets ---
+function getPresets() {
+  const stored = localStorage.getItem(LS_PRESETS);
+  if (!stored) {
+    localStorage.setItem(LS_PRESETS, JSON.stringify(DEFAULT_PRESETS));
+    return DEFAULT_PRESETS;
+  }
+  return JSON.parse(stored);
+}
+function savePresetsData(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
+function loadPreset(name) {
+  const preset = getPresets().find(p => p.name === name);
+  if (!preset) return;
+  if (loadedPresets.includes(name)) {
+    loadedPresets = loadedPresets.filter(n => n !== name);
+  } else {
+    loadedPresets.push(name);
+  }
+  saveLoadedPresets();
+  render();
+}
+
+function deletePreset(name) {
+  savePresetsData(getPresets().filter(p => p.name !== name));
+  renderPresets();
+  renderPresetList();
+}
+function renderPresets() {
+  const el = $('presetsRow');
+  const presets = getPresets();
+  let h = '';
+  presets.forEach(p => {
+    const selected = loadedPresets.includes(p.name) ? ' selected' : '';
+    h += `<button class="preset-chip${selected}" onclick="loadPreset('${esc(p.name)}')">${esc(p.name)} <span class="count">(${p.accounts.length})</span></button>`;
+  });
+  customAccounts.forEach(a => {
+    h += `<button class="preset-chip selected" onclick="rmCustom('${esc(a)}')">${esc(a)}</button>`;
+  });
+  h += `<button class="preset-manage" onclick="openPresetModal()">+</button>`;
+  if (loadedPresets.length > 0 || customAccounts.length > 0) {
+    h += `<button class="clear-btn" onclick="clearAllAccounts()">×</button>`;
+  }
+  el.innerHTML = h;
+}
+let editingPresetName = null;
+
+function openPresetModal() {
+  editingPresetName = null;
+  $('presetNameInput').value = '';
+  $('presetAccountsInput').value = getAllAccounts().join(', ');
+  renderPresetList();
+  $('presetModal').classList.add('open');
+  document.body.classList.add('modal-open');
+  $('presetNameInput').focus();
+}
+function closePresetModal() {
+  editingPresetName = null;
+  $('presetModal').classList.remove('open');
+  document.body.classList.remove('modal-open');
+}
+function editPreset(name) {
+  const preset = getPresets().find(p => p.name === name);
+  if (!preset) return;
+  editingPresetName = name;
+  $('presetNameInput').value = preset.name;
+  $('presetAccountsInput').value = preset.accounts.join(', ');
+  $('presetNameInput').focus();
+  renderPresetList();
+}
+function savePreset() {
+  const name = $('presetNameInput').value.trim();
+  const accountsStr = $('presetAccountsInput').value;
+  const accts = accountsStr.split(',').map(a => a.trim().replace(/^@/, '').toLowerCase()).filter(a => a);
+  if (!name || !accts.length) return;
+  let presets = getPresets();
+  if (editingPresetName) {
+    presets = presets.filter(p => p.name !== editingPresetName);
+  }
+  presets = presets.filter(p => p.name !== name);
+  presets.push({ name, accounts: accts });
+  savePresetsData(presets);
+  if (editingPresetName && editingPresetName !== name && loadedPresets.includes(editingPresetName)) {
+    loadedPresets = loadedPresets.map(n => n === editingPresetName ? name : n);
+    saveLoadedPresets();
+  }
+  editingPresetName = null;
+  renderPresets();
+  renderPresetList();
+  render();
+  $('presetNameInput').value = '';
+  $('presetAccountsInput').value = '';
+}
+function renderPresetList() {
+  const el = $('presetList');
+  const presets = getPresets();
+  if (!presets.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:var(--fs);margin-top:8px">No presets yet</p>'; return; }
+  el.innerHTML = presets.map(p => {
+    const isEditing = editingPresetName === p.name;
+    return `
+    <div class="preset-list-item${isEditing ? ' editing' : ''}">
+      <span>${esc(p.name)}<small>${p.accounts.length} accounts</small></span>
+      <div class="preset-list-actions">
+        <button onclick="editPreset('${esc(p.name)}')">${isEditing ? 'Editing' : 'Edit'}</button>
+        <button class="danger" onclick="deletePreset('${esc(p.name)}')">Delete</button>
+      </div>
+    </div>
+  `}).join('');
+}
+
+// --- Account Persistence ---
+function saveAccounts() { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(customAccounts)); }
+function loadAccountsData() {
+  const saved = localStorage.getItem(LS_ACCOUNTS);
+  if (saved) customAccounts = JSON.parse(saved);
+}
+function saveLoadedPresets() { localStorage.setItem(LS_LOADED_PRESETS, JSON.stringify(loadedPresets)); }
+function loadLoadedPresets() {
+  const saved = localStorage.getItem(LS_LOADED_PRESETS);
+  if (saved) loadedPresets = JSON.parse(saved);
+}
+
+// --- Recent Accounts ---
+function getRecents() {
+  return JSON.parse(localStorage.getItem(LS_RECENTS) || '[]');
+}
+function addToRecents(accounts) {
+  let recents = getRecents();
+  accounts.forEach(a => {
+    recents = recents.filter(r => r !== a);
+    recents.unshift(a);
+  });
+  recents = recents.slice(0, MAX_RECENTS);
+  localStorage.setItem(LS_RECENTS, JSON.stringify(recents));
+}
+function clearRecents() {
+  localStorage.removeItem(LS_RECENTS);
+  renderSuggested();
+}
+
+// ============================================================================
+// API KEYS & SETTINGS
+// ============================================================================
+
+function getTwKey() { return localStorage.getItem(LS_TW) || ''; }
+function getAnKey() { return localStorage.getItem(LS_AN) || ''; }
+
+function bothKeys() {
+  const tw = getTwKey();
+  const an = getAnKey();
+  return tw.length >= 20 && an.length >= 20;
+}
+
+function validateApiKey(key, type) {
+  if (!key || typeof key !== 'string') return false;
+  key = key.trim();
+  if (key.length < 20) return false;
+  if (type === 'anthropic' && !key.startsWith('sk-ant-')) return false;
+  return true;
+}
+
+function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'tradingview'; }
+function getFont() { return localStorage.getItem(LS_FONT) || 'mono'; }
+function setFont(f) {
+  localStorage.setItem(LS_FONT, f);
+  document.documentElement.setAttribute('data-font', f);
+}
+function getFontSize() { return localStorage.getItem(LS_FONT_SIZE) || 'medium'; }
+function setFontSize(s) {
+  localStorage.setItem(LS_FONT_SIZE, s);
+  document.documentElement.setAttribute('data-font-size', s);
+}
+function getCase() { return localStorage.getItem(LS_CASE) || 'lower'; }
+function setCase(c) {
+  localStorage.setItem(LS_CASE, c);
+  document.documentElement.setAttribute('data-case', c);
+}
+function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT; }
+function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
+function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
+
+// --- Analysis Cache ---
+const MAX_CACHE_ENTRIES = 2000;
+function hashString(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i);
+    h |= 0;
+  }
+  return (h >>> 0).toString(16);
+}
+function getPromptHash() {
+  return hashString(`${ANALYSIS_MODEL}\n${getPrompt()}`);
+}
+function loadAnalysisCache() {
+  try {
+    const raw = localStorage.getItem(LS_ANALYSIS_CACHE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && parsed.entries) return parsed;
+  } catch {}
+  return { v: 1, entries: {} };
+}
+function saveAnalysisCache(cache) {
+  try {
+    localStorage.setItem(LS_ANALYSIS_CACHE, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('Failed to save analysis cache:', e.message);
+  }
+}
+function cacheKey(promptHash, tweetUrl) {
+  return `${promptHash}:${tweetUrl}`;
+}
+function getCachedSignals(cache, promptHash, tweetUrl) {
+  if (!tweetUrl) return null;
+  const entry = cache.entries[cacheKey(promptHash, tweetUrl)];
+  return entry ? entry.signals || [] : null;
+}
+function setCachedSignals(cache, promptHash, tweetUrl, signals) {
+  if (!tweetUrl) return;
+  cache.entries[cacheKey(promptHash, tweetUrl)] = { signals: signals || [], ts: Date.now() };
+}
+function pruneCache(cache) {
+  const keys = Object.keys(cache.entries);
+  if (keys.length <= MAX_CACHE_ENTRIES) return;
+  keys.sort((a, b) => (cache.entries[a]?.ts || 0) - (cache.entries[b]?.ts || 0));
+  const removeCount = keys.length - MAX_CACHE_ENTRIES;
+  for (let i = 0; i < removeCount; i++) {
+    delete cache.entries[keys[i]];
+  }
+}
+
+const tweetCache = new Map();
+
+function cleanupCache() {
+  const now = Date.now();
+  const twoHoursAgo = Math.floor(now / 3600000) - 2;
+  for (const [key] of tweetCache) {
+    const keyHour = parseInt(key.split(':')[2]);
+    if (keyHour < twoHoursAgo) {
+      tweetCache.delete(key);
+    }
+  }
+}
+
+let originalSettings = {};
+
+function openModal() {
+  originalSettings = {
+    font: getFont(),
+    fontSize: getFontSize(),
+    textCase: getCase(),
+  };
+  $('twKeyInput').value = getTwKey();
+  $('keyInput').value = getAnKey();
+  $('financeProvider').value = getFinanceProvider();
+  $('fontProvider').value = originalSettings.font;
+  $('fontSizeProvider').value = originalSettings.fontSize;
+  $('caseProvider').value = originalSettings.textCase;
+  $('promptInput').value = getPrompt();
+  updateCacheSizeDisplay();
+  $('modal').classList.add('open');
+  document.body.classList.add('modal-open');
+  $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
+  setTimeout(() => $('twKeyInput').focus(), 50);
+}
+
+function updateCacheSizeDisplay() {
+  const cache = loadAnalysisCache();
+  const count = Object.keys(cache.entries || {}).length;
+  $('cacheSize').textContent = count ? `${count} tweets cached` : 'empty';
+}
+
+function clearCache() {
+  if (!confirm('Clear all cached analysis results?')) return;
+  localStorage.removeItem(LS_ANALYSIS_CACHE);
+  updateCacheSizeDisplay();
+}
+function closeModal() {
+  if (originalSettings.font) setFont(originalSettings.font);
+  if (originalSettings.fontSize) setFontSize(originalSettings.fontSize);
+  if (originalSettings.textCase) setCase(originalSettings.textCase);
+  $('modal').classList.remove('open');
+  document.body.classList.remove('modal-open');
+}
+function saveKeys() {
+  const tw = $('twKeyInput').value.trim();
+  const an = $('keyInput').value.trim();
+  const fp = $('financeProvider').value;
+  const font = $('fontProvider').value;
+  const fontSize = $('fontSizeProvider').value;
+  const textCase = $('caseProvider').value;
+  const prompt = $('promptInput').value.trim();
+  if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
+  if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
+  localStorage.setItem(LS_FINANCE, fp);
+  originalSettings = { font, fontSize, textCase };
+  setFont(font);
+  setFontSize(fontSize);
+  setCase(textCase);
+  setPrompt(prompt || DEFAULT_PROMPT);
+  updateKeyBtn();
+  $('modal').classList.remove('open');
+  document.body.classList.remove('modal-open');
+  if (lastScanResult && lastScanResult.signals) {
+    renderTickers(lastScanResult.signals);
+    renderSignals(lastScanResult.signals);
+  }
+}
+function clearKeys() {
+  localStorage.removeItem(LS_TW);
+  localStorage.removeItem(LS_AN);
+  $('twKeyInput').value = '';
+  $('keyInput').value = '';
+  updateKeyBtn();
+  closeModal();
+}
+function encodeBackup(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function decodeBackup(str) {
+  return decodeURIComponent(escape(atob(str)));
+}
+async function exportData(btn) {
+  const data = {
+    v: 1,
+    settings: {
+      theme: getTheme(),
+      font: getFont(),
+      fontSize: getFontSize(),
+      textCase: getCase(),
+      financeProvider: getFinanceProvider(),
+      prompt: getPrompt(),
+    },
+    keys: { twitter: getTwKey(), anthropic: getAnKey() },
+    presets: getPresets(),
+    accounts: customAccounts,
+    loadedPresets: loadedPresets,
+    recents: getRecents(),
+  };
+  const encoded = encodeBackup(JSON.stringify(data));
+  await navigator.clipboard.writeText(encoded);
+  if (btn) {
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = 'Export'; }, 1500);
+  }
+}
+async function importData(btn) {
+  try {
+    const encoded = await navigator.clipboard.readText();
+    const json = decodeBackup(encoded.trim());
+    const data = JSON.parse(json);
+    if (!data.v && !data.version) throw new Error('Invalid backup format');
+    if (data.settings) {
+      if (data.settings.theme) setTheme(data.settings.theme);
+      if (data.settings.font) setFont(data.settings.font);
+      if (data.settings.fontSize) setFontSize(data.settings.fontSize);
+      if (data.settings.textCase) setCase(data.settings.textCase);
+      if (data.settings.financeProvider) localStorage.setItem(LS_FINANCE, data.settings.financeProvider);
+      if (data.settings.prompt) setPrompt(data.settings.prompt);
+    }
+    if (data.keys) {
+      if (data.keys.twitter) localStorage.setItem(LS_TW, data.keys.twitter);
+      if (data.keys.anthropic) localStorage.setItem(LS_AN, data.keys.anthropic);
+    }
+    if (data.presets) savePresetsData(data.presets);
+    if (data.accounts) { customAccounts = data.accounts; saveAccounts(); }
+    if (data.loadedPresets) { loadedPresets = data.loadedPresets; saveLoadedPresets(); }
+    if (data.recents) localStorage.setItem(LS_RECENTS, JSON.stringify(data.recents));
+    $('twKeyInput').value = getTwKey();
+    $('keyInput').value = getAnKey();
+    $('financeProvider').value = getFinanceProvider();
+    $('fontProvider').value = getFont();
+    $('fontSizeProvider').value = getFontSize();
+    $('caseProvider').value = getCase();
+    $('promptInput').value = getPrompt();
+    updateKeyBtn();
+    render();
+    if (btn) {
+      btn.textContent = 'Success';
+      btn.style.color = 'var(--green)';
+      setTimeout(() => { btn.textContent = 'Import'; btn.style.color = ''; }, 1500);
+    }
+  } catch (err) {
+    console.warn('Import failed:', err);
+    if (btn) {
+      const msg = err.message.includes('clipboard') ? 'Clipboard error' : 'Invalid backup';
+      btn.textContent = msg;
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.textContent = 'Import'; btn.style.color = ''; }, 2000);
+    }
+  }
+}
+function updateKeyBtn() {
+  const ok = bothKeys();
+  $('keyBtn').classList.toggle('warn', !ok);
+  $('keyBtn').textContent = 'Settings';
+}
+
+// --- Accounts ---
+function add(h) {
+  const c = h.trim().replace(/^@/, '').toLowerCase();
+  if (c && !customAccounts.includes(c)) customAccounts.push(c);
+  $('acctInput').value = '';
+  $('addBtn').classList.remove('vis');
+  saveAccounts();
+  render();
+  $('acctInput').focus();
+}
+function rmCustom(h) {
+  customAccounts = customAccounts.filter(a => a !== h);
+  saveAccounts();
+  render();
+}
+
+// --- Render helpers ---
+function render() { renderPresets(); renderSuggested(); renderRanges(); }
+
+function renderSuggested() {
+  const el = $('suggested');
+  const recents = getRecents();
+  if (!recents.length) { el.innerHTML = ''; return; }
+  const allAccounts = getAllAccounts();
+  el.innerHTML = '';
+  const label = document.createElement('span');
+  label.className = 'sug-label';
+  label.textContent = 'recents ·';
+  el.appendChild(label);
+  recents.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sug' + (allAccounts.includes(s) ? ' used' : '');
+    b.textContent = s;
+    if (!allAccounts.includes(s)) b.addEventListener('click', () => add(s));
+    el.appendChild(b);
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'clear-btn';
+  clearBtn.textContent = '×';
+  clearBtn.addEventListener('click', clearRecents);
+  el.appendChild(clearBtn);
+}
+
+function renderRanges() {
+  const row = $('rangesRow');
+  let h = '';
+  RANGES.forEach((r, i) => {
+    const on = range === i ? ' on' : '';
+    h += `<button class="rng${on}" onclick="range=${i};renderRanges();">${r.label}</button>`;
+  });
+  h += `<div class="scan-btns">`;
+  if (busy) {
+    h += `<button class="cancel-btn" onclick="abortCurrentScan(); setLoading(false); setStatus('Scan cancelled');">Cancel</button>`;
+  }
+  h += `<button class="scan-btn"${busy ? ' disabled' : ''} onclick="run()">${busy ? 'Scanning...' : 'Scan'}</button>`;
+  h += `</div>`;
+  row.innerHTML = h;
+}
+
+function clearAllAccounts() {
+  customAccounts = [];
+  loadedPresets = [];
+  saveAccounts();
+  saveLoadedPresets();
+  render();
+}
+
+function setLoading(v) {
+  busy = v;
+  $('dot').classList.toggle('loading', v);
+  renderRanges();
+}
+function setStatus(t, animate = false, showDownload = false) {
+  const el = $('tweetCount');
+  if (!t) { el.innerHTML = ''; return; }
+  const dl = showDownload ? `<button class="dl-btn" onclick="downloadLastScan()">↓ <span class="hide-mobile">Download</span></button>` : '';
+  el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${dl}</div>`;
+}
+
+// ============================================================================
+// TWITTER API
+// ============================================================================
+
+function getCacheKey(account, days) {
+  const hour = Math.floor(Date.now() / 3600000);
+  return `${account}:${days}:${hour}`;
+}
+
+async function fetchTweetsWithRetry(account, days, maxRetries = 3, signal = null) {
+  const cacheKey = getCacheKey(account, days);
+  if (tweetCache.has(cacheKey)) {
+    console.log(`[${account}] Using cached tweets`);
+    return tweetCache.get(cacheKey);
+  }
+  const key = getTwKey();
+  if (!key) throw new Error('No Twitter API key configured. Add it in Settings.');
+  const cutoff = new Date(Date.now() - days * 86400000);
+  console.log(`[${account}] Fetching tweets since ${cutoff.toISOString()} (${days} days)`);
+  const allTweets = [];
+  let cursor = null;
+  let pages = 0;
+  const MAX_PAGES = 5;
+  let consecutiveErrors = 0;
+  while (pages < MAX_PAGES) {
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    const params = new URLSearchParams({ userName: account });
+    if (cursor) params.set('cursor', cursor);
+    const targetUrl = `https://api.twitterapi.io/twitter/user/last_tweets?${params}`;
+    const fetchUrl = CORS_PROXY + encodeURIComponent(targetUrl);
+    let res, data;
+    let pageRetries = 0;
+    while (pageRetries <= maxRetries) {
+      if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+      try {
+        res = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: { 'X-API-Key': key, 'Accept': 'application/json' },
+          signal,
+        });
+        if (res.status === 401 || res.status === 403) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API auth error: ${body.slice(0, 100) || 'invalid key'}`);
+        }
+        if (res.status === 429) {
+          const waitMs = backoffDelay(pageRetries, 5000, 30000);
+          console.log(`[${account}] Rate limited, waiting ${Math.ceil(waitMs/1000)}s...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          pageRetries++;
+          continue;
+        }
+        if (!res.ok) {
+          if (pageRetries < maxRetries) {
+            await new Promise(r => setTimeout(r, backoffDelay(pageRetries, 1000, 10000)));
+            pageRetries++;
+            continue;
+          }
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API error ${res.status}: ${body.slice(0, 100) || res.statusText}`);
+        }
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.warn(`[${account}] Invalid JSON response, retrying...`);
+          if (pageRetries < maxRetries) { pageRetries++; continue; }
+          throw new Error('Invalid JSON from Twitter API');
+        }
+        break;
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        if (e.message.includes('auth error') || e.message.includes('No Twitter API')) throw e;
+        if (pageRetries >= maxRetries) throw e;
+        console.warn(`[${account}] Fetch error, retrying:`, e.message);
+        await new Promise(r => setTimeout(r, backoffDelay(pageRetries, 1000, 10000)));
+        pageRetries++;
+      }
+    }
+    const apiData = data.data || data;
+    if (data.status === 'error' || (data.status !== 'success' && data.message)) {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 2) { console.warn(`[${account}] Multiple consecutive errors, stopping`); break; }
+      continue;
+    }
+    consecutiveErrors = 0;
+    const tweets = apiData.tweets || [];
+    if (!tweets.length) { console.log(`[${account}] No more tweets`); break; }
+    let hitCutoff = false;
+    for (const tw of tweets) {
+      const created = new Date(tw.createdAt);
+      if (created < cutoff) { hitCutoff = true; break; }
+      allTweets.push(tw);
+    }
+    if (hitCutoff) break;
+    if (!apiData.has_next_page || !apiData.next_cursor) break;
+    cursor = apiData.next_cursor;
+    pages++;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (allTweets.length > 0) {
+    tweetCache.set(cacheKey, allTweets);
+    console.log(`[${account}] Cached ${allTweets.length} tweets`);
+  }
+  return allTweets;
+}
+
+async function fetchTweets(account, days) {
+  return fetchTweetsWithRetry(account, days);
+}
+
+// ============================================================================
+// TEXT SANITIZATION & JSON PARSING
+// ============================================================================
+
+function sanitizeText(str) {
+  if (!str) return '';
+  if (typeof str !== 'string') return String(str);
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if ((code >= 0x00 && code <= 0x08) || code === 0x0B || code === 0x0C || 
+        (code >= 0x0E && code <= 0x1F) || code === 0x7F || code === 0xFFFD) continue;
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = str.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) { result += str[i] + str[i + 1]; i++; }
+    } else if (code >= 0xDC00 && code <= 0xDFFF) {
+      continue;
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
+}
+
+function safeParseSignals(text) {
+  if (!text) return [];
+  let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const arrayMatch = clean.match(/\[[\s\S]*\]/);
+  if (!arrayMatch) { console.warn('No JSON array found in response'); return []; }
+  let jsonStr = arrayMatch[0];
+  try {
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) { console.warn('Direct JSON parse failed, attempting fixes...'); }
+  try {
+    jsonStr = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
+    jsonStr = jsonStr.replace(/([^\\])\\n(?=")/g, '$1\\\\n');
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) { console.warn('Fixed JSON parse failed:', e.message); }
+  try {
+    jsonStr = sanitizeText(jsonStr);
+    const result = JSON.parse(jsonStr);
+    if (Array.isArray(result)) return result;
+  } catch (e) { console.error('All JSON parse attempts failed:', e.message); }
+  return [];
+}
+
+function getTweetUrl(tw) {
+  return tw.url || `https://x.com/i/status/${tw.id}`;
+}
+
+function getTweetImageUrl(tw) {
+  const media = tw.extendedEntities?.media || tw.entities?.media || tw.media || [];
+  for (const m of media) {
+    if (m.type === 'photo' || m.type === 'image') {
+      return m.media_url_https || m.url || null;
+    }
+  }
+  return null;
+}
+
+function formatTweetForAnalysis(tw) {
+  const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
+  const url = getTweetUrl(tw);
+  let text = sanitizeText(tw.text || '');
+  const externalLinks = [];
+  if (tw.entities?.urls) {
+    for (const u of tw.entities.urls) {
+      if (u.url && u.expanded_url) {
+        const expandedUrl = sanitizeText(u.expanded_url);
+        text = text.replace(u.url, expandedUrl);
+        if (!expandedUrl.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
+          externalLinks.push(expandedUrl);
+        }
+      }
+    }
+  }
+  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
+  if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
+  if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
+  if (tw.quoted_tweet) {
+    const quotedText = sanitizeText(tw.quoted_tweet.text || '');
+    const quotedAuthor = tw.quoted_tweet.author?.userName || 'unknown';
+    parts.push(`--- QUOTED TWEET from @${quotedAuthor} ---\n${quotedText}\n--- END QUOTED TWEET ---`);
+  }
+  return parts.join('\n');
+}
+
+// ============================================================================
+// ANTHROPIC API
+// ============================================================================
+
+const API_CONFIG = {
+  anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', maxRetries: 5, baseDelay: 2000, maxDelay: 120000, jitterFactor: 0.3 }
+};
+
+function backoffDelay(attempt, baseDelay = 2000, maxDelay = 60000, jitter = 0.3) {
+  const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  const jitterAmount = exponentialDelay * jitter * Math.random();
+  return exponentialDelay + jitterAmount;
+}
+
+function updateStatus(msg, animate = false) {
+  const el = document.getElementById('tweetCount');
+  if (!el) return;
+  if (!msg) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="tweet-count">${msg}${animate ? '<span class="dots"></span>' : ''}</div>`;
+}
+
+function categorizeError(error, status) {
+  if (status === 429 || status === 529) return 'rate_limit';
+  if (error?.type === 'overloaded_error') return 'overloaded';
+  if (error?.type === 'rate_limit_error') return 'rate_limit';
+  if (error?.message?.includes('quota')) return 'quota';
+  if (error?.message?.includes('rate')) return 'rate_limit';
+  if (error?.message?.includes('limit')) return 'rate_limit';
+  if (error?.message?.includes('prompt is too long')) return 'input_too_large';
+  if (error?.type === 'not_found_error') return 'model_not_found';
+  if (error?.type === 'authentication_error') return 'auth_error';
+  if (error?.type === 'invalid_request_error') return 'invalid_request';
+  return 'unknown';
+}
+
+async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries, signal = null) {
+  const key = getAnKey();
+  if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    try {
+      const res = await fetch(API_CONFIG.anthropic.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const data = await res.json();
+      if (!data.error) {
+        if (attempt > 0) console.log(`✓ Anthropic succeeded on attempt ${attempt + 1}`);
+        return data;
+      }
+      const errorType = categorizeError(data.error, res.status);
+      console.warn(`Anthropic error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, data.error?.message);
+      if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request'].includes(errorType)) {
+        const messages = {
+          input_too_large: 'Input too large. Try fewer accounts or a shorter time range.',
+          model_not_found: 'Model not available. Your API key may not have access to this model.',
+          auth_error: 'Invalid API key. Please check your Anthropic API key in Settings.',
+          invalid_request: data.error?.message || 'Invalid request to Anthropic API.',
+        };
+        throw new Error(messages[errorType] || data.error?.message);
+      }
+      if (['rate_limit', 'overloaded', 'quota'].includes(errorType)) {
+        if (attempt >= maxRetries) {
+          throw new Error(`API rate limited after ${maxRetries + 1} attempts. Please wait a few minutes and try again.`);
+        }
+        const baseWait = errorType === 'quota' ? 45000 : 15000;
+        const waitMs = backoffDelay(attempt, baseWait, API_CONFIG.anthropic.maxDelay);
+        const waitSecs = Math.ceil(waitMs / 1000);
+        updateStatus(`Rate limited · Retry ${attempt + 2}/${maxRetries + 1} in ${waitSecs}s`, true);
+        console.log(`Waiting ${waitSecs}s before retry...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      lastError = data.error;
+      if (attempt < maxRetries) {
+        const waitMs = backoffDelay(attempt, 2000, 30000);
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      if (e.message.includes('No Anthropic') || e.message.includes('Invalid API') || 
+          e.message.includes('Input too large') || e.message.includes('Model not available')) {
+        throw e;
+      }
+      lastError = e;
+      console.warn(`Anthropic fetch error (attempt ${attempt + 1}):`, e.message);
+      if (attempt < maxRetries) {
+        const waitMs = backoffDelay(attempt, 3000, 30000);
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    }
+  }
+  throw new Error(lastError?.message || 'Failed to connect to Anthropic API after multiple attempts.');
+}
+
+function extractText(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('\n');
+}
+
+// ============================================================================
+// SCAN ENGINE
+// ============================================================================
+
+let currentScanAbort = null;
+
+function abortCurrentScan() {
+  if (currentScanAbort) {
+    currentScanAbort.abort();
+    currentScanAbort = null;
+  }
+}
+
+async function fetchAllTweets(accounts, days, onProgress, signal) {
+  const BATCH_SIZE = 2;
+  const accountTweets = [];
+  for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    const batch = accounts.slice(i, i + BATCH_SIZE);
+    onProgress?.(`Fetching ${i + 1}-${Math.min(i + batch.length, accounts.length)} of ${accounts.length}`);
+    const results = await Promise.all(batch.map(async (account) => {
+      if (signal?.aborted) return { account, tweets: [], error: 'Cancelled' };
+      try {
+        const tweets = await fetchTweetsWithRetry(account, days, 3, signal);
+        return { account, tweets, error: null };
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        console.warn(`[${account}] Fetch failed:`, e.message);
+        return { account, tweets: [], error: e.message };
+      }
+    }));
+    accountTweets.push(...results);
+    if (i + BATCH_SIZE < accounts.length) {
+      await new Promise(r => setTimeout(r, 150));
+    }
+  }
+  return accountTweets;
+}
+
+const ANALYSIS_CONCURRENCY = 2;
+const MAX_BATCH_CHARS = 640000;
+const MAX_BATCH_CHARS_WITH_IMAGES = 400000;
+const MAX_IMAGES_PER_BATCH = 5;
+const BATCH_SEPARATOR = '\n\n======\n\n';
+
+function buildBatches(accountData, promptChars) {
+  const items = accountData.map(a => {
+    const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+    const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
+    const accountText = `${header}\n${body}`;
+    const tweetUrls = a.tweets.map(getTweetUrl).filter(Boolean);
+    const imageUrls = a.tweets.map(getTweetImageUrl).filter(Boolean);
+    return { account: a.account, text: accountText, size: accountText.length, tweetUrls, imageUrls };
+  });
+  const hasAnyImages = items.some(i => i.imageUrls.length > 0);
+  const maxChars = hasAnyImages ? MAX_BATCH_CHARS_WITH_IMAGES : MAX_BATCH_CHARS;
+  items.sort((a, b) => b.size - a.size);
+  const batches = [];
+  items.forEach(item => {
+    let placed = false;
+    for (const batch of batches) {
+      const extra = (batch.items.length ? BATCH_SEPARATOR.length : 0) + item.size;
+      if (batch.size + extra <= maxChars) {
+        batch.items.push(item);
+        batch.size += extra;
+        batch.tweetUrls.push(...item.tweetUrls);
+        batch.imageUrls.push(...item.imageUrls);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      batches.push({ items: [item], size: promptChars + item.size, tweetUrls: [...item.tweetUrls], imageUrls: [...item.imageUrls] });
+    }
+  });
+  return batches.map(b => ({
+    text: b.items.map(i => i.text).join(BATCH_SEPARATOR),
+    tweetUrls: [...new Set(b.tweetUrls)],
+    imageUrls: [...new Set(b.imageUrls)].slice(0, MAX_IMAGES_PER_BATCH),
+    accounts: b.items.map(i => i.account),
+    size: b.size,
+  }));
+}
+
+function groupSignalsByTweet(signals) {
+  const map = new Map();
+  signals.forEach(s => {
+    const url = s.tweet_url;
+    if (!url) return;
+    if (!map.has(url)) map.set(url, []);
+    map.get(url).push(s);
+  });
+  return map;
+}
+
+function dedupeSignals(signals) {
+  const seen = new Set();
+  return signals.filter(s => {
+    const key = `${s.tweet_url || ''}|${s.title || ''}|${s.summary || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function analyzeWithBatching(accountData, totalTweets, onProgress, promptHash, cache, signal = null) {
+  const prompt = getPrompt();
+  const promptChars = prompt.length;
+  const batches = buildBatches(accountData, promptChars);
+  console.log(`Analysis batches: ${batches.length} (${accountData.length} accounts)`);
+  if (!batches.length) return [];
+  const allSignals = [];
+  const results = [];
+  let nextIndex = 0;
+  const concurrency = Math.min(ANALYSIS_CONCURRENCY, batches.length);
+  async function runBatchWorker() {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+      const i = nextIndex++;
+      if (i >= batches.length) break;
+      const batch = batches[i];
+      const batchNum = i + 1;
+      if (batches.length > 1) {
+        onProgress?.(`Analyzing batch ${batchNum}/${batches.length}`);
+      } else {
+        onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
+      }
+      const textContent = sanitizeText(`${prompt}\n\n${batch.text}`);
+      let messageContent;
+      if (batch.imageUrls && batch.imageUrls.length > 0) {
+        messageContent = [
+          { type: 'text', text: textContent },
+          ...batch.imageUrls.map(url => ({ type: 'image', source: { type: 'url', url } }))
+        ];
+      } else {
+        messageContent = textContent;
+      }
+      try {
+        const data = await anthropicCall({ model: ANALYSIS_MODEL, max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] }, 5, signal);
+        const txt = extractText(data.content);
+        logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
+        const batchSignals = safeParseSignals(txt);
+        if (batchSignals.length > 0) {
+          console.log(`Batch ${batchNum}: ${batchSignals.length} signals parsed`);
+        } else {
+          console.warn(`Batch ${batchNum}: No signals extracted`);
+          logs.push({ a: `_parse_warn_${batchNum}`, len: 0, pre: 'No signals extracted from response' });
+        }
+        results.push({ i, signals: batchSignals, tweetUrls: batch.tweetUrls });
+      } catch (e) {
+        console.error(`Batch ${batchNum} analysis error:`, e);
+        throw e;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => runBatchWorker()));
+  results.sort((a, b) => a.i - b.i);
+  results.forEach(res => {
+    allSignals.push(...res.signals);
+    const grouped = groupSignalsByTweet(res.signals);
+    res.tweetUrls.forEach(url => {
+      setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
+    });
+  });
+  return allSignals;
+}
+
+let lastRunTime = 0;
+async function run() {
+  const now = Date.now();
+  if (now - lastRunTime < 1000) return;
+  lastRunTime = now;
+  const accounts = getAllAccounts();
+  if (!accounts.length || busy) return;
+  if (!bothKeys()) { openModal(); return; }
+  abortCurrentScan();
+  currentScanAbort = new AbortController();
+  setLoading(true);
+  $('notices').innerHTML = '';
+  $('tweetCount').innerHTML = '';
+  $('tickerBar').innerHTML = '';
+  $('scanActions').innerHTML = '';
+  $('filterBar').innerHTML = '';
+  $('results').innerHTML = '';
+  logs = [];
+  if (customAccounts.length) {
+    addToRecents(customAccounts);
+    renderSuggested();
+  }
+  const days = RANGES[range].days;
+  const signal = currentScanAbort?.signal;
+  try {
+    const accountTweets = await fetchAllTweets(accounts, days, (msg) => setStatus(msg, true), signal);
+    const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
+    const fails = accountTweets.filter(a => a.error);
+    for (const a of accountTweets) {
+      logs.push({
+        a: a.account,
+        len: a.tweets.length,
+        pre: a.error ? `ERROR: ${a.error}` : a.tweets.slice(0, 3).map(t => t.text?.slice(0, 100)).join(' | ') || '(no tweets in range)',
+      });
+    }
+    if (totalTweets === 0) {
+      let msg = 'no tweets found for this time range';
+      if (fails.length) msg += ` — errors: ${fails.map(f => `${f.account} (${f.error})`).join(', ')}`;
+      $('notices').innerHTML = `<div class="notice err">${esc(msg)}</div>`;
+      setLoading(false); setStatus(''); renderDebug(); return;
+    }
+    const parts = [];
+    if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
+    if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
+    const accountData = accountTweets.filter(a => a.tweets.length);
+    const promptHash = getPromptHash();
+    const analysisCache = loadAnalysisCache();
+    let cachedSignals = [];
+    let cachedTweetCount = 0;
+    const uncachedAccountData = accountData.map(a => {
+      const uncachedTweets = [];
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        const cached = getCachedSignals(analysisCache, promptHash, url);
+        if (cached) {
+          cachedTweetCount++;
+          cachedSignals.push(...cached);
+        } else {
+          uncachedTweets.push(tw);
+        }
+      });
+      return { account: a.account, tweets: uncachedTweets };
+    }).filter(a => a.tweets.length);
+    let signals = [];
+    if (uncachedAccountData.length) {
+      const newSignals = await analyzeWithBatching(uncachedAccountData, totalTweets, (msg) => setStatus(msg, true), promptHash, analysisCache, signal);
+      signals = dedupeSignals([...cachedSignals, ...newSignals]);
+    } else {
+      setStatus(`${totalTweets} tweets fetched · Using cache`, false, true);
+      signals = dedupeSignals(cachedSignals);
+    }
+    pruneCache(analysisCache);
+    saveAnalysisCache(analysisCache);
+    lastScanResult = {
+      date: new Date().toISOString(),
+      range: RANGES[range].label,
+      days: RANGES[range].days,
+      accounts: [...accounts],
+      totalTweets,
+      signals,
+      rawTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets })),
+    };
+    saveScan(lastScanResult);
+    const d = new Date();
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setStatus(`${dateStr} · <span class="hide-mobile">${accounts.length} accounts · ${totalTweets} tweets · </span>${signals.length} signals`, false, true);
+    renderTickers(signals);
+    renderSignals(signals);
+    renderDebug();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      setStatus('Scan cancelled');
+    } else {
+      setStatus('');
+      $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+    }
+    renderDebug();
+  } finally {
+    setLoading(false);
+    currentScanAbort = null;
+  }
+}
+
+// --- Scan Storage ---
+function createStorableScan(scan) {
+  const tweetMeta = {};
+  if (scan.rawTweets) {
+    scan.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        tweetMeta[url] = { text: (tw.text || '').slice(0, 500), author: a.account, time: tw.createdAt };
+      });
+    });
+  }
+  return { date: scan.date, range: scan.range, days: scan.days, accounts: scan.accounts, totalTweets: scan.totalTweets, signals: scan.signals, tweetMeta };
+}
+
+function saveScan(scan) {
+  try {
+    const storable = createStorableScan(scan);
+    localStorage.setItem(LS_CURRENT, JSON.stringify(storable));
+    const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+    const tweetTimes = {};
+    if (scan.rawTweets) {
+      scan.rawTweets.forEach(a => {
+        (a.tweets || []).forEach(tw => {
+          const url = getTweetUrl(tw);
+          if (tw.createdAt) tweetTimes[url] = tw.createdAt;
+        });
+      });
+    }
+    const historyEntry = {
+      date: scan.date,
+      range: scan.range,
+      accounts: scan.accounts.length,
+      totalTweets: scan.totalTweets,
+      signalCount: scan.signals.length,
+      signals: scan.signals.map(s => ({ ...s, tweet_time: tweetTimes[s.tweet_url] || null }))
+    };
+    history.unshift(historyEntry);
+    if (history.length > 5) history.pop();
+    localStorage.setItem(LS_SCANS, JSON.stringify(history));
+    renderHistory();
+  } catch (e) {
+    console.warn('Failed to save scan to localStorage:', e.message);
+    try {
+      localStorage.removeItem(LS_SCANS);
+      localStorage.setItem(LS_CURRENT, JSON.stringify(createStorableScan(scan)));
+    } catch (e2) {
+      console.error('Storage quota exceeded, clearing storage');
+      localStorage.removeItem(LS_CURRENT);
+      localStorage.removeItem(LS_SCANS);
+    }
+  }
+}
+
+function loadCurrentScan() {
+  const saved = localStorage.getItem(LS_CURRENT);
+  if (!saved) return null;
+  try { return JSON.parse(saved); } catch { return null; }
+}
+
+function getScanHistory() {
+  return JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+}
+
+function downloadLastScan() {
+  if (!lastScanResult) return;
+  const tweetText = {};
+  if (lastScanResult.rawTweets) {
+    lastScanResult.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        tweetText[url] = tw.text || '';
+      });
+    });
+  } else if (lastScanResult.tweetMeta) {
+    Object.entries(lastScanResult.tweetMeta).forEach(([url, meta]) => {
+      tweetText[url] = meta.text || '';
+    });
+  }
+  const d = new Date(lastScanResult.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  let md = `# Trading Signals\n\n`;
+  md += `**Date:** ${dateStr}\n`;
+  md += `**Range:** ${lastScanResult.range}\n`;
+  md += `**Accounts:** ${lastScanResult.accounts.length}\n`;
+  md += `**Signals:** ${lastScanResult.signals.length}\n\n---\n\n`;
+  lastScanResult.signals.forEach((s, i) => {
+    const cat = normCat(s.category);
+    const tickers = (s.tickers || []).map(t => `${t.symbol} (${t.action})`).join(', ');
+    const tweet = tweetText[s.tweet_url] || '';
+    const links = (s.links || []).length ? s.links.join(', ') : '';
+    md += `## ${s.title}\n\n`;
+    md += `${s.summary}\n\n`;
+    if (tickers) md += `**Tickers:** ${tickers}\n`;
+    md += `**Category:** ${cat}\n`;
+    md += `**Source:** @${s.source}\n`;
+    if (tweet) md += `**Tweet:** "${tweet}"\n`;
+    if (links) md += `**Links:** ${links}\n`;
+    if (i < lastScanResult.signals.length - 1) md += `\n---\n\n`;
+  });
+  const date = new Date(lastScanResult.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sentry-${date}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================================
+// PRICE FETCHING
+// ============================================================================
+
+const CRYPTO_SLUGS = {
+  BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', DOGE: 'dogecoin', XRP: 'ripple',
+  ADA: 'cardano', AVAX: 'avalanche-2', DOT: 'polkadot', MATIC: 'matic-network', POL: 'matic-network',
+  LINK: 'chainlink', UNI: 'uniswap', ATOM: 'cosmos', LTC: 'litecoin', BCH: 'bitcoin-cash',
+  XLM: 'stellar', ALGO: 'algorand', VET: 'vechain', FIL: 'filecoin', ICP: 'internet-computer',
+  NEAR: 'near', APT: 'aptos', ARB: 'arbitrum', OP: 'optimism', SUI: 'sui',
+  SEI: 'sei-network', INJ: 'injective-protocol', TIA: 'celestia', PEPE: 'pepe', WIF: 'dogwifcoin',
+  BONK: 'bonk', SHIB: 'shiba-inu', FTM: 'fantom', SAND: 'the-sandbox', MANA: 'decentraland',
+  APE: 'apecoin', CRV: 'curve-dao-token', AAVE: 'aave', MKR: 'maker', SNX: 'havven',
+  COMP: 'compound-governance-token', LDO: 'lido-dao', RPL: 'rocket-pool', GMX: 'gmx',
+  DYDX: 'dydx', JUP: 'jupiter-exchange-solana', JTO: 'jito-governance-token', PYTH: 'pyth-network',
+  WLD: 'worldcoin-wld', RENDER: 'render-token', RNDR: 'render-token', FET: 'fetch-ai', AGIX: 'singularitynet',
+  TAO: 'bittensor', GALA: 'gala', IMX: 'immutable-x', BLUR: 'blur', ENS: 'ethereum-name-service',
+  STX: 'blockstack', RUNE: 'thorchain', OSMO: 'osmosis', KAVA: 'kava', ROSE: 'oasis-network',
+  ZEC: 'zcash', EOS: 'eos', XMR: 'monero', EGLD: 'elrond-erd-2', HBAR: 'hedera-hashgraph',
+  QNT: 'quant-network', THETA: 'theta-token', XTZ: 'tezos', FLOW: 'flow', NEO: 'neo',
+  KAS: 'kaspa', TON: 'the-open-network', TRX: 'tron', USDT: 'tether', USDC: 'usd-coin',
+  DAI: 'dai', BUSD: 'binance-usd', TUSD: 'true-usd', FRAX: 'frax', LUSD: 'liquity-usd',
+};
+
+const priceCache = {};
+const PRICE_CACHE_TTL = 60000;
+
+function isCrypto(sym) {
+  return !!CRYPTO_SLUGS[sym.replace(/^\$/, '').toUpperCase()];
+}
+
+function formatPrice(price) {
+  if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (price >= 1) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (price >= 0.01) return price.toFixed(4);
+  return price.toPrecision(3);
+}
+
+function formatChange(change) {
+  const sign = change >= 0 ? '+' : '';
+  return sign + change.toFixed(2) + '%';
+}
+
+function priceHtml(data) {
+  if (!data || data.price == null) return '';
+  const cls = data.change > 0.01 ? 'pos' : data.change < -0.01 ? 'neg' : 'neutral';
+  return `<span class="ticker-change ${cls}">${formatChange(data.change)}</span>`;
+}
+
+async function fetchCryptoPrices(symbols) {
+  const now = Date.now();
+  const needed = symbols.filter(s => {
+    const cached = priceCache[s];
+    return !cached || (now - cached.ts > PRICE_CACHE_TTL);
+  });
+  if (!needed.length) return;
+  const ids = needed.map(s => CRYPTO_SLUGS[s]).filter(Boolean);
+  if (!ids.length) return;
+  try {
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    needed.forEach(sym => {
+      const slug = CRYPTO_SLUGS[sym];
+      if (data[slug]) {
+        priceCache[sym] = { price: data[slug].usd, change: data[slug].usd_24h_change || 0, ts: now };
+      }
+    });
+  } catch (e) { /* silent fail */ }
+}
+
+async function fetchStockPrice(sym) {
+  const now = Date.now();
+  const cached = priceCache[sym];
+  if (cached && (now - cached.ts < PRICE_CACHE_TTL)) return;
+  try {
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
+    const url = `https://proxy.sentry.is/?url=${encodeURIComponent(yahooUrl)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const result = data?.chart?.result?.[0];
+    if (!result) return;
+    const price = result.meta?.regularMarketPrice;
+    const prevClose = result.meta?.chartPreviousClose || result.meta?.previousClose;
+    if (price == null) return;
+    const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    priceCache[sym] = { price, change, ts: now };
+  } catch (e) { /* silent fail */ }
+}
+
+async function fetchAllPrices(symbols) {
+  const cryptoSyms = [];
+  const stockSyms = [];
+  symbols.forEach(s => {
+    const clean = s.replace(/^\$/, '').toUpperCase();
+    if (CRYPTO_SLUGS[clean]) cryptoSyms.push(clean);
+    else stockSyms.push(clean);
+  });
+  const promises = [];
+  if (cryptoSyms.length) promises.push(fetchCryptoPrices(cryptoSyms));
+  stockSyms.forEach(s => promises.push(fetchStockPrice(s)));
+  await Promise.all(promises);
+}
+
+function tickerUrl(sym) {
+  const s = sym.replace(/^\$/, '').toUpperCase();
+  const provider = getFinanceProvider();
+  if (provider === 'tradingview') {
+    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${s}USDT`;
+  }
+  if (CRYPTO_SLUGS[s]) {
+    return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;
+  }
+  if (provider === 'tradingview') {
+    if (s.endsWith('.TW')) return `https://www.tradingview.com/chart/?symbol=TWSE:${s.replace('.TW', '')}`;
+    if (s.endsWith('.HK')) return `https://www.tradingview.com/chart/?symbol=HKEX:${s.replace('.HK', '')}`;
+    if (s.endsWith('.T')) return `https://www.tradingview.com/chart/?symbol=TSE:${s.replace('.T', '')}`;
+    if (s.endsWith('.KS')) return `https://www.tradingview.com/chart/?symbol=KRX:${s.replace('.KS', '')}`;
+    return `https://www.tradingview.com/chart/?symbol=${s}`;
+  }
+  if (provider === 'google') {
+    if (s.endsWith('.TW')) return `https://www.google.com/finance/quote/${s.replace('.TW', '')}:TPE?window=6M`;
+    if (s.endsWith('.HK')) return `https://www.google.com/finance/quote/${s.replace('.HK', '')}:HKG?window=6M`;
+    if (s.endsWith('.T')) return `https://www.google.com/finance/quote/${s.replace('.T', '')}:TYO?window=6M`;
+    if (s.endsWith('.KS')) return `https://www.google.com/finance/quote/${s.replace('.KS', '')}:KRX?window=6M`;
+    return `https://www.google.com/finance/quote/${s}?window=6M`;
+  }
+  return `https://finance.yahoo.com/quote/${encodeURIComponent(s)}`;
+}
+
+// ============================================================================
+// RENDERERS
+// ============================================================================
+
+function renderTickers(signals) {
+  const map = {};
+  signals.forEach(r => (r.tickers || []).forEach(t => {
+    const k = (t.symbol || '').toUpperCase();
+    if (!k) return;
+    if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0 };
+    map[k].acts.add(t.action); map[k].n++;
+  }));
+  const list = Object.values(map).sort((a, b) => b.n - a.n);
+  const el = $('tickerBar');
+  if (!list.length) { el.innerHTML = ''; el.className = ''; return; }
+  el.className = 'ticker-bar';
+  el.innerHTML = list.map(t => {
+    const hasBuy = t.acts.has('buy');
+    const hasSell = t.acts.has('sell');
+    const pa = (hasBuy && hasSell) ? 'mixed' : ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
+    const url = tickerUrl(t.s);
+    const sym = t.s.replace(/^\$/, '');
+    const cached = priceCache[sym];
+    const priceStr = cached ? priceHtml(cached) : '';
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-item" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${priceStr}</a>`;
+  }).join('');
+  const symbols = list.map(t => t.s.replace(/^\$/, ''));
+  fetchAllPrices(symbols).then(() => updateTickerPrices());
+}
+
+function updateTickerPrices() {
+  document.querySelectorAll('.ticker-item[data-sym], .ticker-tag[data-sym]').forEach(el => {
+    const sym = el.dataset.sym;
+    const cached = priceCache[sym];
+    if (!cached) return;
+    if (el.querySelector('.ticker-change')) return;
+    el.insertAdjacentHTML('beforeend', priceHtml(cached));
+  });
+}
+
+function renderScanActions() {
+  $('scanActions').innerHTML = '';
+}
+
+function renderSignals(signals) {
+  const el = $('results');
+  filters = { category: null };
+  if (!signals.length) { el.innerHTML = '<div class="empty-state">No signals extracted</div>'; renderScanActions(); renderFilters(); $('footer').innerHTML = ''; return; }
+  const tweetMap = {};
+  if (lastScanResult?.rawTweets) {
+    lastScanResult.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        const date = tw.createdAt ? new Date(tw.createdAt) : null;
+        const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+        tweetMap[url] = { text: tw.text || '', author: tw.author?.userName || a.account || '', time: timeStr };
+      });
+    });
+  } else if (lastScanResult?.tweetMeta) {
+    Object.entries(lastScanResult.tweetMeta).forEach(([url, meta]) => {
+      const date = meta.time ? new Date(meta.time) : null;
+      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+      tweetMap[url] = { text: meta.text || '', author: meta.author || '', time: timeStr };
+    });
+  }
+  let h = '';
+  signals.forEach((item, i) => {
+    const cat = normCat(item.category);
+    const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || {}) : {};
+    const source = (item.source || '').replace(/^@/, '');
+    const time = tweetInfo.time || '';
+    const tickers = (item.tickers && item.tickers.length)
+      ? item.tickers.map(t => {
+          const url = tickerUrl(t.symbol || '');
+          const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+          const cached = priceCache[sym];
+          const priceStr = cached ? priceHtml(cached) : '';
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}${priceStr}</a>`;
+        }).join('')
+      : '';
+    const extLinks = (item.links && item.links.length)
+      ? item.links.map(l => {
+          try {
+            const hostname = new URL(l).hostname.replace('www.','');
+            return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+          } catch { return ''; }
+        }).filter(Boolean).join(' ')
+      : '';
+    const sourceLink = item.tweet_url 
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}">@${esc(source)}</a>`
+      : `@${esc(source)}`;
+    const seePost = item.tweet_url
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>`
+      : '';
+    const tweetExpandId = `tweet-expand-${i}`;
+    const tweetExpand = tweetInfo.text ? `
+      <div class="tweet-expand">
+        <button class="tweet-expand-btn" onclick="toggleTweetExpand('${tweetExpandId}', this)">show tweet ▸</button>
+        <div class="tweet-expand-content" id="${tweetExpandId}">
+          <div class="tweet-expand-author">@${esc(source)}${time ? ` · ${time}` : ''}</div>
+          ${esc(tweetInfo.text)}
+        </div>
+      </div>` : '';
+    h += `<div class="signal" data-category="${esc(cat || '')}" data-index="${i}">
+      <div class="sig-top"><span>${sourceLink}${time ? ` · ${time}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span><span style="display:flex;gap:12px;align-items:center"><button class="share-btn" onclick="shareSignal(${i})" title="Share">share</button>${seePost}</span></div>
+      ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+      <div class="sig-title">${esc(item.title || '')}</div>
+      <div class="sig-summary">${esc(item.summary || '')}</div>
+      ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+      ${tweetExpand}
+    </div>`;
+  });
+  el.innerHTML = h;
+  renderScanActions();
+  renderFilters();
+  $('footer').innerHTML = 'Not financial advice';
+  setupTweetTooltips();
+  const allSymbols = [];
+  signals.forEach(s => (s.tickers || []).forEach(t => {
+    const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+    if (sym && !allSymbols.includes(sym)) allSymbols.push(sym);
+  }));
+  if (allSymbols.length) fetchAllPrices(allSymbols).then(() => updateTickerPrices());
+}
+
+function toggleTweetExpand(id, btn) {
+  const content = document.getElementById(id);
+  if (!content) return;
+  const isOpen = content.classList.toggle('open');
+  btn.textContent = isOpen ? 'hide tweet ▾' : 'show tweet ▸';
+}
+
+function setupTweetTooltips() {
+  const tooltip = $('tweetTooltip');
+  document.querySelectorAll('.see-post[data-tweet]').forEach(link => {
+    link.addEventListener('mouseenter', e => {
+      const text = link.dataset.tweet;
+      if (!text) return;
+      const author = link.dataset.author || '';
+      const time = link.dataset.time || '';
+      const header = (author || time) ? `<div style="opacity:.7;margin-bottom:8px">@${esc(author)} · ${esc(time)}</div>` : '';
+      tooltip.innerHTML = header + esc(text);
+      tooltip.classList.add('vis');
+    });
+    link.addEventListener('mousemove', e => {
+      const x = e.clientX + 12;
+      const y = e.clientY + 12;
+      const rect = tooltip.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width - 20;
+      const maxY = window.innerHeight - rect.height - 20;
+      tooltip.style.left = Math.min(x, maxX) + 'px';
+      tooltip.style.top = Math.min(y, maxY) + 'px';
+    });
+    link.addEventListener('mouseleave', () => {
+      tooltip.classList.remove('vis');
+    });
+  });
+}
+
+function renderHistory() {
+  const el = $('historySection');
+  const history = getScanHistory();
+  if (!history.length) { el.innerHTML = ''; return; }
+  let h = '<div class="history">';
+  history.forEach((scan, i) => {
+    const d = new Date(scan.date);
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const label = `Scan ${dateStr}`;
+    const range = scan.range || '—';
+    const accounts = Number.isFinite(scan.accounts) ? scan.accounts : '—';
+    const tweets = Number.isFinite(scan.totalTweets) ? scan.totalTweets : '—';
+    const signals = Number.isFinite(scan.signalCount) ? scan.signalCount : '—';
+    const details = `Range: ${esc(range)} · Accounts: ${accounts} · Tweets: ${tweets} · Signals: ${signals}`;
+    const cards = (scan.signals && scan.signals.length)
+      ? scan.signals.map(item => {
+          const cat = normCat(item.category);
+          const tickers = (item.tickers && item.tickers.length)
+            ? item.tickers.map(t => {
+                const url = tickerUrl(t.symbol || '');
+                const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+                const cached = priceCache[sym];
+                const priceStr = cached ? priceHtml(cached) : '';
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}${priceStr}</a>`;
+              }).join('')
+            : '';
+          const source = (item.source || '').replace(/^@/, '');
+          const sourceLink = item.tweet_url
+            ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+            : `@${esc(source)}`;
+          const tweetTime = item.tweet_time ? new Date(item.tweet_time) : null;
+          const timeStr = tweetTime ? tweetTime.toLocaleDateString() + ' ' + tweetTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+          const extLinks = (item.links && item.links.length)
+            ? item.links.map(l => {
+                try {
+                  const hostname = new URL(l).hostname.replace('www.','');
+                  return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+                } catch { return ''; }
+              }).filter(Boolean).join(' ')
+            : '';
+          return `<div class="signal" data-category="${esc(cat || '')}">
+            <div class="sig-top"><span>${sourceLink}${timeStr ? ` · ${timeStr}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span></div>
+            ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+            <div class="sig-title">${esc(item.title || '')}</div>
+            <div class="sig-summary">${esc(item.summary || '')}</div>
+            ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+          </div>`;
+        }).join('')
+      : '<div class="empty-state">No signals in this scan</div>';
+    h += `<div class="hist-item" data-index="${i}">
+      <div class="hist-header">
+        <button class="hist-toggle" data-label="${esc(label)}">▸ ${esc(label)}</button>
+        <div class="hist-actions">
+          <button class="delete" title="Delete">×</button>
+          <button class="download" title="Download">↓</button>
+        </div>
+      </div>
+      <div class="hist-body"><div class="hist-meta">${details}</div><div class="hist-cards">${cards}</div></div>
+    </div>`;
+  });
+  h += '</div>';
+  el.innerHTML = h;
+  el.querySelectorAll('.hist-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.hist-item');
+      const open = item.classList.toggle('open');
+      const label = btn.dataset.label || btn.textContent.replace(/^▸\s|^▾\s/, '');
+      btn.textContent = (open ? '▾ ' : '▸ ') + label;
+    });
+  });
+  el.querySelectorAll('.hist-actions .download').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.closest('.hist-item').dataset.index);
+      downloadHistoryScan(index);
+    });
+  });
+  el.querySelectorAll('.hist-actions .delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.closest('.hist-item').dataset.index);
+      deleteHistoryScan(index);
+    });
+  });
+  const allSymbols = [];
+  history.forEach(scan => (scan.signals || []).forEach(s => (s.tickers || []).forEach(t => {
+    const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+    if (sym && !allSymbols.includes(sym)) allSymbols.push(sym);
+  })));
+  if (allSymbols.length) fetchAllPrices(allSymbols).then(() => updateTickerPrices());
+}
+
+function downloadHistoryScan(index) {
+  const history = getScanHistory();
+  const scan = history[index];
+  if (!scan) return;
+  const d = new Date(scan.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  let md = `# Trading Signals\n\n`;
+  md += `**Date:** ${dateStr}\n`;
+  md += `**Range:** ${scan.range || '—'}\n`;
+  md += `**Accounts:** ${scan.accounts || '—'}\n`;
+  md += `**Signals:** ${scan.signalCount || (scan.signals?.length || 0)}\n\n---\n\n`;
+  (scan.signals || []).forEach((s, i) => {
+    const cat = normCat(s.category);
+    const tickers = (s.tickers || []).map(t => `${t.symbol} (${t.action})`).join(', ');
+    const links = (s.links || []).length ? s.links.join(', ') : '';
+    md += `## ${s.title}\n\n`;
+    md += `${s.summary}\n\n`;
+    if (tickers) md += `**Tickers:** ${tickers}\n`;
+    md += `**Category:** ${cat}\n`;
+    md += `**Source:** @${s.source}\n`;
+    if (links) md += `**Links:** ${links}\n`;
+    if (i < scan.signals.length - 1) md += `\n---\n\n`;
+  });
+  const date = new Date(scan.date).toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sentry-${date}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function deleteHistoryScan(index) {
+  const history = getScanHistory();
+  if (index < 0 || index >= history.length) return;
+  history.splice(index, 1);
+  localStorage.setItem(LS_SCANS, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderDebug() {}
+
+// --- Filters ---
+function setFilter(type, value) {
+  filters[type] = filters[type] === value ? null : value;
+  applyFilters();
+  renderFilters();
+}
+
+function applyFilters() {
+  const rows = document.querySelectorAll('#results .signal');
+  rows.forEach(row => {
+    const cat = row.dataset.category;
+    const catMatch = !filters.category || cat === filters.category;
+    row.classList.toggle('hidden', !catMatch);
+  });
+}
+
+function renderFilters() {
+  const el = $('filterBar');
+  if (!lastScanResult || !lastScanResult.signals.length) { el.innerHTML = ''; return; }
+  let h = '<div class="filter-bar">';
+  CATEGORIES.forEach(c => {
+    const on = filters.category === c ? ' on' : '';
+    h += `<button class="rng${on}" onclick="setFilter('category','${c}')">${c}</button>`;
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+// ============================================================================
+// SHARING
+// ============================================================================
+
+function encodeSignal(signal) {
+  const compact = {
+    t: signal.title || '',
+    s: signal.summary || '',
+    c: signal.category || '',
+    src: (signal.source || '').replace(/^@/, ''),
+    tk: (signal.tickers || []).map(t => ({ s: t.symbol, a: t.action })),
+    u: signal.tweet_url || '',
+  };
+  if (signal.links?.length) compact.ln = signal.links;
+  const json = JSON.stringify(compact);
+  return btoa(unescape(encodeURIComponent(json)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeSignal(encoded) {
+  try {
+    let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const json = decodeURIComponent(escape(atob(b64)));
+    const compact = JSON.parse(json);
+    return {
+      title: compact.t || '',
+      summary: compact.s || '',
+      category: compact.c || '',
+      source: compact.src || '',
+      tickers: (compact.tk || []).map(t => ({ symbol: t.s, action: t.a })),
+      tweet_url: compact.u || '',
+      links: compact.ln || [],
+    };
+  } catch (e) {
+    console.warn('Failed to decode shared signal:', e);
+    return null;
+  }
+}
+
+function shareSignal(index) {
+  if (!lastScanResult?.signals?.[index]) return;
+  const signal = lastScanResult.signals[index];
+  const encoded = encodeSignal(signal);
+  const url = `${location.origin}${location.pathname}#s=${encoded}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.querySelector(`.signal[data-index="${index}"] .share-btn`);
+    if (btn) {
+      btn.classList.add('copied');
+      btn.textContent = 'copied';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.textContent = 'share';
+      }, 1500);
+    }
+  }).catch(err => {
+    console.warn('Failed to copy:', err);
+  });
+}
+
+function checkSharedSignal() {
+  const hash = location.hash;
+  if (!hash.startsWith('#s=')) return false;
+  const encoded = hash.slice(3);
+  const signal = decodeSignal(encoded);
+  if (!signal) return false;
+  document.body.setAttribute('data-shared', '');
+  $('sharedBanner').innerHTML = `
+    <div class="shared-banner">
+      <span class="shared-banner-text">shared signal</span>
+      <a href="${location.pathname}">← back to sentry</a>
+    </div>
+  `;
+  document.querySelector('.controls').style.display = 'none';
+  renderSharedSignal(signal);
+  return true;
+}
+
+function renderSharedSignal(signal) {
+  const cat = normCat(signal.category)?.toLowerCase();
+  const source = (signal.source || '').replace(/^@/, '');
+  const tickers = (signal.tickers?.length)
+    ? signal.tickers.map(t => {
+        const url = tickerUrl(t.symbol || '');
+        const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+        const cached = priceCache[sym];
+        const priceStr = cached ? priceHtml(cached) : '';
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}${priceStr}</a>`;
+      }).join('')
+    : '';
+  const extLinks = (signal.links?.length)
+    ? signal.links.map(l => {
+        try {
+          const hostname = new URL(l).hostname.replace('www.','').toLowerCase();
+          return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+        } catch { return ''; }
+      }).filter(Boolean).join(' ')
+    : '';
+  const sourceLink = signal.tweet_url 
+    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+    : `@${esc(source)}`;
+  const tooltipText = signal.summary || signal.title || '';
+  const seePost = signal.tweet_url
+    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tooltipText)}" data-author="${esc(source)}"><span class="text">see post</span><span class="arrow">↗</span></a>`
+    : '';
+  const tweetExpand = tooltipText ? `
+    <div class="tweet-expand">
+      <button class="tweet-expand-btn" onclick="toggleTweetExpand('shared-tweet-expand', this)">show tweet ▸</button>
+      <div class="tweet-expand-content" id="shared-tweet-expand">
+        <div class="tweet-expand-author">@${esc(source)}</div>
+        ${esc(tooltipText)}
+      </div>
+    </div>` : '';
+  const h = `<div class="signal">
+    <div class="sig-top"><span>${sourceLink}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span>${seePost}</div>
+    ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+    <div class="sig-title">${esc(signal.title || '')}</div>
+    <div class="sig-summary">${esc(signal.summary || '')}</div>
+    ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+    ${tweetExpand}
+  </div>`;
+  $('results').innerHTML = h;
+  $('footer').innerHTML = 'shared from <a href="' + location.pathname + '">sentry</a> · not financial advice';
+  setupTweetTooltips();
+  const allSymbols = (signal.tickers || []).map(t => (t.symbol || '').replace(/^\$/, '').toUpperCase()).filter(Boolean);
+  if (allSymbols.length) fetchAllPrices(allSymbols).then(() => updateTickerPrices());
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+function initEventListeners() {
+  // Preset modal events
+  let presetModalMouseDownTarget = null;
+  $('presetModal').addEventListener('mousedown', e => { presetModalMouseDownTarget = e.target; });
+  $('presetModal').addEventListener('click', e => {
+    if (e.target === $('presetModal') && presetModalMouseDownTarget === $('presetModal')) closePresetModal();
+    presetModalMouseDownTarget = null;
+  });
+  $('presetNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('presetAccountsInput').focus(); });
+  $('presetAccountsInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePreset(); } });
+
+  // Settings modal events
+  let modalMouseDownTarget = null;
+  $('modal').addEventListener('mousedown', e => { modalMouseDownTarget = e.target; });
+  $('modal').addEventListener('click', e => {
+    if (e.target === $('modal') && modalMouseDownTarget === $('modal')) closeModal();
+    modalMouseDownTarget = null;
+  });
+  $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
+  $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
+  $('fontProvider').addEventListener('change', e => setFont(e.target.value));
+  $('fontSizeProvider').addEventListener('change', e => setFontSize(e.target.value));
+  $('caseProvider').addEventListener('change', e => setCase(e.target.value));
+
+  // Account input events
+  $('acctInput').addEventListener('input', function() {
+    this.value = this.value.replace(/^@/, '');
+    $('addBtn').classList.toggle('vis', this.value.trim().length > 0);
+  });
+  $('acctInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && $('acctInput').value.trim()) { e.preventDefault(); add($('acctInput').value); }
+  });
+  $('addBtn').addEventListener('click', () => { if ($('acctInput').value.trim()) add($('acctInput').value); });
+}
+
+(function init() {
+  // Apply settings
+  setTheme(getTheme());
+  setFont(getFont());
+  setFontSize(getFontSize());
+  setCase(getCase());
+  
+  // Check for shared signal in URL first
+  if (checkSharedSignal()) {
+    console.log('✓ Sentry initialized (shared view)');
+    return;
+  }
+  
+  // Load user data
+  loadAccountsData();
+  loadLoadedPresets();
+  
+  // Initialize event listeners
+  initEventListeners();
+  
+  // Cleanup old cache entries
+  cleanupCache();
+  
+  // Update key button state
+  updateKeyBtn();
+  
+  // Render UI
+  render();
+  renderHistory();
+
+  // Load previous scan on refresh
+  const savedScan = loadCurrentScan();
+  if (savedScan) {
+    lastScanResult = savedScan;
+    const d = new Date(savedScan.date);
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
+    renderTickers(savedScan.signals);
+    renderSignals(savedScan.signals);
+  }
+  
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  
+  console.log('✓ Sentry initialized');
+})();
