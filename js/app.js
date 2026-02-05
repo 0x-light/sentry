@@ -52,10 +52,16 @@ WRITING STYLE:
 
 Return a JSON array. Each signal:
 - "title": A clear headline capturing the tweet's intent. Lead with ticker/company when relevant. Signal inference when present ("price drop may be overblown").
-- "summary": 1-2 plain-language sentences summarizing the opinion and reasoning. Quote key phrases when useful; do not fabricate specifics.
+- "summary": 1-2 plain-language sentences summarizing the opinion and reasoning. Quote key phrases when useful; do not fabricate specifics. When multiple assets are mentioned, be precise about which price/level refers to which asset (e.g. "HYPE approaching key level while BTC trades near $69k" — don't confuse BTC's price with HYPE's price).
 - "category": "Trade" | "Tool" | "Insight" | "Resource"
 - "source": twitter handle (no @)
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tickers mentioned, including when they appear as abbreviations (NVDA, MSFT), company names (Samsung → $005930.KS, Nvidia → $NVDA), or informal references. Look up the correct ticker symbol. Yahoo Finance format: US stocks = symbol only ($AAPL), Taiwan = .TW ($2408.TW), Hong Kong = .HK, Japan = .T, Korea = .KS, crypto = symbol only ($BTC, $ETH). NEVER skip a tradeable asset mentioned in the tweet.
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tradeable assets mentioned. You must recognize and convert:
+  • Company names → stock tickers (Nvidia → $NVDA, Samsung → $005930.KS, Apple → $AAPL)
+  • Index references → ETF tickers (S&P 500/SPX → $SPY, Nasdaq/QQQ → $QQQ, Dow Jones → $DIA, Russell 2000 → $IWM)
+  • Crypto names → crypto tickers (Bitcoin → $BTC, Ethereum → $ETH, Zcash → $ZEC, Solana → $SOL, Hyperliquid → $HYPE)
+  • Abbreviations without $ (BTC, ETH, HYPE, SOL) → add the $ prefix
+  • Protocol/project names → their token (Uniswap → $UNI, Aave → $AAVE, Chainlink → $LINK)
+  Use your knowledge to map ANY asset name to its correct ticker. Yahoo Finance format: US stocks = symbol only ($AAPL), Taiwan = .TW, Hong Kong = .HK, Japan = .T, Korea = .KS, crypto = symbol only. NEVER skip a tradeable asset. When in doubt, include it.
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks). Empty array if none.
 
@@ -1003,7 +1009,9 @@ function groupSignalsByTweet(signals) {
 function dedupeSignals(signals) {
   const seen = new Set();
   return signals.filter(s => {
-    const key = `${s.tweet_url || ''}|${s.title || ''}|${s.summary || ''}`;
+    // Primary key: tweet_url (uniquely identifies a tweet)
+    // Fallback: title+summary for signals without tweet_url
+    const key = s.tweet_url || `${s.title || ''}|${s.summary || ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1315,6 +1323,7 @@ const CRYPTO_SLUGS = {
   QNT: 'quant-network', THETA: 'theta-token', XTZ: 'tezos', FLOW: 'flow', NEO: 'neo',
   KAS: 'kaspa', TON: 'the-open-network', TRX: 'tron', USDT: 'tether', USDC: 'usd-coin',
   DAI: 'dai', BUSD: 'binance-usd', TUSD: 'true-usd', FRAX: 'frax', LUSD: 'liquity-usd',
+  HYPE: 'hyperliquid',
 };
 
 const priceCache = {};
@@ -2163,9 +2172,14 @@ function prependSignals(newSignals, newTweets) {
     tweetMap[url] = { text: tw.text || '', author: tw._account || tw.author?.userName || '', time: timeStr };
   });
   
+  // Filter out duplicates (signals for tweets we already have)
+  const existingUrls = new Set((lastScanResult?.signals || []).map(s => s.tweet_url).filter(Boolean));
+  const uniqueNewSignals = newSignals.filter(s => !s.tweet_url || !existingUrls.has(s.tweet_url));
+  if (!uniqueNewSignals.length) return;
+  
   // Update lastScanResult
   if (lastScanResult) {
-    lastScanResult.signals = [...newSignals, ...lastScanResult.signals];
+    lastScanResult.signals = dedupeSignals([...uniqueNewSignals, ...lastScanResult.signals]);
     lastScanResult.totalTweets += newTweets.length;
     
     // Add to rawTweets
@@ -2188,9 +2202,9 @@ function prependSignals(newSignals, newTweets) {
   
   // Prepend to the UI
   const resultsEl = $('results');
-  const startIndex = lastScanResult ? lastScanResult.signals.indexOf(newSignals[0]) : 0;
+  const startIndex = lastScanResult ? lastScanResult.signals.indexOf(uniqueNewSignals[0]) : 0;
   
-  newSignals.forEach((item, i) => {
+  uniqueNewSignals.forEach((item, i) => {
     const index = startIndex + i;
     const cat = normCat(item.category);
     const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || lastScanResult?.tweetMeta?.[item.tweet_url] || {}) : {};
