@@ -154,12 +154,12 @@ body.modal-open { overflow: hidden; }
 .presets-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
 .preset-chip {
   background: var(--text-10); border: none;
-  color: var(--text-muted); font-size: var(--fs);
+  color: var(--text-muted); font-size: inherit;
   display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
 }
 .preset-chip:hover { color: var(--text-strong); }
 .preset-chip.selected { color: var(--bg-alt); background: var(--text-strong); }
-.preset-chip .count { font-size: var(--fs-sm); }
+.preset-chip .count { font-size: inherit; }
 .preset-chip.selected .count { color: var(--bg-alt); }
 .preset-manage { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
 .preset-manage:hover { color: var(--text-strong); }
@@ -174,7 +174,7 @@ body.modal-open { overflow: hidden; }
 .ranges { display: flex; gap: 8px; align-items: center; }
 .rng {
   background: none; border: none; border-bottom: 1px solid transparent;
-  color: var(--text-muted); font-size: var(--fs);
+  color: var(--text-muted); font-size: inherit;
 }
 .rng:hover { color: var(--text-strong); }
 .rng.on { color: var(--bg); background: var(--text-strong); border-bottom-color: var(--text-strong); }
