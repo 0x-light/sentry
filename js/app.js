@@ -10,8 +10,8 @@ const DEFAULT_PRESETS = [
 const MAX_RECENTS = 10;
 const RANGES = [
   { label: 'Today', days: 1 },
-  { label: 'This week', days: 7 },
-  { label: 'This month', days: 30 },
+  { label: 'Week', days: 7 },
+  { label: 'Month', days: 30 },
 ];
 const CATEGORIES = ['Trade', 'Tool', 'Insight', 'Resource'];
 const CAT_C = { Trade: 'var(--green)', Tool: 'var(--blue)', Insight: 'var(--purple)', Resource: 'var(--amber)' };
