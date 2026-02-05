@@ -65,7 +65,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between;
 }
 .logo { display: flex; align-items: center; gap: 8px; }
-.dot { font-size: var(--fs); background: var(--text-strong); color: var(--bg); }
+.dot { width: 6px; height: 14px; background: var(--text-strong); }
 .dot.loading { animation: blink 1s step-end infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .logo-text { font-size: var(--fs); font-weight: 500; color: var(--text-strong); }
