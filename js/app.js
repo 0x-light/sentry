@@ -1226,10 +1226,11 @@ function createStorableScan(scan) {
   return { date: scan.date, range: scan.range, days: scan.days, accounts: scan.accounts, totalTweets: scan.totalTweets, signals: scan.signals, tweetMeta };
 }
 
-function saveScan(scan) {
+function saveScan(scan, skipHistory = false) {
   try {
     const storable = createStorableScan(scan);
     localStorage.setItem(LS_CURRENT, JSON.stringify(storable));
+    if (skipHistory) return;
     const history = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
     const tweetTimes = {};
     if (scan.rawTweets) {
@@ -2304,7 +2305,8 @@ function prependSignals(newSignals, newTweets) {
     if (!lastScanResult.tweetMeta) lastScanResult.tweetMeta = {};
     Object.assign(lastScanResult.tweetMeta, tweetMap);
     
-    saveScan(lastScanResult);
+    // Save but don't add to history (live updates shouldn't create new history entries)
+    saveScan(lastScanResult, true);
   }
   
   // Prepend to the UI
