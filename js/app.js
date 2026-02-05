@@ -70,7 +70,12 @@ const LS_FONT_SIZE = 'signal_font_size';
 const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
 const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
+const LS_LIVE_MODE = 'signal_live_mode';
 const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
+
+// Live feed config
+const LIVE_POLL_INTERVAL = 45000; // 45 seconds
+const LIVE_LOOKBACK_HOURS = 1; // Only fetch tweets from last hour
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let customAccounts = [];
@@ -80,6 +85,13 @@ let lastScanResult = null;
 let busy = false;
 let logs = [];
 let filters = { category: null };
+
+// Live feed state
+let isLiveMode = false;
+let liveInterval = null;
+let livePollAbort = null;
+let seenTweetUrls = new Set();
+let lastLiveCheck = null;
 
 function getAllAccounts() {
   const all = [...customAccounts];
@@ -1143,6 +1155,13 @@ async function run() {
       rawTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets })),
     };
     saveScan(lastScanResult);
+    
+    // Update seenTweetUrls for live mode
+    accountTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        seenTweetUrls.add(getTweetUrl(tw));
+      });
+    });
     const d = new Date();
     const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     setStatus(`${dateStr} · <span class="hide-mobile">${accounts.length} accounts · ${totalTweets} tweets · </span>${signals.length} signals`, false, true);
@@ -1859,6 +1878,406 @@ function renderSharedSignal(signal) {
 }
 
 // ============================================================================
+// LIVE FEED
+// ============================================================================
+
+function toggleLive() {
+  if (isLiveMode) {
+    stopLiveFeed();
+  } else {
+    startLiveFeed();
+  }
+}
+
+function startLiveFeed() {
+  if (!hasAnyAccounts()) {
+    $('notices').innerHTML = `<div class="notice warn">Add accounts to enable live mode</div>`;
+    return;
+  }
+  if (!bothKeys()) {
+    openModal();
+    return;
+  }
+  
+  isLiveMode = true;
+  localStorage.setItem(LS_LIVE_MODE, 'true');
+  $('liveBtn').classList.add('active');
+  
+  // Initialize seen tweets from current scan
+  if (lastScanResult?.rawTweets) {
+    lastScanResult.rawTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        seenTweetUrls.add(getTweetUrl(tw));
+      });
+    });
+  }
+  
+  // Cap seen URLs to prevent memory bloat
+  if (seenTweetUrls.size > 2000) {
+    const arr = [...seenTweetUrls];
+    seenTweetUrls = new Set(arr.slice(-1000));
+  }
+  
+  lastLiveCheck = Date.now();
+  
+  // Start polling
+  pollForNewTweets();
+  liveInterval = setInterval(pollForNewTweets, LIVE_POLL_INTERVAL);
+  
+  // Pause when tab is hidden
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  console.log('✓ Live feed started');
+}
+
+function stopLiveFeed() {
+  isLiveMode = false;
+  localStorage.removeItem(LS_LIVE_MODE);
+  $('liveBtn').classList.remove('active');
+  
+  if (liveInterval) {
+    clearInterval(liveInterval);
+    liveInterval = null;
+  }
+  
+  if (livePollAbort) {
+    livePollAbort.abort();
+    livePollAbort = null;
+  }
+  
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  
+  console.log('✓ Live feed stopped');
+}
+
+function handleVisibilityChange() {
+  if (!isLiveMode) return;
+  
+  if (document.hidden) {
+    // Pause polling when tab is hidden
+    if (liveInterval) {
+      clearInterval(liveInterval);
+      liveInterval = null;
+    }
+    console.log('Live feed paused (tab hidden)');
+  } else {
+    // Resume polling when tab is visible
+    if (!liveInterval) {
+      pollForNewTweets();
+      liveInterval = setInterval(pollForNewTweets, LIVE_POLL_INTERVAL);
+      console.log('Live feed resumed');
+    }
+  }
+}
+
+
+async function pollForNewTweets() {
+  if (!isLiveMode || busy) return;
+  
+  const accounts = getAllAccounts();
+  if (!accounts.length) {
+    stopLiveFeed();
+    return;
+  }
+  
+  livePollAbort = new AbortController();
+  const signal = livePollAbort.signal;
+  
+  try {
+    // Fetch tweets from the last hour only
+    const lookbackDays = LIVE_LOOKBACK_HOURS / 24;
+    const cutoff = new Date(Date.now() - LIVE_LOOKBACK_HOURS * 3600000);
+    
+    console.log(`[Live] Polling ${accounts.length} accounts...`);
+    
+    // Fetch in smaller batches to be gentle on the API
+    const BATCH_SIZE = 3;
+    const allNewTweets = [];
+    
+    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+      if (signal?.aborted || !isLiveMode) break;
+      
+      const batch = accounts.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(batch.map(async (account) => {
+        if (signal?.aborted) return [];
+        try {
+          const tweets = await fetchTweetsWithRetry(account, lookbackDays, 2, signal);
+          // Filter to only truly new tweets
+          return tweets.filter(tw => {
+            const url = getTweetUrl(tw);
+            const created = new Date(tw.createdAt);
+            return created >= cutoff && !seenTweetUrls.has(url);
+          }).map(tw => ({ ...tw, _account: account }));
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          console.warn(`[Live] Error fetching @${account}:`, e.message);
+          return [];
+        }
+      }));
+      
+      results.forEach(tweets => allNewTweets.push(...tweets));
+      
+      // Small delay between batches
+      if (i + BATCH_SIZE < accounts.length && !signal?.aborted) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+    
+    lastLiveCheck = Date.now();
+    
+    // Remove "new" badges from previous poll
+    document.querySelectorAll('.signal .new-badge').forEach(el => el.remove());
+    
+    if (allNewTweets.length === 0) {
+      console.log('[Live] No new tweets');
+      return;
+    }
+    
+    console.log(`[Live] Found ${allNewTweets.length} new tweets`);
+    
+    // Mark these tweets as seen
+    allNewTweets.forEach(tw => seenTweetUrls.add(getTweetUrl(tw)));
+    
+    // Analyze the new tweets
+    const newSignals = await analyzeLiveTweets(allNewTweets, signal);
+    
+    if (newSignals.length > 0) {
+      console.log(`[Live] ${newSignals.length} new signals extracted`);
+      prependSignals(newSignals, allNewTweets);
+    }
+    
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.log('[Live] Poll cancelled');
+    } else {
+      console.error('[Live] Poll error:', e);
+      // Don't stop live mode on transient errors
+    }
+  } finally {
+    livePollAbort = null;
+  }
+}
+
+async function analyzeLiveTweets(tweets, signal) {
+  if (!tweets.length) return [];
+  
+  const prompt = getPrompt();
+  const promptHash = getPromptHash();
+  const cache = loadAnalysisCache();
+  
+  // Group tweets by account for analysis
+  const byAccount = {};
+  tweets.forEach(tw => {
+    const acc = tw._account || tw.author?.userName || 'unknown';
+    if (!byAccount[acc]) byAccount[acc] = [];
+    byAccount[acc].push(tw);
+  });
+  
+  // Check cache first
+  const cachedSignals = [];
+  const uncachedTweets = [];
+  
+  tweets.forEach(tw => {
+    const url = getTweetUrl(tw);
+    const cached = getCachedSignals(cache, promptHash, url);
+    if (cached) {
+      cachedSignals.push(...cached);
+    } else {
+      uncachedTweets.push(tw);
+    }
+  });
+  
+  if (!uncachedTweets.length) {
+    return cachedSignals;
+  }
+  
+  // Build a small batch for analysis
+  const accountData = Object.entries(byAccount)
+    .filter(([_, tweets]) => tweets.some(tw => !getCachedSignals(cache, promptHash, getTweetUrl(tw))))
+    .map(([account, tweets]) => ({
+      account,
+      tweets: tweets.filter(tw => !getCachedSignals(cache, promptHash, getTweetUrl(tw)))
+    }))
+    .filter(a => a.tweets.length > 0);
+  
+  if (!accountData.length) return cachedSignals;
+  
+  try {
+    // Build the text content
+    const textParts = accountData.map(a => {
+      const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+      const body = a.tweets.map(formatTweetForAnalysis).join('\n---\n');
+      return `${header}\n${body}`;
+    });
+    
+    const fullText = `${prompt}\n\n${textParts.join('\n\n======\n\n')}`;
+    const tweetUrls = accountData.flatMap(a => a.tweets.map(getTweetUrl));
+    
+    // Get images if any
+    const imageUrls = accountData.flatMap(a => a.tweets.map(getTweetImageUrl)).filter(Boolean).slice(0, 3);
+    
+    let messageContent;
+    if (imageUrls.length > 0) {
+      messageContent = [
+        { type: 'text', text: sanitizeText(fullText) },
+        ...imageUrls.map(url => ({ type: 'image', source: { type: 'url', url } }))
+      ];
+    } else {
+      messageContent = sanitizeText(fullText);
+    }
+    
+    const data = await anthropicCall(
+      { model: ANALYSIS_MODEL, max_tokens: 8192, messages: [{ role: 'user', content: messageContent }] },
+      3,
+      signal
+    );
+    
+    const txt = extractText(data.content);
+    const newSignals = safeParseSignals(txt);
+    
+    // Cache the results
+    const grouped = groupSignalsByTweet(newSignals);
+    tweetUrls.forEach(url => {
+      setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
+    });
+    saveAnalysisCache(cache);
+    
+    return [...cachedSignals, ...newSignals];
+    
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    console.error('[Live] Analysis error:', e);
+    return cachedSignals;
+  }
+}
+
+function prependSignals(newSignals, newTweets) {
+  if (!newSignals.length) return;
+  
+  // Build tweet map for the new tweets
+  const tweetMap = {};
+  newTweets.forEach(tw => {
+    const url = getTweetUrl(tw);
+    const date = tw.createdAt ? new Date(tw.createdAt) : null;
+    const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+    tweetMap[url] = { text: tw.text || '', author: tw._account || tw.author?.userName || '', time: timeStr };
+  });
+  
+  // Update lastScanResult
+  if (lastScanResult) {
+    lastScanResult.signals = [...newSignals, ...lastScanResult.signals];
+    lastScanResult.totalTweets += newTweets.length;
+    
+    // Add to rawTweets
+    newTweets.forEach(tw => {
+      const account = tw._account || tw.author?.userName || 'unknown';
+      let found = lastScanResult.rawTweets?.find(a => a.account === account);
+      if (found) {
+        found.tweets = [tw, ...found.tweets];
+      } else if (lastScanResult.rawTweets) {
+        lastScanResult.rawTweets.push({ account, tweets: [tw] });
+      }
+    });
+    
+    // Update tweetMeta
+    if (!lastScanResult.tweetMeta) lastScanResult.tweetMeta = {};
+    Object.assign(lastScanResult.tweetMeta, tweetMap);
+    
+    saveScan(lastScanResult);
+  }
+  
+  // Prepend to the UI
+  const resultsEl = $('results');
+  const startIndex = lastScanResult ? lastScanResult.signals.indexOf(newSignals[0]) : 0;
+  
+  newSignals.forEach((item, i) => {
+    const index = startIndex + i;
+    const cat = normCat(item.category);
+    const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || lastScanResult?.tweetMeta?.[item.tweet_url] || {}) : {};
+    const source = (item.source || '').replace(/^@/, '');
+    const time = tweetInfo.time || '';
+    
+    const tickers = (item.tickers && item.tickers.length)
+      ? item.tickers.map(t => {
+          const url = tickerUrl(t.symbol || '');
+          const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+          const cached = priceCache[sym];
+          const priceStr = cached ? priceHtml(cached) : '';
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}${priceStr}</a>`;
+        }).join('')
+      : '';
+    
+    const extLinks = (item.links && item.links.length)
+      ? item.links.map(l => {
+          try {
+            const hostname = new URL(l).hostname.replace('www.','');
+            return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+          } catch { return ''; }
+        }).filter(Boolean).join(' ')
+      : '';
+    
+    const sourceLink = item.tweet_url 
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}">@${esc(source)}</a>`
+      : `@${esc(source)}`;
+    
+    const seePost = item.tweet_url
+      ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>`
+      : '';
+    
+    const tweetExpandId = `tweet-expand-live-${Date.now()}-${i}`;
+    const tweetExpand = tweetInfo.text ? `
+      <div class="tweet-expand">
+        <button class="tweet-expand-btn" onclick="toggleTweetExpand('${tweetExpandId}', this)">show tweet ▸</button>
+        <div class="tweet-expand-content" id="${tweetExpandId}">
+          <div class="tweet-expand-author">@${esc(source)}${time ? ` · ${time}` : ''}</div>
+          ${esc(tweetInfo.text)}
+        </div>
+      </div>` : '';
+    
+    const html = `<div class="signal new" data-category="${esc(cat || '')}" data-index="${index}">
+      <div class="sig-top"><span><span class="new-badge">new</span>${sourceLink}${time ? ` · ${time}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span><span style="display:flex;gap:12px;align-items:center"><button class="share-btn" onclick="shareSignal(${index})" title="Share">share</button>${seePost}</span></div>
+      ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
+      <div class="sig-title">${esc(item.title || '')}</div>
+      <div class="sig-summary">${esc(item.summary || '')}</div>
+      ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
+      ${tweetExpand}
+    </div>`;
+    
+    resultsEl.insertAdjacentHTML('afterbegin', html);
+  });
+  
+  // Update ticker bar with new tickers
+  if (lastScanResult?.signals) {
+    renderTickers(lastScanResult.signals);
+  }
+  
+  // Update status line
+  if (lastScanResult) {
+    const d = new Date();
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setStatus(`${dateStr} · <span class="hide-mobile">${lastScanResult.accounts.length} accounts · ${lastScanResult.totalTweets} tweets · </span>${lastScanResult.signals.length} signals`, false, true);
+  }
+  
+  // Setup tooltips for new elements
+  setupTweetTooltips();
+  
+  // Fetch prices for new tickers
+  const newSymbols = [];
+  newSignals.forEach(s => (s.tickers || []).forEach(t => {
+    const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
+    if (sym && !newSymbols.includes(sym)) newSymbols.push(sym);
+  }));
+  if (newSymbols.length) fetchAllPrices(newSymbols).then(() => updateTickerPrices());
+  
+  // Remove the "new" class after animation
+  setTimeout(() => {
+    document.querySelectorAll('.signal.new').forEach(el => {
+      el.classList.remove('new');
+    });
+  }, 3000);
+}
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -1941,6 +2360,13 @@ function initEventListeners() {
   // Register service worker for PWA
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  
+  // Restore live mode if it was active
+  if (localStorage.getItem(LS_LIVE_MODE) === 'true' && savedScan) {
+    setTimeout(() => {
+      startLiveFeed();
+    }, 1000);
   }
   
   console.log('✓ Sentry initialized');

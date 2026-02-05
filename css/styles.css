@@ -47,11 +47,11 @@ body {
 }
 /* Text case - default is lowercase */
 /* Lowercase mode - UI elements only */
-[data-case="lower"] .logo-text, [data-case="lower"] .top-btn, [data-case="lower"] .add-btn,
+[data-case="lower"] .logo-text, [data-case="lower"] .top-btn, [data-case="lower"] .live-btn, [data-case="lower"] .add-btn,
 [data-case="lower"] .preset-chip, [data-case="lower"] .preset-manage, [data-case="lower"] .sug,
 [data-case="lower"] .rng, [data-case="lower"] .clear-btn,
 [data-case="lower"] .scan-btn, [data-case="lower"] .cancel-btn, [data-case="lower"] .sig-cat,
-[data-case="lower"] .dl-btn, [data-case="lower"] .footer,
+[data-case="lower"] .dl-btn, [data-case="lower"] .new-badge, [data-case="lower"] .footer,
 [data-case="lower"] .empty-state, [data-case="lower"] .see-post, [data-case="lower"] .modal h3,
 [data-case="lower"] .modal label, [data-case="lower"] .modal-sm-btn, [data-case="lower"] #cacheSize,
 [data-case="lower"] .modal-actions button, [data-case="lower"] .preset-list-item button,
@@ -276,6 +276,7 @@ body.modal-open { overflow: hidden; }
 
 /* Shared view overrides */
 [data-shared] .topbar { border-bottom: none; }
+[data-shared] .live-btn { display: none; }
 [data-shared] .signal { padding: 10px 20px; }
 [data-shared] .shared-banner, [data-shared] .shared-banner *,
 [data-shared] .sig-top, [data-shared] .sig-cat, [data-shared] .see-post,
@@ -327,7 +328,7 @@ body.modal-open { overflow: hidden; }
 
 /* Disable hover states on touch devices */
 @media (hover: none) {
-  .top-btn:hover, .modal-close:hover, .reset-prompt:hover, .modal-actions button:hover,
+  .top-btn:hover, .live-btn:hover, .modal-close:hover, .reset-prompt:hover, .modal-actions button:hover,
   .modal-sm-btn:hover, .preset-list-item button:hover, .preset-chip:hover, .preset-manage:hover,
   .sug:hover, .rng:hover, .clear-btn:hover, .scan-btn:hover:not(:disabled), .cancel-btn:hover,
   .ticker-item:hover, .sig-top a:hover, .ticker-tag:hover, .ext-link:hover, .see-post:hover,
@@ -338,3 +339,39 @@ body.modal-open { overflow: hidden; }
   .modal-actions button:last-child:hover { opacity: 1; }
   .ext-link:hover { background: var(--text-10); }
 }
+
+/* ============================================================================
+   LIVE FEED
+   ============================================================================ */
+
+.live-btn {
+  background: none; border: none; font-size: var(--fs); color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.live-btn:hover { color: var(--text); }
+.live-btn.active { color: var(--green); }
+.live-btn .live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.live-btn.active .live-dot {
+  animation: liveBlink 1s step-end infinite;
+}
+@keyframes liveBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+
+/* New signal animation */
+.signal.new {
+  animation: signalSlideIn 0.4s ease-out;
+}
+@keyframes signalSlideIn {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.signal .new-badge {
+  display: inline-block; font-size: var(--fs-xs); color: var(--green);
+  background: var(--green-10); margin-right: 6px;
+}
+
