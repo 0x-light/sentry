@@ -82,7 +82,7 @@ button { font-family: inherit; cursor: pointer; }
 body.modal-open { overflow: hidden; }
 .modal {
   background: var(--bg);
-  padding: 24px; width: 100%; max-width: 480px; height: 100%; overflow-y: auto;
+  padding: 10px; width: 100%; max-width: 480px; height: 100%; overflow-y: auto;
   position: relative; border-left: 1px solid var(--border);
 }
 .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; line-height: 1; }
@@ -324,7 +324,7 @@ body.modal-open { overflow: hidden; }
   .hide-mobile { display: none; }
   .modal input, .modal textarea, .modal select, .input-row input { font-size: 16px !important; } /* prevent iOS zoom on focus */
   .modal-bg { align-items: flex-end; justify-content: stretch; }
-  .modal { max-width: 100%; height: auto; max-height: 85vh; border: none; border-top: 1px solid var(--border); border-left: none; padding: 20px; }
+  .modal { max-width: 100%; height: auto; max-height: 85vh; border: none; border-top: 1px solid var(--border); border-left: none; }
   .modal-actions { flex-direction: row; margin-top: 16px; }
   .modal-actions button.danger { margin-right: auto; }
 }
