@@ -23,6 +23,9 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23ffffff' width='100' height='100' rx='16'/><rect x='40' y='25' width='20' height='50' fill='%230a0a0a'/></svg>">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23ffffff' width='100' height='100' rx='20'/><rect x='40' y='25' width='20' height='50' fill='%230a0a0a'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://api.anthropic.com">
+<link rel="preconnect" href="https://api.coingecko.com">
+<link rel="preconnect" href="https://sentry.tomaspalmeirim.workers.dev">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -38,54 +41,70 @@
 <div class="modal-bg" id="modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
-    <h3>Settings</h3>
-    <p>Your API keys are stored locally in your browser and are only sent to their respective APIs — never to any third-party servers.<br>
-    Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
-    Get an Anthropic API key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
-    <label>X/Twitter API key (twitterapi.io)</label>
-    <input type="password" id="twKeyInput" placeholder="Your twitterapi.io key">
-    <label>Anthropic API key</label>
-    <input type="password" id="keyInput" placeholder="sk-ant-...">
-    <label>Charts</label>
-    <select id="financeProvider">
-      <option value="yahoo">Yahoo Finance</option>
-      <option value="google">Google Finance</option>
-      <option value="tradingview">TradingView</option>
-    </select>
-    <label>Font</label>
-    <select id="fontProvider">
-      <option value="mono">Monospace</option>
-      <option value="system">System</option>
-    </select>
-    <label>Font size</label>
-    <select id="fontSizeProvider">
-      <option value="xsmall">Extra Small</option>
-      <option value="small">Small</option>
-      <option value="medium">Medium</option>
-      <option value="large">Large</option>
-      <option value="xlarge">Extra Large</option>
-    </select>
-    <label>Text style</label>
-    <select id="caseProvider">
-      <option value="lower">lowercase</option>
-      <option value="sentence">Sentence case</option>
-    </select>
-    <label>Analyst prompt <button type="button" class="modal-sm-btn reset-prompt" onclick="resetPrompt()">reset</button></label>
-    <textarea id="promptInput" style="height:150px" placeholder="Custom instructions for the AI analyst..."></textarea>
-    <label>Live feed <span class="beta-tag">beta</span></label>
-    <div class="toggle-row">
-      <input type="checkbox" id="liveEnabledToggle">
-      <span class="toggle-desc">Passively monitor accounts for new posts. Uses ~3x more API credits than manual scans.</span>
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchTab('api')">API</button>
+      <button class="modal-tab" onclick="switchTab('analyst')">Analyst</button>
+      <button class="modal-tab" onclick="switchTab('display')">Display</button>
+      <button class="modal-tab" onclick="switchTab('data')">Data</button>
     </div>
-    <label>Backup</label>
-    <div style="display:flex;gap:8px">
-      <button type="button" class="modal-sm-btn" id="exportBtn" onclick="exportData(this)">Export</button>
-      <button type="button" class="modal-sm-btn" id="importBtn" onclick="importData(this)">Import</button>
+    <div class="tab-content active" data-tab="api">
+      <p>Your API keys are stored locally and only sent to their respective APIs.<br>
+      Get an X/Twitter API key at <a href="https://twitterapi.io" target="_blank">twitterapi.io</a>.<br>
+      Get an Anthropic API key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
+      <label>X/Twitter API key (twitterapi.io)</label>
+      <input type="password" id="twKeyInput" placeholder="Your twitterapi.io key">
+      <label>Anthropic API key</label>
+      <input type="password" id="keyInput" placeholder="sk-ant-...">
+      <label>Model <span id="modelCostHint" style="margin-left:auto;text-transform:none;color:var(--text-muted)"></span></label>
+      <select id="modelProvider">
+        <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+      </select>
     </div>
-    <label>Cache</label>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button type="button" class="modal-sm-btn" onclick="clearCache()">Clear cache</button>
-      <span id="cacheSize" style="font-size:var(--fs-sm);color:var(--text-muted)"></span>
+    <div class="tab-content" data-tab="analyst">
+      <div id="analystList"></div>
+    </div>
+    <div class="tab-content" data-tab="display">
+      <label>Charts</label>
+      <select id="financeProvider">
+        <option value="yahoo">Yahoo Finance</option>
+        <option value="google">Google Finance</option>
+        <option value="tradingview">TradingView</option>
+      </select>
+      <label>Font</label>
+      <select id="fontProvider">
+        <option value="mono">Monospace</option>
+        <option value="system">System</option>
+      </select>
+      <label>Font size</label>
+      <select id="fontSizeProvider">
+        <option value="xsmall">Extra Small</option>
+        <option value="small">Small</option>
+        <option value="medium">Medium</option>
+        <option value="large">Large</option>
+        <option value="xlarge">Extra Large</option>
+      </select>
+      <label>Text style</label>
+      <select id="caseProvider">
+        <option value="lower">lowercase</option>
+        <option value="sentence">Sentence case</option>
+      </select>
+    </div>
+    <div class="tab-content" data-tab="data">
+      <label>Live feed <span class="beta-tag">beta</span></label>
+      <div class="toggle-row">
+        <input type="checkbox" id="liveEnabledToggle">
+        <span class="toggle-desc">Passively monitor accounts for new posts. Uses ~3x more API credits than manual scans.</span>
+      </div>
+      <label>Backup</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="modal-sm-btn" id="exportBtn" onclick="exportData(this)">Export</button>
+        <button type="button" class="modal-sm-btn" id="importBtn" onclick="importData(this)">Import</button>
+      </div>
+      <label>Cache</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="modal-sm-btn" onclick="clearCache()">Clear cache</button>
+        <span id="cacheSize" style="font-size:var(--fs-sm);color:var(--text-muted)"></span>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="danger" id="clearKeyBtn" onclick="clearKeys()">Clear all</button>

@@ -1,8 +1,10 @@
-const CACHE_NAME = 'sentry-v1';
+const CACHE_NAME = 'sentry-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/css/styles.css',
+  '/js/app.js'
 ];
 
 // Install - cache static assets

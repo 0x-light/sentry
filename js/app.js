@@ -5,7 +5,7 @@
 // --- Config ---
 const DEFAULT_PRESETS = [
   { name: 'tradfi', accounts: ['abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'MartinShkreli', 'nicholastreece', 'zephyr_z9'] },
-  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'sershokunin', 'SMtrades_', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'fejau_inc', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'salveboccaccio', 'sershokunin', 'SMtrades_', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
 ];
 const MAX_RECENTS = 10;
 const RANGES = [
@@ -23,47 +23,61 @@ const LS_TW = 'signal_twitter_key';
 const LS_AN = 'signal_anthropic_key';
 const LS_SCANS = 'signal_scan_history';
 const LS_CURRENT = 'signal_current_scan';
-const LS_PROMPT = 'signal_custom_prompt';
-const DEFAULT_PROMPT = `You are a world-class financial analyst. Extract actionable trading signals from these tweets. Be selective — only tweets with genuine trading opinions count.
+const LS_PROMPT = 'signal_custom_prompt'; // legacy, migrated to analysts
+const LS_ANALYSTS = 'signal_analysts';
+const LS_ACTIVE_ANALYST = 'signal_active_analyst';
+const LS_DEFAULT_PROMPT_HASH = 'signal_default_prompt_hash';
+const DEFAULT_ANALYST_ID = 'default';
+const DEFAULT_PROMPT = `You are an elite financial intelligence analyst. Extract actionable trading signals from these tweets with the precision of a portfolio manager deploying real capital.
 
-WHAT TO SKIP (return nothing for these):
-- Pure memes/shitposts with no underlying thesis (but note: alpha can be hidden in humor — extract the insight if there's a real opinion beneath the joke)
-- General commentary without actionable insight
-- Personal life updates, announcements unrelated to markets
-- Engagement bait or vague hype without substance
+CORE DIRECTIVE: Be ruthlessly selective. Most tweets are noise. Only extract signals where there is a genuine directional opinion, thesis, or actionable insight.
 
-IMAGES:
-- Tweet images may be included. Use them to understand context (charts, screenshots, memes).
-- If an image is purely comedic with no market insight, skip. But if humor wraps a real take, extract it.
+INCLUDE:
+- Directional views on specific assets (bullish/bearish with reasoning)
+- Macro theses that imply positioning (e.g. "inflation returning" → bonds, gold, dollar implications)
+- Catalysts: earnings, protocol upgrades, regulatory events, product launches
+- Technical analysis with specific levels, targets, or pattern recognition
+- On-chain/flow data indicating smart money movement or unusual activity
+- Contrarian takes that challenge prevailing consensus (particularly valuable)
+- Fund/whale positioning changes or portfolio shifts
 
-ACCURACY & INFERENCE RULES:
-- Ground every signal in the specific tweet text associated with its tweet_url. Do NOT mix facts from other tweets.
-- Inference is allowed but must be clearly framed (use "implies", "suggests", "seems to").
-- Do NOT invent concrete claims (products, events, metrics, partnerships) not present in the tweet.
-- If a tweet is vague, keep your summary appropriately vague.
-- If a tweet quotes/replies to another, consider BOTH but clearly distinguish the source's opinion from the quoted content.
+SKIP:
+- Pure memes without an underlying market thesis (but note: alpha can hide in humor — if there's a real opinion beneath the joke, extract it)
+- Vague hype, engagement bait, motivational trading quotes
+- Personal updates unrelated to markets
+- Restated common knowledge with no new angle or timing element
+- Promotional content without substantive analysis
 
-WRITING STYLE:
-- Write for a smart generalist, not a finance insider.
-- Avoid jargon unless essential — if you use it, briefly clarify (e.g. "TVL (total value locked)").
-- Prefer plain language: "price looks cheap" over "valuation compressed", "buying opportunity" over "constructive setup".
-- Titles should be scannable and self-explanatory in under 3 seconds.
-- Summaries should answer: what's the opinion, and why?
+ACCURACY:
+- Ground every claim in the specific tweet at the given tweet_url. Never mix facts across tweets.
+- Inference is allowed but flag it: "implies", "suggests", "appears to".
+- Vague tweet → vague signal. Never fabricate specifics (products, events, metrics, partnerships).
+- Quote tweets/replies: the author's opinion is the signal; clearly distinguish from quoted content.
+- Threads (sequential tweets, same author, short timeframe): synthesize into one coherent signal.
+
+IMAGES: Analyze charts for key levels, patterns, and annotations. Extract data from screenshots (order books, dashboards, news). Skip purely comedic images unless they encode a real market opinion.
+
+WRITING:
+- Titles: max 12 words, scannable in 2 seconds, lead with $TICKER when relevant. Signal inference when present.
+- Summaries: 1-2 sentences answering: what's the view, why, and what's the implied trade? Quote key phrases from the tweet when they add punch.
+- Plain language for a smart generalist. Clarify jargon briefly if used (e.g. "TVL (total value locked)").
+- Be precise about which price/level belongs to which asset when multiple are mentioned.
 
 Return a JSON array. Each signal:
-- "title": A clear headline capturing the tweet's intent. Lead with ticker/company when relevant. Signal inference when present ("price drop may be overblown").
-- "summary": 1-2 plain-language sentences summarizing the opinion and reasoning. Quote key phrases when useful; do not fabricate specifics. When multiple assets are mentioned, be precise about which price/level refers to which asset (e.g. "HYPE approaching key level while BTC trades near $69k" — don't confuse BTC's price with HYPE's price).
-- "category": "Trade" | "Tool" | "Insight" | "Resource"
+- "title": headline, lead with $TICKER when relevant
+- "summary": 1-2 sentences — opinion, reasoning, implied positioning
+- "category": "Trade" (direct position idea with clear direction) | "Insight" (macro thesis, market structure, analytical observation) | "Tool" (product, platform, or technology for trading/research) | "Resource" (educational content, data source, reference)
 - "source": twitter handle (no @)
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}] — Extract ALL tradeable assets mentioned. You must recognize and convert:
-  • Company names → stock tickers (Nvidia → $NVDA, Samsung → $005930.KS, Apple → $AAPL)
-  • Index references → ETF tickers (S&P 500/SPX → $SPY, Nasdaq/QQQ → $QQQ, Dow Jones → $DIA, Russell 2000 → $IWM)
-  • Crypto names → crypto tickers (Bitcoin → $BTC, Ethereum → $ETH, Zcash → $ZEC, Solana → $SOL, Hyperliquid → $HYPE)
-  • Abbreviations without $ (BTC, ETH, HYPE, SOL) → add the $ prefix
-  • Protocol/project names → their token (Uniswap → $UNI, Aave → $AAVE, Chainlink → $LINK)
-  Use your knowledge to map ANY asset name to its correct ticker. Yahoo Finance format: US stocks = symbol only ($AAPL), Taiwan = .TW, Hong Kong = .HK, Japan = .T, Korea = .KS, crypto = symbol only. NEVER skip a tradeable asset. When in doubt, include it.
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}]
+  Extract ALL tradeable assets. Convert:
+  • Company → stock (Nvidia → $NVDA, Apple → $AAPL, Samsung → $005930.KS, TSMC → $TSM)
+  • Index → ETF (S&P/SPX → $SPY, Nasdaq → $QQQ, Dow → $DIA, Russell → $IWM, VIX → $VIX)
+  • Crypto name or abbreviation → ticker with $ (Bitcoin/BTC → $BTC, Ethereum/ETH → $ETH, Solana/SOL → $SOL, Hyperliquid/HYPE → $HYPE)
+  • Protocol → token (Uniswap → $UNI, Aave → $AAVE, Chainlink → $LINK, Jupiter → $JUP)
+  • Commodity → ETF (Gold → $GLD, Oil → $USO, Silver → $SLV, Natgas → $UNG)
+  Yahoo Finance format: US = symbol ($AAPL), Taiwan = .TW, HK = .HK, Japan = .T, Korea = .KS, crypto = symbol only. NEVER skip a tradeable asset. When in doubt, include it.
 - "tweet_url": exact tweet_url from data
-- "links": external URLs mentioned (articles, substacks). Empty array if none.
+- "links": external URLs mentioned (articles, substacks, dashboards). Empty array if none.
 
 Return ONLY valid JSON array. No markdown, no explanation.`;
 const LS_ACCOUNTS = 'signal_accounts';
@@ -76,9 +90,12 @@ const LS_FONT_SIZE = 'signal_font_size';
 const LS_CASE = 'signal_case';
 const LS_RECENTS = 'signal_recent_accounts';
 const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
+const LS_PENDING_SCAN = 'signal_pending_scan';
 const LS_LIVE_MODE = 'signal_live_mode';
 const LS_LIVE_ENABLED = 'signal_live_enabled';
-const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const LS_MODEL = 'signal_model';
+function getModel() { return localStorage.getItem(LS_MODEL) || DEFAULT_MODEL; }
 
 // Live feed config
 const LIVE_POLL_INTERVAL = 120000; // 2 minutes
@@ -290,6 +307,133 @@ function validateApiKey(key, type) {
   return true;
 }
 
+// --- Model Selection ---
+// Pricing per million tokens (input/output) — used for relative cost labels
+const MODEL_PRICING = {
+  'opus':    { input: 15, output: 75 },
+  'sonnet':  { input: 3,  output: 15 },
+  'haiku':   { input: 0.80, output: 4 },
+};
+
+function getModelPricing(modelId) {
+  const id = modelId.toLowerCase();
+  for (const [family, pricing] of Object.entries(MODEL_PRICING)) {
+    if (id.includes(family)) return pricing;
+  }
+  return null;
+}
+
+function formatModelCost(modelId) {
+  const p = getModelPricing(modelId);
+  if (!p) return '';
+  return `$${p.input}/$${p.output} per MTok`;
+}
+
+function modelCostLabel(modelId) {
+  const p = getModelPricing(modelId);
+  if (!p) return '';
+  if (p.input <= 1) return '· $';
+  if (p.input <= 5) return '· $$';
+  return '· $$$';
+}
+
+let cachedModels = null;
+async function fetchAvailableModels(apiKey) {
+  if (!apiKey || apiKey.length < 20) return null;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.data) return null;
+    // Filter to chat models only (claude-*), sort by version desc then tier (opus > sonnet > haiku)
+    const TIER_ORDER = { opus: 0, sonnet: 1, haiku: 2 };
+    function extractModelVersion(id) {
+      // IDs like: claude-sonnet-4-5-20250514, claude-opus-4-20250514, claude-3-haiku-20240307
+      // Remove date suffix (8+ digit segment at end)
+      const parts = id.replace(/claude-/, '').split('-').filter(p => !/^\d{8,}$/.test(p));
+      // Extract numeric version segments
+      const nums = parts.filter(p => /^\d+$/.test(p));
+      if (nums.length >= 2) return parseFloat(nums[0] + '.' + nums[1]);
+      if (nums.length === 1) return parseFloat(nums[0]);
+      return 0;
+    }
+    return data.data
+      .filter(m => m.id.startsWith('claude-') && !m.id.includes('embed'))
+      .map(m => ({ id: m.id, name: m.display_name || m.id }))
+      .sort((a, b) => {
+        const verA = extractModelVersion(a.id), verB = extractModelVersion(b.id);
+        if (verA !== verB) return verB - verA; // higher version first
+        // Same version: sort by tier
+        const tierA = Object.keys(TIER_ORDER).find(t => a.id.includes(t));
+        const tierB = Object.keys(TIER_ORDER).find(t => b.id.includes(t));
+        return (TIER_ORDER[tierA] ?? 9) - (TIER_ORDER[tierB] ?? 9);
+      });
+  } catch (e) {
+    console.warn('Failed to fetch models:', e.message);
+    return null;
+  }
+}
+
+function populateModelSelector(models, selectedId) {
+  const sel = $('modelProvider');
+  const current = selectedId || getModel();
+  sel.innerHTML = '';
+  if (models && models.length) {
+    cachedModels = models;
+    let hasSelected = false;
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      const cost = modelCostLabel(m.id);
+      opt.textContent = cost ? `${m.name} ${cost}` : m.name;
+      if (m.id === current) { opt.selected = true; hasSelected = true; }
+      sel.appendChild(opt);
+    });
+    // If saved model not in list, add it at top
+    if (!hasSelected) {
+      const opt = document.createElement('option');
+      opt.value = current;
+      const cost = modelCostLabel(current);
+      opt.textContent = cost ? `${current} ${cost}` : current;
+      opt.selected = true;
+      sel.prepend(opt);
+    }
+  } else {
+    // Fallback: show saved model
+    const opt = document.createElement('option');
+    opt.value = current;
+    const cost = modelCostLabel(current);
+    opt.textContent = cost ? `${current} ${cost}` : current;
+    sel.appendChild(opt);
+  }
+  sel.disabled = false;
+  updateModelCostHint();
+}
+
+function updateModelCostHint() {
+  let hint = $('modelCostHint');
+  if (!hint) return;
+  const sel = $('modelProvider');
+  const cost = formatModelCost(sel.value);
+  hint.textContent = cost;
+}
+
+async function refreshModelList() {
+  const sel = $('modelProvider');
+  const key = $('keyInput').value.trim();
+  if (!key || key.length < 20) return;
+  sel.disabled = true;
+  sel.innerHTML = '<option>Loading models…</option>';
+  const models = await fetchAvailableModels(key);
+  populateModelSelector(models, getModel());
+}
+
 function getFinanceProvider() { return localStorage.getItem(LS_FINANCE) || 'tradingview'; }
 function getFont() { return localStorage.getItem(LS_FONT) || 'mono'; }
 function setFont(f) {
@@ -306,9 +450,256 @@ function setCase(c) {
   localStorage.setItem(LS_CASE, c);
   document.documentElement.setAttribute('data-case', c);
 }
-function getPrompt() { return localStorage.getItem(LS_PROMPT) || DEFAULT_PROMPT; }
-function setPrompt(p) { localStorage.setItem(LS_PROMPT, p); }
-function resetPrompt() { $('promptInput').value = DEFAULT_PROMPT; }
+// --- Analyst Management ---
+function generateAnalystId() { return 'a_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function getAnalysts() {
+  try {
+    const raw = localStorage.getItem(LS_ANALYSTS);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveAnalysts(analysts) {
+  localStorage.setItem(LS_ANALYSTS, JSON.stringify(analysts));
+}
+
+function getActiveAnalystId() {
+  return localStorage.getItem(LS_ACTIVE_ANALYST) || DEFAULT_ANALYST_ID;
+}
+
+function setActiveAnalystId(id) {
+  localStorage.setItem(LS_ACTIVE_ANALYST, id);
+}
+
+function initAnalysts() {
+  let analysts = getAnalysts();
+  const currentDefaultHash = hashString(DEFAULT_PROMPT);
+  const storedDefaultHash = localStorage.getItem(LS_DEFAULT_PROMPT_HASH);
+
+  if (!analysts) {
+    // First run or migration from old system
+    const oldPrompt = localStorage.getItem(LS_PROMPT);
+    const userHadCustomPrompt = oldPrompt && oldPrompt !== DEFAULT_PROMPT;
+
+    analysts = [{
+      id: DEFAULT_ANALYST_ID,
+      name: 'Default',
+      prompt: DEFAULT_PROMPT,
+      isDefault: true
+    }];
+
+    if (userHadCustomPrompt) {
+      // Preserve user's old custom prompt as a separate analyst
+      const customAnalyst = {
+        id: generateAnalystId(),
+        name: 'My Analyst',
+        prompt: oldPrompt,
+        isDefault: false
+      };
+      analysts.push(customAnalyst);
+      setActiveAnalystId(customAnalyst.id);
+    }
+
+    // Clean up legacy key
+    localStorage.removeItem(LS_PROMPT);
+    saveAnalysts(analysts);
+    localStorage.setItem(LS_DEFAULT_PROMPT_HASH, currentDefaultHash);
+    return;
+  }
+
+  // Check if DEFAULT_PROMPT has been updated by developer
+  if (storedDefaultHash !== currentDefaultHash) {
+    const defaultAnalyst = analysts.find(a => a.id === DEFAULT_ANALYST_ID);
+    if (defaultAnalyst) {
+      // Only auto-update if user hasn't manually edited the default analyst
+      const userEditedDefault = storedDefaultHash && hashString(defaultAnalyst.prompt) !== storedDefaultHash;
+      if (!userEditedDefault) {
+        defaultAnalyst.prompt = DEFAULT_PROMPT;
+        saveAnalysts(analysts);
+      }
+    }
+    localStorage.setItem(LS_DEFAULT_PROMPT_HASH, currentDefaultHash);
+  }
+}
+
+function getActiveAnalyst() {
+  const analysts = getAnalysts() || [];
+  const activeId = getActiveAnalystId();
+  return analysts.find(a => a.id === activeId) || analysts.find(a => a.id === DEFAULT_ANALYST_ID) || { id: DEFAULT_ANALYST_ID, name: 'Default', prompt: DEFAULT_PROMPT, isDefault: true };
+}
+
+function getPrompt() { return getActiveAnalyst().prompt; }
+
+function setPrompt(p) {
+  const analysts = getAnalysts() || [];
+  const activeId = getActiveAnalystId();
+  const analyst = analysts.find(a => a.id === activeId);
+  if (analyst) {
+    analyst.prompt = p;
+    saveAnalysts(analysts);
+  }
+}
+
+function createAnalyst(name, prompt) {
+  const analysts = getAnalysts() || [];
+  const newAnalyst = {
+    id: generateAnalystId(),
+    name: name || 'New Analyst',
+    prompt: prompt || DEFAULT_PROMPT,
+    isDefault: false
+  };
+  analysts.push(newAnalyst);
+  saveAnalysts(analysts);
+  return newAnalyst;
+}
+
+function deleteAnalyst(id) {
+  if (id === DEFAULT_ANALYST_ID) return false;
+  let analysts = getAnalysts() || [];
+  analysts = analysts.filter(a => a.id !== id);
+  saveAnalysts(analysts);
+  if (getActiveAnalystId() === id) {
+    setActiveAnalystId(DEFAULT_ANALYST_ID);
+  }
+  return true;
+}
+
+function duplicateAnalyst(id) {
+  const analysts = getAnalysts() || [];
+  const source = analysts.find(a => a.id === id);
+  if (!source) return null;
+  return createAnalyst(source.name + ' (copy)', source.prompt);
+}
+
+function renameAnalyst(id, newName) {
+  const analysts = getAnalysts() || [];
+  const analyst = analysts.find(a => a.id === id);
+  if (analyst) {
+    analyst.name = newName;
+    saveAnalysts(analysts);
+  }
+}
+
+function resetAnalystPrompt(id) {
+  if (id !== DEFAULT_ANALYST_ID) return;
+  const analysts = getAnalysts() || [];
+  const defaultAnalyst = analysts.find(a => a.id === DEFAULT_ANALYST_ID);
+  if (defaultAnalyst) {
+    defaultAnalyst.prompt = DEFAULT_PROMPT;
+    saveAnalysts(analysts);
+    localStorage.setItem(LS_DEFAULT_PROMPT_HASH, hashString(DEFAULT_PROMPT));
+  }
+  renderAnalystList();
+}
+
+// Save all analyst edits from the rendered cards back to localStorage
+function saveAnalystsFromUI() {
+  const analysts = getAnalysts() || [];
+  document.querySelectorAll('.analyst-item').forEach(el => {
+    const id = el.dataset.analystId;
+    const analyst = analysts.find(a => a.id === id);
+    if (!analyst) return;
+    const nameInput = el.querySelector('.analyst-name-input');
+    const promptInput = el.querySelector('.analyst-prompt-input');
+    if (nameInput && !analyst.isDefault) {
+      const n = nameInput.value.trim();
+      if (n) analyst.name = n;
+    }
+    if (promptInput) {
+      analyst.prompt = promptInput.value.trim() || DEFAULT_PROMPT;
+    }
+  });
+  saveAnalysts(analysts);
+}
+
+function renderAnalystList() {
+  const container = $('analystList');
+  if (!container) return;
+  const analysts = getAnalysts() || [];
+  const activeId = getActiveAnalystId();
+  // Remember which items were open
+  const openIds = new Set();
+  container.querySelectorAll('.analyst-item.open').forEach(el => openIds.add(el.dataset.analystId));
+  // If first render, open the active one
+  if (!container.children.length) openIds.add(activeId);
+
+  let h = '';
+  analysts.forEach(a => {
+    const isActive = a.id === activeId;
+    const isOpen = openIds.has(a.id);
+    const isDefault = a.id === DEFAULT_ANALYST_ID;
+    h += `<div class="analyst-item${isOpen ? ' open' : ''}" data-analyst-id="${a.id}">`;
+    h += `<div class="analyst-header" onclick="toggleAnalystCard('${a.id}')">`;
+    h += `<span class="analyst-name">${esc(a.name)}${isActive ? ' <span class="analyst-active-tag">active</span>' : ''}</span>`;
+    h += `<div class="analyst-actions">`;
+    if (!isActive) h += `<button onclick="event.stopPropagation();useAnalyst('${a.id}')">use</button>`;
+    h += `<button onclick="event.stopPropagation();duplicateAnalystUI('${a.id}')">duplicate</button>`;
+    if (!isDefault) h += `<button class="danger" onclick="event.stopPropagation();deleteAnalystUI('${a.id}')">delete</button>`;
+    h += `</div></div>`;
+    h += `<div class="analyst-body">`;
+    if (!isDefault) {
+      h += `<label>Name</label>`;
+      h += `<input type="text" class="analyst-name-input" value="${esc(a.name)}" placeholder="Analyst name">`;
+    }
+    h += `<label>Prompt${isDefault ? ' <button type="button" class="modal-sm-btn reset-prompt" onclick="resetAnalystPrompt(\'default\')">reset</button>' : ''}</label>`;
+    h += `<textarea class="analyst-prompt-input" style="height:200px" placeholder="Custom instructions for the AI analyst...">${esc(a.prompt)}</textarea>`;
+    h += `</div></div>`;
+  });
+  h += `<button class="analyst-add" onclick="newAnalystUI()">+ Create new analyst</button>`;
+  container.innerHTML = h;
+}
+
+function toggleAnalystCard(id) {
+  saveAnalystsFromUI();
+  const item = document.querySelector(`.analyst-item[data-analyst-id="${id}"]`);
+  if (item) item.classList.toggle('open');
+}
+
+function useAnalyst(id) {
+  saveAnalystsFromUI();
+  setActiveAnalystId(id);
+  renderAnalystList();
+}
+
+function duplicateAnalystUI(id) {
+  saveAnalystsFromUI();
+  const dup = duplicateAnalyst(id);
+  if (dup) {
+    renderAnalystList();
+    // Open the new one
+    const item = document.querySelector(`.analyst-item[data-analyst-id="${dup.id}"]`);
+    if (item) {
+      item.classList.add('open');
+      const nameInput = item.querySelector('.analyst-name-input');
+      if (nameInput) { nameInput.focus(); nameInput.select(); }
+    }
+  }
+}
+
+function deleteAnalystUI(id) {
+  if (id === DEFAULT_ANALYST_ID) return;
+  const analysts = getAnalysts() || [];
+  const analyst = analysts.find(a => a.id === id);
+  if (!analyst) return;
+  if (!confirm(`Delete "${analyst.name}"?`)) return;
+  deleteAnalyst(id);
+  renderAnalystList();
+}
+
+function newAnalystUI() {
+  saveAnalystsFromUI();
+  const newA = createAnalyst('New Analyst', DEFAULT_PROMPT);
+  renderAnalystList();
+  // Open the new one
+  const item = document.querySelector(`.analyst-item[data-analyst-id="${newA.id}"]`);
+  if (item) {
+    item.classList.add('open');
+    const nameInput = item.querySelector('.analyst-name-input');
+    if (nameInput) { nameInput.focus(); nameInput.select(); }
+  }
+}
 function isLiveEnabled() { return localStorage.getItem(LS_LIVE_ENABLED) === 'true'; }
 function setLiveEnabled(v) {
   if (v) {
@@ -335,7 +726,7 @@ function hashString(str) {
   return (h >>> 0).toString(16);
 }
 function getPromptHash() {
-  return hashString(`${ANALYSIS_MODEL}\n${getPrompt()}`);
+  return hashString(`${getModel()}\n${getPrompt()}`);
 }
 function loadAnalysisCache() {
   try {
@@ -388,8 +779,15 @@ function cleanupCache() {
 }
 
 let originalSettings = {};
+let lastSettingsTab = 'api';
 
-function openModal() {
+function switchTab(name) {
+  lastSettingsTab = name;
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === name));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+}
+
+function openModal(tab) {
   originalSettings = {
     font: getFont(),
     fontSize: getFontSize(),
@@ -402,12 +800,20 @@ function openModal() {
   $('fontSizeProvider').value = originalSettings.fontSize;
   $('caseProvider').value = originalSettings.textCase;
   $('liveEnabledToggle').checked = isLiveEnabled();
-  $('promptInput').value = getPrompt();
+  renderAnalystList();
+  // Populate model selector
+  if (cachedModels) {
+    populateModelSelector(cachedModels, getModel());
+  } else {
+    populateModelSelector(null, getModel());
+    if (getAnKey()) refreshModelList();
+  }
   updateCacheSizeDisplay();
+  switchTab(tab || lastSettingsTab);
   $('modal').classList.add('open');
   document.body.classList.add('modal-open');
   $('clearKeyBtn').style.display = (getTwKey() || getAnKey()) ? '' : 'none';
-  setTimeout(() => $('twKeyInput').focus(), 50);
+  if ((tab || lastSettingsTab) === 'api') setTimeout(() => $('twKeyInput').focus(), 50);
 }
 
 function updateCacheSizeDisplay() {
@@ -419,6 +825,7 @@ function updateCacheSizeDisplay() {
 function clearCache() {
   if (!confirm('Clear all cached analysis results?')) return;
   localStorage.removeItem(LS_ANALYSIS_CACHE);
+  clearPendingScan();
   updateCacheSizeDisplay();
 }
 function closeModal() {
@@ -432,20 +839,21 @@ function saveKeys() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
   const fp = $('financeProvider').value;
+  const model = $('modelProvider').value;
   const font = $('fontProvider').value;
   const fontSize = $('fontSizeProvider').value;
   const textCase = $('caseProvider').value;
   const liveEnabled = $('liveEnabledToggle').checked;
-  const prompt = $('promptInput').value.trim();
   if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
   if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
   localStorage.setItem(LS_FINANCE, fp);
+  if (model) localStorage.setItem(LS_MODEL, model);
   originalSettings = { font, fontSize, textCase };
   setFont(font);
   setFontSize(fontSize);
   setCase(textCase);
   setLiveEnabled(liveEnabled);
-  setPrompt(prompt || DEFAULT_PROMPT);
+  saveAnalystsFromUI();
   updateKeyBtn();
   $('modal').classList.remove('open');
   document.body.classList.remove('modal-open');
@@ -457,8 +865,11 @@ function saveKeys() {
 function clearKeys() {
   localStorage.removeItem(LS_TW);
   localStorage.removeItem(LS_AN);
+  localStorage.removeItem(LS_MODEL);
+  cachedModels = null;
   $('twKeyInput').value = '';
   $('keyInput').value = '';
+  populateModelSelector(null, DEFAULT_MODEL);
   updateKeyBtn();
   closeModal();
 }
@@ -477,10 +888,13 @@ async function exportData(btn) {
       fontSize: getFontSize(),
       textCase: getCase(),
       financeProvider: getFinanceProvider(),
+      model: getModel(),
       prompt: getPrompt(),
     },
     keys: { twitter: getTwKey(), anthropic: getAnKey() },
     presets: getPresets(),
+    analysts: getAnalysts(),
+    activeAnalyst: getActiveAnalystId(),
     accounts: customAccounts,
     loadedPresets: loadedPresets,
     recents: getRecents(),
@@ -504,7 +918,12 @@ async function importData(btn) {
       if (data.settings.fontSize) setFontSize(data.settings.fontSize);
       if (data.settings.textCase) setCase(data.settings.textCase);
       if (data.settings.financeProvider) localStorage.setItem(LS_FINANCE, data.settings.financeProvider);
-      if (data.settings.prompt) setPrompt(data.settings.prompt);
+      if (data.settings.model) localStorage.setItem(LS_MODEL, data.settings.model);
+      if (data.settings.prompt && !data.analysts) setPrompt(data.settings.prompt);
+    }
+    if (data.analysts) {
+      saveAnalysts(data.analysts);
+      if (data.activeAnalyst) setActiveAnalystId(data.activeAnalyst);
     }
     if (data.keys) {
       if (data.keys.twitter) localStorage.setItem(LS_TW, data.keys.twitter);
@@ -520,7 +939,7 @@ async function importData(btn) {
     $('fontProvider').value = getFont();
     $('fontSizeProvider').value = getFontSize();
     $('caseProvider').value = getCase();
-    $('promptInput').value = getPrompt();
+    renderAnalystList();
     updateKeyBtn();
     render();
     if (btn) {
@@ -848,6 +1267,8 @@ function categorizeError(error, status) {
   if (status === 429 || status === 529) return 'rate_limit';
   if (error?.type === 'overloaded_error') return 'overloaded';
   if (error?.type === 'rate_limit_error') return 'rate_limit';
+  if (error?.message?.includes('credit balance')) return 'billing';
+  if (error?.message?.includes('billing')) return 'billing';
   if (error?.message?.includes('quota')) return 'quota';
   if (error?.message?.includes('rate')) return 'rate_limit';
   if (error?.message?.includes('limit')) return 'rate_limit';
@@ -883,12 +1304,13 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries,
       }
       const errorType = categorizeError(data.error, res.status);
       console.warn(`Anthropic error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, data.error?.message);
-      if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request'].includes(errorType)) {
+      if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request', 'billing'].includes(errorType)) {
         const messages = {
           input_too_large: 'Input too large. Try fewer accounts or a shorter time range.',
           model_not_found: 'Model not available. Your API key may not have access to this model.',
           auth_error: 'Invalid API key. Please check your Anthropic API key in Settings.',
           invalid_request: data.error?.message || 'Invalid request to Anthropic API.',
+          billing: 'Credit balance too low. <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener noreferrer">Add credits →</a>',
         };
         throw new Error(messages[errorType] || data.error?.message);
       }
@@ -947,7 +1369,7 @@ function abortCurrentScan() {
 }
 
 async function fetchAllTweets(accounts, days, onProgress, signal) {
-  const BATCH_SIZE = 2;
+  const BATCH_SIZE = 3;
   const accountTweets = [];
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
     if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
@@ -966,13 +1388,13 @@ async function fetchAllTweets(accounts, days, onProgress, signal) {
     }));
     accountTweets.push(...results);
     if (i + BATCH_SIZE < accounts.length) {
-      await new Promise(r => setTimeout(r, 150));
+      await new Promise(r => setTimeout(r, 50));
     }
   }
   return accountTweets;
 }
 
-const ANALYSIS_CONCURRENCY = 2;
+const ANALYSIS_CONCURRENCY = 3;
 const MAX_BATCH_CHARS = 640000;
 const MAX_BATCH_CHARS_WITH_IMAGES = 400000;
 const MAX_IMAGES_PER_BATCH = 5;
@@ -1073,7 +1495,7 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         messageContent = textContent;
       }
       try {
-        const data = await anthropicCall({ model: ANALYSIS_MODEL, max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] }, 5, signal);
+        const data = await anthropicCall({ model: getModel(), max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] }, 5, signal);
         const txt = extractText(data.content);
         logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
         const batchSignals = safeParseSignals(txt);
@@ -1084,6 +1506,12 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
           logs.push({ a: `_parse_warn_${batchNum}`, len: 0, pre: 'No signals extracted from response' });
         }
         results.push({ i, signals: batchSignals, tweetUrls: batch.tweetUrls });
+        // Cache this batch's results immediately so progress survives a refresh
+        const grouped = groupSignalsByTweet(batchSignals);
+        batch.tweetUrls.forEach(url => {
+          setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
+        });
+        saveAnalysisCache(cache);
       } catch (e) {
         console.error(`Batch ${batchNum} analysis error:`, e);
         throw e;
@@ -1099,6 +1527,8 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
       setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
     });
   });
+  // Persist cache incrementally so partial progress survives a page refresh
+  saveAnalysisCache(cache);
   return allSignals;
 }
 
@@ -1147,6 +1577,8 @@ async function run() {
     if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
     if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
     const accountData = accountTweets.filter(a => a.tweets.length);
+    // Save pending scan so we can resume if page refreshes during analysis
+    savePendingScan(accounts, days, accountTweets);
     const promptHash = getPromptHash();
     const analysisCache = loadAnalysisCache();
     let cachedSignals = [];
@@ -1185,6 +1617,7 @@ async function run() {
       rawTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets })),
     };
     saveScan(lastScanResult);
+    clearPendingScan();
     
     // Update seenTweetUrls for live mode
     accountTweets.forEach(a => {
@@ -1200,10 +1633,13 @@ async function run() {
     renderDebug();
   } catch (e) {
     if (e.name === 'AbortError') {
+      clearPendingScan();
       setStatus('Scan cancelled');
     } else {
+      // Non-cancel errors: keep pending scan so user can resume after refresh
       setStatus('');
-      $('notices').innerHTML = `<div class="notice err">${esc(e.message)}</div>`;
+      const isTrustedHtml = e.message.includes('platform.claude.com');
+      $('notices').innerHTML = `<div class="notice err">${isTrustedHtml ? e.message : esc(e.message)}</div>`;
     }
     renderDebug();
   } finally {
@@ -1249,7 +1685,18 @@ function saveScan(scan, skipHistory = false) {
       signalCount: scan.signals.length,
       signals: scan.signals.map(s => ({ ...s, tweet_time: tweetTimes[s.tweet_url] || null }))
     };
-    history.unshift(historyEntry);
+    // Replace the most recent entry if it's from the same scan session (within 2 minutes)
+    if (history.length > 0) {
+      const prev = new Date(history[0].date).getTime();
+      const curr = new Date(scan.date).getTime();
+      if (Math.abs(curr - prev) < 120000) {
+        history[0] = historyEntry;
+      } else {
+        history.unshift(historyEntry);
+      }
+    } else {
+      history.unshift(historyEntry);
+    }
     if (history.length > 5) history.pop();
     localStorage.setItem(LS_SCANS, JSON.stringify(history));
     renderHistory();
@@ -1270,6 +1717,167 @@ function loadCurrentScan() {
   const saved = localStorage.getItem(LS_CURRENT);
   if (!saved) return null;
   try { return JSON.parse(saved); } catch { return null; }
+}
+
+// --- Pending Scan (resume after refresh) ---
+function savePendingScan(accounts, days, accountTweets) {
+  try {
+    const pending = {
+      date: new Date().toISOString(),
+      accounts: [...accounts],
+      days,
+      rangeLabel: RANGES[range].label,
+      accountTweets: accountTweets.map(a => ({
+        account: a.account,
+        tweets: a.tweets,
+        error: a.error || null,
+      })),
+    };
+    localStorage.setItem(LS_PENDING_SCAN, JSON.stringify(pending));
+  } catch (e) {
+    console.warn('Failed to save pending scan:', e.message);
+  }
+}
+
+function clearPendingScan() {
+  localStorage.removeItem(LS_PENDING_SCAN);
+}
+
+function loadPendingScan() {
+  const raw = localStorage.getItem(LS_PENDING_SCAN);
+  if (!raw) return null;
+  try {
+    const pending = JSON.parse(raw);
+    // Expire after 1 hour — tweets would be stale
+    if (Date.now() - new Date(pending.date).getTime() > 3600000) {
+      clearPendingScan();
+      return null;
+    }
+    return pending;
+  } catch { clearPendingScan(); return null; }
+}
+
+async function resumeScan() {
+  const pending = loadPendingScan();
+  if (!pending || busy) return;
+  clearPendingScan();
+  $('notices').innerHTML = '';
+  // Dismiss the resume banner
+  const banner = document.querySelector('.resume-banner');
+  if (banner) banner.remove();
+
+  if (!bothKeys()) { openModal(); return; }
+  abortCurrentScan();
+  currentScanAbort = new AbortController();
+  setLoading(true);
+  $('tweetCount').innerHTML = '';
+  $('tickerBar').innerHTML = '';
+  $('scanActions').innerHTML = '';
+  $('filterBar').innerHTML = '';
+  $('results').innerHTML = '';
+  logs = [];
+
+  const accounts = pending.accounts;
+  const accountTweets = pending.accountTweets;
+  const signal = currentScanAbort?.signal;
+
+  try {
+    const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
+    const fails = accountTweets.filter(a => a.error);
+    for (const a of accountTweets) {
+      logs.push({
+        a: a.account,
+        len: a.tweets.length,
+        pre: a.error ? `ERROR: ${a.error}` : a.tweets.slice(0, 3).map(t => t.text?.slice(0, 100)).join(' | ') || '(no tweets in range)',
+      });
+    }
+    if (totalTweets === 0) {
+      let msg = 'no tweets found for this time range';
+      if (fails.length) msg += ` — errors: ${fails.map(f => `${f.account} (${f.error})`).join(', ')}`;
+      $('notices').innerHTML = `<div class="notice err">${esc(msg)}</div>`;
+      setLoading(false); setStatus(''); renderDebug(); return;
+    }
+    const parts = [];
+    if (fails.length) parts.push(`<span style="color:var(--red)">errors: ${esc(fails.map(f => f.account).join(', '))}</span>`);
+    if (parts.length) $('notices').innerHTML = `<div class="notice warn">${parts.join(' · ')}</div>`;
+    const accountData = accountTweets.filter(a => a.tweets.length);
+    // Save pending again in case analysis gets interrupted a second time
+    savePendingScan(accounts, pending.days, accountTweets);
+    const promptHash = getPromptHash();
+    const analysisCache = loadAnalysisCache();
+    let cachedSignals = [];
+    let cachedTweetCount = 0;
+    const uncachedAccountData = accountData.map(a => {
+      const uncachedTweets = [];
+      (a.tweets || []).forEach(tw => {
+        const url = getTweetUrl(tw);
+        const cached = getCachedSignals(analysisCache, promptHash, url);
+        if (cached) {
+          cachedTweetCount++;
+          cachedSignals.push(...cached);
+        } else {
+          uncachedTweets.push(tw);
+        }
+      });
+      return { account: a.account, tweets: uncachedTweets };
+    }).filter(a => a.tweets.length);
+
+    setStatus(`Resuming · ${totalTweets} tweets · ${cachedTweetCount} cached`, true);
+
+    let signals = [];
+    if (uncachedAccountData.length) {
+      const newSignals = await analyzeWithBatching(uncachedAccountData, totalTweets, (msg) => setStatus(msg, true), promptHash, analysisCache, signal);
+      signals = dedupeSignals([...cachedSignals, ...newSignals]);
+    } else {
+      setStatus(`${totalTweets} tweets · Using cache`, false, true);
+      signals = dedupeSignals(cachedSignals);
+    }
+    pruneCache(analysisCache);
+    saveAnalysisCache(analysisCache);
+    lastScanResult = {
+      date: new Date().toISOString(),
+      range: pending.rangeLabel,
+      days: pending.days,
+      accounts: [...accounts],
+      totalTweets,
+      signals,
+      rawTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets })),
+    };
+    saveScan(lastScanResult);
+    clearPendingScan();
+
+    // Update seenTweetUrls for live mode
+    accountTweets.forEach(a => {
+      (a.tweets || []).forEach(tw => {
+        seenTweetUrls.add(getTweetUrl(tw));
+      });
+    });
+    const d = new Date();
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setStatus(`${dateStr} · <span class="hide-mobile">${accounts.length} accounts · ${totalTweets} tweets · </span>${signals.length} signals`, false, true);
+    renderTickers(signals);
+    renderSignals(signals);
+    renderDebug();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      clearPendingScan();
+      setStatus('Scan cancelled');
+    } else {
+      setStatus('');
+      const isTrustedHtml = e.message.includes('platform.claude.com');
+      $('notices').innerHTML = `<div class="notice err">${isTrustedHtml ? e.message : esc(e.message)}</div>`;
+    }
+    renderDebug();
+  } finally {
+    setLoading(false);
+    currentScanAbort = null;
+  }
+}
+
+function dismissResumeBanner() {
+  clearPendingScan();
+  const banner = document.querySelector('.resume-banner');
+  if (banner) banner.remove();
 }
 
 function getScanHistory() {
@@ -1596,12 +2204,12 @@ function renderSignals(signals) {
   renderFilters();
   $('footer').innerHTML = 'Not financial advice';
   setupTweetTooltips();
-  const allSymbols = [];
+  const allSymbols = new Set();
   signals.forEach(s => (s.tickers || []).forEach(t => {
     const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-    if (sym && !allSymbols.includes(sym)) allSymbols.push(sym);
+    if (sym) allSymbols.add(sym);
   }));
-  if (allSymbols.length) fetchAllPrices(allSymbols).then(() => updateTickerPrices());
+  if (allSymbols.size) fetchAllPrices([...allSymbols]).then(() => updateTickerPrices());
 }
 
 function toggleTweetExpand(id, btn) {
@@ -1722,12 +2330,12 @@ function renderHistory() {
       deleteHistoryScan(index);
     });
   });
-  const allSymbols = [];
+  const allSymbols = new Set();
   history.forEach(scan => (scan.signals || []).forEach(s => (s.tickers || []).forEach(t => {
     const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-    if (sym && !allSymbols.includes(sym)) allSymbols.push(sym);
+    if (sym) allSymbols.add(sym);
   })));
-  if (allSymbols.length) fetchAllPrices(allSymbols).then(() => updateTickerPrices());
+  if (allSymbols.size) fetchAllPrices([...allSymbols]).then(() => updateTickerPrices());
 }
 
 function downloadHistoryScan(index) {
@@ -1937,7 +2545,7 @@ function renderSharedSignal(signal) {
 
 function toggleLive() {
   if (!isLiveEnabled()) {
-    openModal();
+    openModal('data');
     return;
   }
   if (isLiveMode) {
@@ -2101,7 +2709,7 @@ async function pollForNewTweets() {
       
       // Small delay between accounts
       if (!signal?.aborted) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 100));
       }
     }
     
@@ -2243,7 +2851,7 @@ async function analyzeLiveTweets(tweets, signal) {
     }
     
     const data = await anthropicCall(
-      { model: ANALYSIS_MODEL, max_tokens: 8192, messages: [{ role: 'user', content: messageContent }] },
+      { model: getModel(), max_tokens: 8192, messages: [{ role: 'user', content: messageContent }] },
       3,
       signal
     );
@@ -2407,12 +3015,12 @@ function prependSignals(newSignals, newTweets) {
   setupTweetTooltips();
   
   // Fetch prices for new tickers
-  const newSymbols = [];
+  const newSymbols = new Set();
   newSignals.forEach(s => (s.tickers || []).forEach(t => {
     const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-    if (sym && !newSymbols.includes(sym)) newSymbols.push(sym);
+    if (sym) newSymbols.add(sym);
   }));
-  if (newSymbols.length) fetchAllPrices(newSymbols).then(() => updateTickerPrices());
+  if (newSymbols.size) fetchAllPrices([...newSymbols]).then(() => updateTickerPrices());
   
   // Remove the "new" class after animation
   setTimeout(() => {
@@ -2446,6 +3054,13 @@ function initEventListeners() {
   });
   $('twKeyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keyInput').focus(); });
   $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKeys(); });
+  // Refresh model list when API key changes
+  let modelFetchTimer = null;
+  $('keyInput').addEventListener('input', () => {
+    clearTimeout(modelFetchTimer);
+    modelFetchTimer = setTimeout(() => refreshModelList(), 600);
+  });
+  $('modelProvider').addEventListener('change', () => updateModelCostHint());
   $('fontProvider').addEventListener('change', e => setFont(e.target.value));
   $('fontSizeProvider').addEventListener('change', e => setFontSize(e.target.value));
   $('caseProvider').addEventListener('change', e => setCase(e.target.value));
@@ -2462,6 +3077,9 @@ function initEventListeners() {
 }
 
 (function init() {
+  // Initialize analyst system (must be before anything that calls getPrompt)
+  initAnalysts();
+  
   // Apply settings
   setTheme(getTheme());
   setFont(getFont());
@@ -2500,6 +3118,21 @@ function initEventListeners() {
     setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
     renderTickers(savedScan.signals);
     renderSignals(savedScan.signals);
+  }
+
+  // Check for interrupted scan and offer to resume
+  const pendingScan = loadPendingScan();
+  if (pendingScan) {
+    const totalTweets = pendingScan.accountTweets.reduce((s, a) => s + a.tweets.length, 0);
+    const ago = Math.round((Date.now() - new Date(pendingScan.date).getTime()) / 60000);
+    const agoText = ago < 1 ? 'just now' : `${ago}m ago`;
+    $('notices').innerHTML = `<div class="notice resume-banner">
+      <span>Interrupted scan detected (${pendingScan.accounts.length} accounts · ${totalTweets} tweets · ${agoText})</span>
+      <span style="display:flex;gap:6px;margin-left:auto">
+        <button class="resume-btn" onclick="resumeScan()">Resume</button>
+        <button class="dismiss-btn" onclick="dismissResumeBanner()">✕</button>
+      </span>
+    </div>`;
   }
   
   // Register service worker for PWA
