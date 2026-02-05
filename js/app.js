@@ -80,8 +80,10 @@ const LS_LIVE_MODE = 'signal_live_mode';
 const ANALYSIS_MODEL = 'claude-sonnet-4-20250514';
 
 // Live feed config
-const LIVE_POLL_INTERVAL = 45000; // 45 seconds
-const LIVE_LOOKBACK_HOURS = 1; // Only fetch tweets from last hour
+const LIVE_POLL_INTERVAL = 120000; // 2 minutes
+const LIVE_ACCOUNTS_PER_POLL = 8; // Only check this many accounts per poll (rotate through)
+const LIVE_LOOKBACK_MINUTES = 30; // Only fetch tweets from last 30 minutes
+const LIVE_ACCOUNT_COOLDOWN = 300000; // Don't re-check an account for 5 minutes if no new tweets
 const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
 
 let customAccounts = [];
@@ -98,6 +100,8 @@ let liveInterval = null;
 let livePollAbort = null;
 let seenTweetUrls = new Set();
 let lastLiveCheck = null;
+let liveAccountIndex = 0; // For rotating through accounts
+let liveAccountLastCheck = {}; // Track when each account was last checked and if it had content
 
 function getAllAccounts() {
   const all = [...customAccounts];
@@ -1912,6 +1916,10 @@ function startLiveFeed() {
   localStorage.setItem(LS_LIVE_MODE, 'true');
   $('liveBtn').classList.add('active');
   
+  // Reset rotation state
+  liveAccountIndex = 0;
+  liveAccountLastCheck = {};
+  
   // Initialize seen tweets from current scan
   if (lastScanResult?.rawTweets) {
     lastScanResult.rawTweets.forEach(a => {
@@ -1983,8 +1991,8 @@ function handleVisibilityChange() {
 async function pollForNewTweets() {
   if (!isLiveMode || busy) return;
   
-  const accounts = getAllAccounts();
-  if (!accounts.length) {
+  const allAccounts = getAllAccounts();
+  if (!allAccounts.length) {
     stopLiveFeed();
     return;
   }
@@ -1993,46 +2001,56 @@ async function pollForNewTweets() {
   const signal = livePollAbort.signal;
   
   try {
-    // Fetch tweets from the last hour only
-    const lookbackDays = LIVE_LOOKBACK_HOURS / 24;
-    const cutoff = new Date(Date.now() - LIVE_LOOKBACK_HOURS * 3600000);
+    const now = Date.now();
+    const lookbackDays = LIVE_LOOKBACK_MINUTES / 1440; // Convert minutes to days
+    const cutoff = new Date(now - LIVE_LOOKBACK_MINUTES * 60000);
     
-    console.log(`[Live] Polling ${accounts.length} accounts...`);
+    // Select accounts to check this poll (rotate through + prioritize active ones)
+    const accountsToCheck = selectAccountsForPoll(allAccounts, now);
     
-    // Fetch in smaller batches to be gentle on the API
-    const BATCH_SIZE = 3;
+    if (!accountsToCheck.length) {
+      console.log('[Live] All accounts on cooldown, skipping poll');
+      return;
+    }
+    
+    console.log(`[Live] Checking ${accountsToCheck.length}/${allAccounts.length} accounts`);
+    
     const allNewTweets = [];
     
-    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+    // Fetch accounts sequentially to minimize API pressure
+    for (const account of accountsToCheck) {
       if (signal?.aborted || !isLiveMode) break;
       
-      const batch = accounts.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(batch.map(async (account) => {
-        if (signal?.aborted) return [];
-        try {
-          const tweets = await fetchTweetsWithRetry(account, lookbackDays, 2, signal);
-          // Filter to only truly new tweets
-          return tweets.filter(tw => {
-            const url = getTweetUrl(tw);
-            const created = new Date(tw.createdAt);
-            return created >= cutoff && !seenTweetUrls.has(url);
-          }).map(tw => ({ ...tw, _account: account }));
-        } catch (e) {
-          if (e.name === 'AbortError') throw e;
-          console.warn(`[Live] Error fetching @${account}:`, e.message);
-          return [];
-        }
-      }));
+      try {
+        const tweets = await fetchTweetsWithRetry(account, lookbackDays, 2, signal);
+        
+        // Filter to only truly new tweets
+        const newTweets = tweets.filter(tw => {
+          const url = getTweetUrl(tw);
+          const created = new Date(tw.createdAt);
+          return created >= cutoff && !seenTweetUrls.has(url);
+        }).map(tw => ({ ...tw, _account: account }));
+        
+        // Track this account's activity for smart rotation
+        liveAccountLastCheck[account] = {
+          time: now,
+          hadContent: newTweets.length > 0
+        };
+        
+        allNewTweets.push(...newTweets);
+        
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        console.warn(`[Live] Error fetching @${account}:`, e.message);
+      }
       
-      results.forEach(tweets => allNewTweets.push(...tweets));
-      
-      // Small delay between batches
-      if (i + BATCH_SIZE < accounts.length && !signal?.aborted) {
-        await new Promise(r => setTimeout(r, 100));
+      // Small delay between accounts
+      if (!signal?.aborted) {
+        await new Promise(r => setTimeout(r, 200));
       }
     }
     
-    lastLiveCheck = Date.now();
+    lastLiveCheck = now;
     
     // Remove "new" badges from previous poll
     document.querySelectorAll('.signal .new-badge').forEach(el => el.remove());
@@ -2060,11 +2078,45 @@ async function pollForNewTweets() {
       console.log('[Live] Poll cancelled');
     } else {
       console.error('[Live] Poll error:', e);
-      // Don't stop live mode on transient errors
     }
   } finally {
     livePollAbort = null;
   }
+}
+
+function selectAccountsForPoll(allAccounts, now) {
+  // Prioritize accounts that:
+  // 1. Haven't been checked recently
+  // 2. Had content last time they were checked
+  
+  const scored = allAccounts.map(account => {
+    const last = liveAccountLastCheck[account];
+    if (!last) {
+      // Never checked - high priority
+      return { account, score: 1000 };
+    }
+    
+    const timeSince = now - last.time;
+    
+    // If account had no content and was checked recently, skip it (cooldown)
+    if (!last.hadContent && timeSince < LIVE_ACCOUNT_COOLDOWN) {
+      return { account, score: -1 };
+    }
+    
+    // Score based on time since last check (higher = longer ago = more priority)
+    // Accounts that had content get a bonus
+    let score = timeSince / 1000;
+    if (last.hadContent) score += 500;
+    
+    return { account, score };
+  });
+  
+  // Filter out accounts on cooldown, sort by score, take top N
+  return scored
+    .filter(s => s.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, LIVE_ACCOUNTS_PER_POLL)
+    .map(s => s.account);
 }
 
 async function analyzeLiveTweets(tweets, signal) {
