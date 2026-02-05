@@ -197,7 +197,7 @@ body.modal-open { overflow: hidden; }
 
 .ranges { display: flex; gap: 8px; align-items: center; }
 .rng {
-  background: none; border: none; border-bottom: 1px solid transparent;
+  background: none; border: none;
   color: var(--text-muted); font-size: inherit;
 }
 .rng:hover { color: var(--text-strong); }
