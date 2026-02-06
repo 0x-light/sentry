@@ -1,7 +1,7 @@
 {
-  "name": "Sentry — AI Trading Signal Scanner",
-  "short_name": "Sentry",
-  "description": "AI-powered trading signal scanner. Extract actionable signals from Twitter accounts using Claude AI.",
+  "name": "sentry",
+  "short_name": "sentry",
+  "description": "signal without the noise",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

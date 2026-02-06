@@ -5,7 +5,7 @@
 // --- Config ---
 const DEFAULT_PRESETS = [
   { name: 'tradfi', accounts: ['abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'MartinShkreli', 'nicholastreece', 'zephyr_z9'] },
-  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'fejau_inc', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'salveboccaccio', 'sershokunin', 'SMtrades_', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'fejau_inc', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'jimtalbot', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'salveboccaccio', 'sershokunin', 'SMtrades_', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied'] },
 ];
 const MAX_RECENTS = 10;
 const RANGES = [
@@ -74,7 +74,7 @@ Return a JSON array. Each signal:
   • Index → ETF (S&P/SPX → $SPY, Nasdaq → $QQQ, Dow → $DIA, Russell → $IWM, VIX → $VIX)
   • Crypto name or abbreviation → ticker with $ (Bitcoin/BTC → $BTC, Ethereum/ETH → $ETH, Solana/SOL → $SOL, Hyperliquid/HYPE → $HYPE)
   • Protocol → token (Uniswap → $UNI, Aave → $AAVE, Chainlink → $LINK, Jupiter → $JUP)
-  • Commodity → ETF (Gold → $GLD, Oil → $USO, Silver → $SLV, Natgas → $UNG)
+  • Commodity → standard ticker (Gold → $XAU, Silver → $XAG, Oil → $USO, Natgas → $UNG)
   Yahoo Finance format: US = symbol ($AAPL), Taiwan = .TW, HK = .HK, Japan = .T, Korea = .KS, crypto = symbol only. NEVER skip a tradeable asset. When in doubt, include it.
 - "tweet_url": exact tweet_url from data
 - "links": external URLs mentioned (articles, substacks, dashboards). Empty array if none.
@@ -749,7 +749,9 @@ function cacheKey(promptHash, tweetUrl) {
 function getCachedSignals(cache, promptHash, tweetUrl) {
   if (!tweetUrl) return null;
   const entry = cache.entries[cacheKey(promptHash, tweetUrl)];
-  return entry ? entry.signals || [] : null;
+  if (!entry) return null;
+  const signals = (entry.signals || []).filter(isValidSignal);
+  return signals;
 }
 function setCachedSignals(cache, promptHash, tweetUrl, signals) {
   if (!tweetUrl) return;
@@ -1176,28 +1178,46 @@ function sanitizeText(str) {
   return result;
 }
 
+function isValidSignal(s) {
+  if (!s || typeof s !== 'object') return false;
+  // Must have at least a title or summary with real content
+  const hasTitle = typeof s.title === 'string' && s.title.trim().length > 0;
+  const hasSummary = typeof s.summary === 'string' && s.summary.trim().length > 0;
+  return hasTitle || hasSummary;
+}
+
 function safeParseSignals(text) {
   if (!text) return [];
   let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
   const arrayMatch = clean.match(/\[[\s\S]*\]/);
   if (!arrayMatch) { console.warn('No JSON array found in response'); return []; }
   let jsonStr = arrayMatch[0];
+  let parsed = null;
   try {
     const result = JSON.parse(jsonStr);
-    if (Array.isArray(result)) return result;
+    if (Array.isArray(result)) parsed = result;
   } catch (e) { console.warn('Direct JSON parse failed, attempting fixes...'); }
-  try {
-    jsonStr = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
-    jsonStr = jsonStr.replace(/([^\\])\\n(?=")/g, '$1\\\\n');
-    const result = JSON.parse(jsonStr);
-    if (Array.isArray(result)) return result;
-  } catch (e) { console.warn('Fixed JSON parse failed:', e.message); }
-  try {
-    jsonStr = sanitizeText(jsonStr);
-    const result = JSON.parse(jsonStr);
-    if (Array.isArray(result)) return result;
-  } catch (e) { console.error('All JSON parse attempts failed:', e.message); }
-  return [];
+  if (!parsed) {
+    try {
+      jsonStr = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
+      jsonStr = jsonStr.replace(/([^\\])\\n(?=")/g, '$1\\\\n');
+      const result = JSON.parse(jsonStr);
+      if (Array.isArray(result)) parsed = result;
+    } catch (e) { console.warn('Fixed JSON parse failed:', e.message); }
+  }
+  if (!parsed) {
+    try {
+      jsonStr = sanitizeText(jsonStr);
+      const result = JSON.parse(jsonStr);
+      if (Array.isArray(result)) parsed = result;
+    } catch (e) { console.error('All JSON parse attempts failed:', e.message); }
+  }
+  if (!parsed) return [];
+  const valid = parsed.filter(isValidSignal);
+  if (valid.length < parsed.length) {
+    console.warn(`Filtered out ${parsed.length - valid.length} empty/malformed signals`);
+  }
+  return valid;
 }
 
 function getTweetUrl(tw) {
@@ -1282,21 +1302,42 @@ function categorizeError(error, status) {
 async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries, signal = null) {
   const key = getAnKey();
   if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
+  const isSlowModel = (body.model || '').toLowerCase().includes('opus');
+  const requestTimeout = isSlowModel ? 300000 : 180000; // 5min opus, 3min others
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
     try {
-      const res = await fetch(API_CONFIG.anthropic.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify(body),
-        signal,
-      });
+      // Combine user abort signal with per-request timeout
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), requestTimeout);
+      let combinedSignal;
+      if (!signal) {
+        combinedSignal = timeoutController.signal;
+      } else if (typeof AbortSignal.any === 'function') {
+        combinedSignal = AbortSignal.any([signal, timeoutController.signal]);
+      } else {
+        // Fallback for older browsers without AbortSignal.any
+        combinedSignal = timeoutController.signal;
+        const onUserAbort = () => timeoutController.abort();
+        signal.addEventListener('abort', onUserAbort, { once: true });
+      }
+      let res;
+      try {
+        res = await fetch(API_CONFIG.anthropic.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify(body),
+          signal: combinedSignal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       const data = await res.json();
       if (!data.error) {
         if (attempt > 0) console.log(`✓ Anthropic succeeded on attempt ${attempt + 1}`);
@@ -1332,7 +1373,20 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries,
         await new Promise(r => setTimeout(r, waitMs));
       }
     } catch (e) {
-      if (e.name === 'AbortError') throw e;
+      // Re-throw user-initiated cancels immediately
+      if (e.name === 'AbortError' && signal?.aborted) throw e;
+      // Timeout: retry with a warning
+      if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+        const timeoutSecs = Math.round(requestTimeout / 1000);
+        console.warn(`Anthropic request timed out after ${timeoutSecs}s (attempt ${attempt + 1})`);
+        lastError = new Error(`Request timed out after ${timeoutSecs}s. The model may be overloaded.`);
+        if (attempt < maxRetries) {
+          updateStatus(`Request timed out · Retrying (${attempt + 2}/${maxRetries + 1})`, true);
+          const waitMs = backoffDelay(attempt, 5000, 30000);
+          await new Promise(r => setTimeout(r, waitMs));
+        }
+        continue;
+      }
       if (e.message.includes('No Anthropic') || e.message.includes('Invalid API') || 
           e.message.includes('Input too large') || e.message.includes('Model not available')) {
         throw e;
@@ -1395,6 +1449,7 @@ async function fetchAllTweets(accounts, days, onProgress, signal) {
 }
 
 const ANALYSIS_CONCURRENCY = 3;
+const ANALYSIS_CONCURRENCY_SLOW = 2; // For expensive/slow models (opus)
 const MAX_BATCH_CHARS = 640000;
 const MAX_BATCH_CHARS_WITH_IMAGES = 400000;
 const MAX_IMAGES_PER_BATCH = 5;
@@ -1471,7 +1526,9 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
   const allSignals = [];
   const results = [];
   let nextIndex = 0;
-  const concurrency = Math.min(ANALYSIS_CONCURRENCY, batches.length);
+  const isSlowModel = getModel().toLowerCase().includes('opus');
+  const maxConcurrency = isSlowModel ? ANALYSIS_CONCURRENCY_SLOW : ANALYSIS_CONCURRENCY;
+  const concurrency = Math.min(maxConcurrency, batches.length);
   async function runBatchWorker() {
     while (true) {
       if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
@@ -1479,10 +1536,18 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
       if (i >= batches.length) break;
       const batch = batches[i];
       const batchNum = i + 1;
-      if (batches.length > 1) {
-        onProgress?.(`Analyzing batch ${batchNum}/${batches.length}`);
-      } else {
-        onProgress?.(`${totalTweets} tweets fetched · Analyzing`);
+      const batchLabel = batches.length > 1
+        ? `Analyzing batch ${batchNum}/${batches.length}`
+        : `${totalTweets} tweets fetched · Analyzing`;
+      onProgress?.(batchLabel);
+      // Show elapsed time for slow models so user knows it's not stuck
+      const batchStart = Date.now();
+      let elapsedTimer = null;
+      if (isSlowModel) {
+        elapsedTimer = setInterval(() => {
+          const elapsed = Math.round((Date.now() - batchStart) / 1000);
+          onProgress?.(`${batchLabel} · ${elapsed}s`);
+        }, 5000);
       }
       const textContent = sanitizeText(`${prompt}\n\n${batch.text}`);
       let messageContent;
@@ -1496,6 +1561,7 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
       }
       try {
         const data = await anthropicCall({ model: getModel(), max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] }, 5, signal);
+        if (elapsedTimer) clearInterval(elapsedTimer);
         const txt = extractText(data.content);
         logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
         const batchSignals = safeParseSignals(txt);
@@ -1513,6 +1579,7 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         });
         saveAnalysisCache(cache);
       } catch (e) {
+        if (elapsedTimer) clearInterval(elapsedTimer);
         console.error(`Batch ${batchNum} analysis error:`, e);
         throw e;
       }
@@ -1969,7 +2036,7 @@ const INDEX_MAP = {
   'VIX': '^VIX', 'UVXY': 'UVXY', 'VXX': 'VXX',
   'TNX': '^TNX', 'TLT': 'TLT', 'TBT': 'TBT',
   'DXY': 'DX-Y.NYB', 'UUP': 'UUP',
-  'GLD': 'GLD', 'SLV': 'SLV', 'USO': 'USO', 'UNG': 'UNG',
+  'XAU': 'GC=F', 'GLD': 'GLD', 'XAG': 'SI=F', 'SLV': 'SLV', 'USO': 'USO', 'UNG': 'UNG',
   'XLF': 'XLF', 'XLE': 'XLE', 'XLK': 'XLK', 'XLV': 'XLV', 'XLI': 'XLI', 'XLP': 'XLP', 'XLU': 'XLU', 'XLY': 'XLY', 'XLB': 'XLB', 'XLRE': 'XLRE',
   'ARKK': 'ARKK', 'ARKG': 'ARKG', 'ARKW': 'ARKW', 'ARKF': 'ARKF',
   'SMH': 'SMH', 'SOXX': 'SOXX', 'XBI': 'XBI', 'IBB': 'IBB',
@@ -2061,6 +2128,17 @@ async function fetchAllPrices(symbols) {
   await Promise.all(promises);
 }
 
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+function tvSymbol(s) {
+  if (CRYPTO_SLUGS[s]) return `${s}USDT`;
+  if (s.endsWith('.TW')) return `TWSE:${s.replace('.TW', '')}`;
+  if (s.endsWith('.HK')) return `HKEX:${s.replace('.HK', '')}`;
+  if (s.endsWith('.T')) return `TSE:${s.replace('.T', '')}`;
+  if (s.endsWith('.KS')) return `KRX:${s.replace('.KS', '')}`;
+  return s;
+}
+
 function tickerUrl(sym) {
   const s = sym.replace(/^\$/, '').toUpperCase();
   const provider = getFinanceProvider();
@@ -2085,6 +2163,26 @@ function tickerUrl(sym) {
     return `https://www.google.com/finance/quote/${s}?window=6M`;
   }
   return `https://finance.yahoo.com/quote/${encodeURIComponent(s)}`;
+}
+
+// On mobile, try opening TradingView app via deep link, fall back to web
+if (isMobile) {
+  document.addEventListener('click', e => {
+    const a = e.target.closest('.ticker-tag, .ticker-item');
+    if (!a || getFinanceProvider() !== 'tradingview') return;
+    const sym = a.dataset.sym;
+    if (!sym) return;
+    e.preventDefault();
+    const webUrl = a.href;
+    const deepUrl = `tradingview://chart?symbol=${tvSymbol(sym)}`;
+    const t0 = Date.now();
+    window.location.href = deepUrl;
+    setTimeout(() => {
+      // If the app opened, the page will be hidden/blurred
+      if (document.hidden || Date.now() - t0 > 2000) return;
+      window.open(webUrl, '_blank');
+    }, 1500);
+  });
 }
 
 // ============================================================================
@@ -3113,6 +3211,11 @@ function initEventListeners() {
   const savedScan = loadCurrentScan();
   if (savedScan) {
     lastScanResult = savedScan;
+    // Restore range selection from last scan
+    if (savedScan.range) {
+      const idx = RANGES.findIndex(r => r.label === savedScan.range);
+      if (idx !== -1) { range = idx; renderRanges(); }
+    }
     const d = new Date(savedScan.date);
     const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);

@@ -365,6 +365,7 @@ body.modal-open { overflow: hidden; }
   .modal { max-width: 100%; height: auto; height: 85vh; border: none; border-top: 1px solid var(--border); border-left: none; }
   .modal-actions { flex-direction: row; margin-top: 16px; }
   .modal-actions button.danger { margin-right: auto; }
+  .rng:hover { color: inherit; background: inherit; border-color: inherit; }
 }
 
 /* Disable hover states on touch devices */
