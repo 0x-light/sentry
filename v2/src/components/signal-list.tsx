@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { ACT_COLORS, CAT_COLORS } from '@/lib/constants'
 import { ExternalLink, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { useChartPreview, ChartPreview } from '@/components/chart-preview'
 
 function formatTime(dateStr?: string): string | null {
   if (!dateStr) return null
@@ -30,6 +31,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
   const { shareSignal, scanResult, priceCache, showTickerPrice } = useSentry()
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const { chartPreview, showChart, moveChart, hideChart } = useChartPreview()
 
   const cat = engine.normCat(signal.category)
   const catColors = CAT_COLORS[cat] || CAT_COLORS.Trade
@@ -106,6 +108,9 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                   href={url}
                   target="_blank"
                   rel="noopener"
+                  onMouseEnter={e => showChart(t.symbol, e)}
+                  onMouseMove={moveChart}
+                  onMouseLeave={hideChart}
                   className={cn(
                     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
                     colors.bg, colors.text,
@@ -166,6 +171,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
             ))}
           </div>
         )}
+        {chartPreview && <ChartPreview {...chartPreview} />}
       </div>
     </div>
   )

@@ -4,9 +4,11 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { ACT_COLORS, CAT_COLORS } from '@/lib/constants'
+import { useChartPreview, ChartPreview } from '@/components/chart-preview'
 
 export function TickerBar() {
   const { scanResult, priceCache, filters, setFilter, showTickerPrice } = useSentry()
+  const { chartPreview, showChart, moveChart, hideChart } = useChartPreview()
 
   const tickers = useMemo(() => {
     if (!scanResult?.signals) return []
@@ -58,6 +60,9 @@ export function TickerBar() {
                 href={url}
                 target="_blank"
                 rel="noopener"
+                onMouseEnter={e => showChart(t.symbol, e)}
+                onMouseMove={moveChart}
+                onMouseLeave={hideChart}
                 className={cn(
                   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs whitespace-nowrap",
                   colors.bg, colors.text,
@@ -120,6 +125,7 @@ export function TickerBar() {
           )}
         </div>
       )}
+      {chartPreview && <ChartPreview {...chartPreview} />}
     </div>
   )
 }
