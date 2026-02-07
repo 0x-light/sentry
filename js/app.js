@@ -1299,7 +1299,7 @@ function categorizeError(error, status) {
   return 'unknown';
 }
 
-async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries, signal = null) {
+async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries, signal = null, onStreamProgress = null) {
   const key = getAnKey();
   if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
   const isSlowModel = (body.model || '').toLowerCase().includes('opus');
@@ -1317,57 +1317,124 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries,
       } else if (typeof AbortSignal.any === 'function') {
         combinedSignal = AbortSignal.any([signal, timeoutController.signal]);
       } else {
-        // Fallback for older browsers without AbortSignal.any
         combinedSignal = timeoutController.signal;
         const onUserAbort = () => timeoutController.abort();
         signal.addEventListener('abort', onUserAbort, { once: true });
       }
-      let res;
-      try {
-        res = await fetch(API_CONFIG.anthropic.baseUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': key,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify(body),
-          signal: combinedSignal,
-        });
-      } finally {
+      // Use streaming for real-time progress
+      const streamBody = { ...body, stream: true };
+      const res = await fetch(API_CONFIG.anthropic.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(streamBody),
+        signal: combinedSignal,
+      });
+      // Non-2xx: read error body as JSON
+      if (!res.ok) {
         clearTimeout(timeoutId);
-      }
-      const data = await res.json();
-      if (!data.error) {
-        if (attempt > 0) console.log(`✓ Anthropic succeeded on attempt ${attempt + 1}`);
-        return data;
-      }
-      const errorType = categorizeError(data.error, res.status);
-      console.warn(`Anthropic error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, data.error?.message);
-      if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request', 'billing'].includes(errorType)) {
-        const messages = {
-          input_too_large: 'Input too large. Try fewer accounts or a shorter time range.',
-          model_not_found: 'Model not available. Your API key may not have access to this model.',
-          auth_error: 'Invalid API key. Please check your Anthropic API key in Settings.',
-          invalid_request: data.error?.message || 'Invalid request to Anthropic API.',
-          billing: 'Credit balance too low. <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener noreferrer">Add credits →</a>',
-        };
-        throw new Error(messages[errorType] || data.error?.message);
-      }
-      if (['rate_limit', 'overloaded', 'quota'].includes(errorType)) {
-        if (attempt >= maxRetries) {
-          throw new Error(`API rate limited after ${maxRetries + 1} attempts. Please wait a few minutes and try again.`);
+        let errorData;
+        try { errorData = await res.json(); } catch { errorData = { error: { message: `HTTP ${res.status}` } }; }
+        if (errorData.error) {
+          const errorType = categorizeError(errorData.error, res.status);
+          console.warn(`Anthropic error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, errorData.error?.message);
+          if (['input_too_large', 'model_not_found', 'auth_error', 'invalid_request', 'billing'].includes(errorType)) {
+            const messages = {
+              input_too_large: 'Input too large. Try fewer accounts or a shorter time range.',
+              model_not_found: 'Model not available. Your API key may not have access to this model.',
+              auth_error: 'Invalid API key. Please check your Anthropic API key in Settings.',
+              invalid_request: errorData.error?.message || 'Invalid request to Anthropic API.',
+              billing: 'Credit balance too low. <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener noreferrer">Add credits →</a>',
+            };
+            throw new Error(messages[errorType] || errorData.error?.message);
+          }
+          if (['rate_limit', 'overloaded', 'quota'].includes(errorType)) {
+            if (attempt >= maxRetries) {
+              throw new Error(`API rate limited after ${maxRetries + 1} attempts. Please wait a few minutes and try again.`);
+            }
+            const baseWait = errorType === 'quota' ? 45000 : 15000;
+            const waitMs = backoffDelay(attempt, baseWait, API_CONFIG.anthropic.maxDelay);
+            const waitSecs = Math.ceil(waitMs / 1000);
+            updateStatus(`Rate limited · Retry ${attempt + 2}/${maxRetries + 1} in ${waitSecs}s`, true);
+            console.log(`Waiting ${waitSecs}s before retry...`);
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+          lastError = errorData.error;
+          if (attempt < maxRetries) {
+            const waitMs = backoffDelay(attempt, 2000, 30000);
+            await new Promise(r => setTimeout(r, waitMs));
+          }
+          continue;
         }
-        const baseWait = errorType === 'quota' ? 45000 : 15000;
-        const waitMs = backoffDelay(attempt, baseWait, API_CONFIG.anthropic.maxDelay);
-        const waitSecs = Math.ceil(waitMs / 1000);
-        updateStatus(`Rate limited · Retry ${attempt + 2}/${maxRetries + 1} in ${waitSecs}s`, true);
-        console.log(`Waiting ${waitSecs}s before retry...`);
-        await new Promise(r => setTimeout(r, waitMs));
-        continue;
       }
-      lastError = data.error;
+      // Parse SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let buffer = '';
+      let streamError = null;
+      while (true) {
+        if (signal?.aborted) { reader.cancel(); throw new DOMException('Scan cancelled', 'AbortError'); }
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete last line in buffer
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr || jsonStr === '[DONE]') continue;
+            try {
+              const event = JSON.parse(jsonStr);
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                fullText += event.delta.text;
+                onStreamProgress?.({ outputTokens: Math.ceil(fullText.length / 4), receivingData: true });
+              } else if (event.type === 'message_delta' && event.usage) {
+                outputTokens = event.usage.output_tokens || outputTokens;
+              } else if (event.type === 'message_start' && event.message?.usage) {
+                inputTokens = event.message.usage.input_tokens || 0;
+                onStreamProgress?.({ inputTokens, receivingData: true });
+              } else if (event.type === 'error') {
+                streamError = event.error;
+              }
+            } catch {}
+          }
+        }
+      }
+      // Stream finished — clear the timeout
+      clearTimeout(timeoutId);
+      // Handle stream-level errors
+      if (streamError) {
+        const errorType = categorizeError(streamError);
+        console.warn(`Anthropic stream error (attempt ${attempt + 1}/${maxRetries + 1}):`, errorType, streamError?.message);
+        if (['rate_limit', 'overloaded', 'quota'].includes(errorType)) {
+          if (attempt >= maxRetries) throw new Error(`API rate limited after ${maxRetries + 1} attempts.`);
+          const waitMs = backoffDelay(attempt, 15000, API_CONFIG.anthropic.maxDelay);
+          const waitSecs = Math.ceil(waitMs / 1000);
+          updateStatus(`Rate limited · Retry ${attempt + 2}/${maxRetries + 1} in ${waitSecs}s`, true);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+        lastError = streamError;
+        if (attempt < maxRetries) {
+          const waitMs = backoffDelay(attempt, 2000, 30000);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+      }
+      if (fullText) {
+        if (attempt > 0) console.log(`✓ Anthropic succeeded on attempt ${attempt + 1}`);
+        return { content: [{ type: 'text', text: fullText }], usage: { input_tokens: inputTokens, output_tokens: outputTokens } };
+      }
+      // Empty response — treat as error
+      lastError = new Error('Empty response from Anthropic API');
       if (attempt < maxRetries) {
         const waitMs = backoffDelay(attempt, 2000, 30000);
         await new Promise(r => setTimeout(r, waitMs));
@@ -1388,7 +1455,8 @@ async function anthropicCall(body, maxRetries = API_CONFIG.anthropic.maxRetries,
         continue;
       }
       if (e.message.includes('No Anthropic') || e.message.includes('Invalid API') || 
-          e.message.includes('Input too large') || e.message.includes('Model not available')) {
+          e.message.includes('Input too large') || e.message.includes('Model not available') ||
+          e.message.includes('Credit balance')) {
         throw e;
       }
       lastError = e;
@@ -1526,7 +1594,8 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
   const allSignals = [];
   const results = [];
   let nextIndex = 0;
-  const isSlowModel = getModel().toLowerCase().includes('opus');
+  const modelName = getModel().toLowerCase();
+  const isSlowModel = modelName.includes('opus');
   const maxConcurrency = isSlowModel ? ANALYSIS_CONCURRENCY_SLOW : ANALYSIS_CONCURRENCY;
   const concurrency = Math.min(maxConcurrency, batches.length);
   async function runBatchWorker() {
@@ -1540,15 +1609,18 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         ? `Analyzing batch ${batchNum}/${batches.length}`
         : `${totalTweets} tweets fetched · Analyzing`;
       onProgress?.(batchLabel);
-      // Show elapsed time for slow models so user knows it's not stuck
+      // Show elapsed time and streaming progress for all models
       const batchStart = Date.now();
-      let elapsedTimer = null;
-      if (isSlowModel) {
-        elapsedTimer = setInterval(() => {
-          const elapsed = Math.round((Date.now() - batchStart) / 1000);
+      let streamState = { receivingData: false, outputTokens: 0 };
+      const elapsedTimer = setInterval(() => {
+        const elapsed = Math.round((Date.now() - batchStart) / 1000);
+        if (streamState.receivingData && streamState.outputTokens > 0) {
+          const tokK = (streamState.outputTokens / 1000).toFixed(1);
+          onProgress?.(`${batchLabel} · ${elapsed}s · ${tokK}k tokens`);
+        } else {
           onProgress?.(`${batchLabel} · ${elapsed}s`);
-        }, 5000);
-      }
+        }
+      }, 1000);
       const textContent = sanitizeText(`${prompt}\n\n${batch.text}`);
       let messageContent;
       if (batch.imageUrls && batch.imageUrls.length > 0) {
@@ -1560,8 +1632,12 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         messageContent = textContent;
       }
       try {
-        const data = await anthropicCall({ model: getModel(), max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] }, 5, signal);
-        if (elapsedTimer) clearInterval(elapsedTimer);
+        const data = await anthropicCall(
+          { model: getModel(), max_tokens: 16384, messages: [{ role: 'user', content: messageContent }] },
+          5, signal,
+          (progress) => { Object.assign(streamState, progress); }
+        );
+        clearInterval(elapsedTimer);
         const txt = extractText(data.content);
         logs.push({ a: `_batch${batchNum}`, len: txt.length, pre: txt.slice(0, 400) });
         const batchSignals = safeParseSignals(txt);
@@ -1579,7 +1655,7 @@ async function analyzeWithBatching(accountData, totalTweets, onProgress, promptH
         });
         saveAnalysisCache(cache);
       } catch (e) {
-        if (elapsedTimer) clearInterval(elapsedTimer);
+        clearInterval(elapsedTimer);
         console.error(`Batch ${batchNum} analysis error:`, e);
         throw e;
       }
