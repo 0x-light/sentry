@@ -820,7 +820,7 @@ async function handleDeleteAnalyst(request, env, user) {
 
 async function handleGetScans(env, user) {
   const rows = await supabaseQuery(env,
-    `scans?user_id=eq.${user.id}&select=id,accounts,range_label,range_days,total_tweets,signal_count,signals,created_at&order=created_at.desc&limit=20`
+    `scans?user_id=eq.${user.id}&select=id,accounts,range_label,range_days,total_tweets,signal_count,signals,tweet_meta,created_at&order=created_at.desc&limit=20`
   );
   return corsJson(rows || [], 200, env);
 }

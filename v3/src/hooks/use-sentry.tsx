@@ -464,6 +464,47 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     if (data.recents) { localStorage.setItem('signal_recent_accounts', JSON.stringify(data.recents)); setRecents(data.recents); }
   }, [])
 
+  // ── Cross-device sync: load scan history from server for signed-in users ──
+  const loadServerHistory = useCallback(async () => {
+    if (!isAuthenticated) return
+    try {
+      const serverScans = await api.getScanHistory()
+      if (!serverScans?.length) return
+      const serverHistory: ScanHistoryEntry[] = serverScans.map((s: any) => ({
+        id: s.id,
+        date: s.created_at,
+        range: s.range_label,
+        accounts: Array.isArray(s.accounts) ? s.accounts.length : (s.accounts ?? 0),
+        totalTweets: s.total_tweets ?? 0,
+        signalCount: s.signal_count ?? 0,
+        signals: s.signals || [],
+      }))
+      setScanHistory(serverHistory)
+
+      // If no current scan in localStorage, load the latest server scan
+      if (!engine.loadCurrentScan() && serverScans[0]) {
+        const latest = serverScans[0]
+        const restored: ScanResult = {
+          date: latest.created_at,
+          range: latest.range_label,
+          days: latest.range_days,
+          accounts: Array.isArray(latest.accounts) ? latest.accounts : [],
+          totalTweets: latest.total_tweets ?? 0,
+          signals: latest.signals || [],
+          tweetMeta: latest.tweet_meta || {},
+        }
+        setScanResult(restored)
+        // Also set the range selector to match
+        const idx = RANGES.findIndex(r => r.label === latest.range_label)
+        if (idx !== -1) setRange(idx)
+      }
+    } catch (e) {
+      console.warn('Failed to load server scan history:', e)
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => { loadServerHistory() }, [loadServerHistory])
+
   // Scan
   const scan = useCallback(async () => {
     const accounts = getAllAccounts()
@@ -536,7 +577,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         }))
         if (allSymbols.size) fetchPrices([...allSymbols])
 
-        // Save to server and refresh profile
+        // Save to server and refresh profile + history
         // If BYOK, tell server to skip credit deduction
         if (isAuthenticated) {
           api.saveScanToServer({
@@ -549,7 +590,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
             tweet_meta: engine.loadCurrentScan()?.tweetMeta || {},
             prompt_hash: engine.getPromptHash(analysts),
             byok: !useManaged,
-          }).then(() => refreshProfile()).catch(e => console.warn('Failed to save scan to server:', e))
+          }).then(() => { refreshProfile(); loadServerHistory() }).catch(e => console.warn('Failed to save scan to server:', e))
         }
       }
     } catch (e: any) {
@@ -566,7 +607,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       abortRef.current = null
       setCacheSize(Object.keys(engine.loadAnalysisCache().entries || {}).length)
     }
-  }, [getAllAccounts, busy, customAccounts, range, analysts, openSettings, fetchPrices, isAuthenticated, profile, refreshProfile])
+  }, [getAllAccounts, busy, customAccounts, range, analysts, openSettings, fetchPrices, isAuthenticated, profile, refreshProfile, loadServerHistory])
 
   const cancelScan = useCallback(() => {
     abortRef.current?.abort()
@@ -592,13 +633,28 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const deleteHistoryScanHandler = useCallback((index: number) => {
+    const entry = scanHistory[index]
+    // Delete from server if it has a server ID
+    if (entry?.id && isAuthenticated) {
+      api.deleteScanFromServer(entry.id).catch(e => console.warn('Failed to delete from server:', e))
+    }
+    // Remove from local state
+    setScanHistory(prev => {
+      const next = [...prev]
+      next.splice(index, 1)
+      return next
+    })
+    // Also remove from localStorage
     engine.deleteHistoryScan(index)
-    setScanHistory(engine.getScanHistory())
-  }, [])
+  }, [scanHistory, isAuthenticated])
 
   const refreshHistory = useCallback(() => {
-    setScanHistory(engine.getScanHistory())
-  }, [])
+    if (isAuthenticated) {
+      loadServerHistory()
+    } else {
+      setScanHistory(engine.getScanHistory())
+    }
+  }, [isAuthenticated, loadServerHistory])
 
   // Load saved scan range on init
   useEffect(() => {

@@ -67,6 +67,7 @@ export interface ScanResult {
 }
 
 export interface ScanHistoryEntry {
+  id?: string;          // server-side scan ID (for cross-device sync + deletion)
   date: string;
   range: string;
   accounts: number;
