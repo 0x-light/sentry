@@ -470,8 +470,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     if (!accounts.length || busy) return
 
     // V3: Credit-based access control
+    const hasCredits = isAuthenticated && profile?.has_credits
     if (isAuthenticated && profile) {
-      const hasCredits = profile.has_credits
       if (!hasCredits && !profile.free_scan_available) {
         setPricingOpen(true)
         setNotices([{ type: 'error', message: 'Daily free scan used. Buy credits or come back tomorrow.' }])
@@ -484,7 +484,9 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (!engine.bothKeys()) { openSettings('api'); return; }
+    // Paid users with credits use managed API keys via the server
+    // Free tier / BYOK users need their own local API keys
+    if (!hasCredits && !engine.bothKeys()) { openSettings('api'); return; }
 
     abortRef.current?.abort()
     abortRef.current = new AbortController()
@@ -499,6 +501,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
 
     const days = RANGES[range].days
+    // Enable server API mode for paid users (managed keys)
+    engine.setUseServerApi(!!hasCredits)
     try {
       const result = await engine.runScan(
         accounts, days, abortRef.current.signal,
@@ -510,7 +514,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       if (result) {
         result.range = RANGES[range].label
         engine.saveScan(result)
-        setScanResult(result)
+        // Load from localStorage to get tweetMeta (built by saveScan)
+        setScanResult(engine.loadCurrentScan() || result)
         setScanHistory(engine.getScanHistory())
 
         const d = new Date()
@@ -528,9 +533,17 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         }))
         if (allSymbols.size) fetchPrices([...allSymbols])
 
-        // V3: Deduct credit if authenticated (optimistic, server confirms)
+        // Save to server (deducts credits) and refresh profile
         if (isAuthenticated) {
-          refreshProfile()
+          api.saveScanToServer({
+            accounts,
+            range_label: RANGES[range].label,
+            range_days: days,
+            total_tweets: result.totalTweets,
+            signal_count: result.signals.length,
+            signals: result.signals,
+            tweet_meta: engine.loadCurrentScan()?.tweetMeta || {},
+          }).then(() => refreshProfile()).catch(e => console.warn('Failed to save scan to server:', e))
         }
       }
     } catch (e: any) {
@@ -542,6 +555,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         setNotices(prev => [...prev, { type: 'error', message: e.message }])
       }
     } finally {
+      engine.setUseServerApi(false)
       setBusy(false)
       abortRef.current = null
       setCacheSize(Object.keys(engine.loadAnalysisCache().entries || {}).length)

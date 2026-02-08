@@ -163,6 +163,12 @@ export const CRYPTO_SLUGS: Record<string, string> = {
   HYPE: 'hyperliquid',
 };
 
+// TradingView symbol overrides for crypto tokens that don't have a BINANCE pair.
+// Default is BINANCE:<SYM>USDT — entries here replace that entirely.
+export const TV_SYMBOL_OVERRIDES: Record<string, string> = {
+  HYPE: 'PYTH:HYPEUSD',
+};
+
 export const INDEX_MAP: Record<string, string> = {
   'SPX': '^GSPC', 'SP500': '^GSPC', 'SPY': 'SPY',
   'NDX': '^NDX', 'NASDAQ': '^IXIC', 'QQQ': 'QQQ', 'COMPQ': '^IXIC',

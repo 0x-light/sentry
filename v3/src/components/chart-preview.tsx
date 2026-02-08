@@ -43,7 +43,7 @@ export function ChartPreview({ symbol, x, y }: PreviewState) {
   const isCrypto = engine.isCrypto(clean)
 
   // TradingView symbol format
-  const tvSymbol = isCrypto ? `BINANCE:${clean}USDT` : clean
+  const tvSymbol = isCrypto ? engine.getTvSymbol(clean) : clean
   const colorTheme = theme === 'dark' ? 'dark' : 'light'
 
   // Clamp position to viewport

@@ -5,13 +5,21 @@
 import type { Signal, Tweet, AccountTweets, Analyst, AnalysisCache, PriceData, ScanResult, ScanHistoryEntry, Preset } from './types'
 import {
   DEFAULT_PRESETS, DEFAULT_PROMPT, DEFAULT_ANALYST_ID, DEFAULT_MODEL,
-  CORS_PROXY, CRYPTO_SLUGS, INDEX_MAP, MODEL_PRICING,
+  CORS_PROXY, CRYPTO_SLUGS, INDEX_MAP, MODEL_PRICING, TV_SYMBOL_OVERRIDES,
   LS_TW, LS_AN, LS_SCANS, LS_CURRENT, LS_ANALYSTS, LS_ACTIVE_ANALYST,
   LS_DEFAULT_PROMPT_HASH, LS_ACCOUNTS, LS_LOADED_PRESETS, LS_PRESETS,
   LS_THEME, LS_FINANCE, LS_FONT, LS_FONT_SIZE, LS_CASE, LS_ICON_SET,
   LS_RECENTS, LS_ANALYSIS_CACHE, LS_PENDING_SCAN,
   LS_LIVE_ENABLED, LS_MODEL, LS_ONBOARDING_DONE, MAX_RECENTS, CAT_MIGRATE,
 } from './constants'
+
+// ============================================================================
+// SERVER API MODE — when true, use managed keys via the backend worker
+// instead of local BYOK keys. Toggled on for paid users with credits.
+// ============================================================================
+let _useServerApi = false
+export function setUseServerApi(v: boolean) { _useServerApi = v }
+export function getUseServerApi(): boolean { return _useServerApi }
 
 // ============================================================================
 // UTILITIES
@@ -396,6 +404,15 @@ export async function fetchTweetsWithRetry(
   const key = getCacheKey(account, days);
   if (tweetCache.has(key)) return tweetCache.get(key)!;
 
+  // Server API mode: use managed keys via the backend worker
+  if (_useServerApi) {
+    const { fetchTweets } = await import('./api')
+    const result = await fetchTweets(account, days)
+    const tweets = (result.tweets || []) as Tweet[]
+    if (tweets.length > 0) tweetCache.set(key, tweets)
+    return tweets
+  }
+
   const twKey = getTwKey();
   if (!twKey) throw new Error('No Twitter API key configured. Add it in Settings.');
 
@@ -650,6 +667,19 @@ export async function anthropicCall(
   onStreamProgress?: (p: { outputTokens?: number; inputTokens?: number; receivingData?: boolean }) => void,
   onStatusUpdate?: (msg: string) => void
 ): Promise<{ content: Array<{ type: string; text: string }>; usage: { input_tokens: number; output_tokens: number } }> {
+  // Server API mode: use managed Anthropic key via the backend worker
+  if (_useServerApi) {
+    const { analyze } = await import('./api')
+    const result = await analyze({
+      model: body.model,
+      max_tokens: body.max_tokens,
+      messages: body.messages,
+      system: body.system,
+    })
+    onStreamProgress?.({ receivingData: true, outputTokens: result.usage?.output_tokens || 0, inputTokens: result.usage?.input_tokens || 0 })
+    return result
+  }
+
   const key = getAnKey();
   if (!key) throw new Error('No Anthropic API key configured. Add it in Settings.');
   const isSlowModel = (body.model || '').toLowerCase().includes('opus');
@@ -1225,6 +1255,12 @@ export function isCrypto(sym: string): boolean {
   return !!CRYPTO_SLUGS[sym.replace(/^\$/, '').toUpperCase()];
 }
 
+/** TradingView symbol for a crypto token, using override map or BINANCE:XUSDT default */
+export function getTvSymbol(sym: string): string {
+  const clean = sym.replace(/^\$/, '').toUpperCase();
+  return TV_SYMBOL_OVERRIDES[clean] || `BINANCE:${clean}USDT`;
+}
+
 export function formatPrice(price: number): string {
   if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
   if (price >= 1) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1294,7 +1330,7 @@ export function tickerUrl(sym: string): string {
   const s = sym.replace(/^\$/, '').toUpperCase();
   const provider = getFinanceProvider();
   if (provider === 'tradingview') {
-    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${s}USDT`;
+    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(getTvSymbol(s))}`;
     return `https://www.tradingview.com/chart/?symbol=${s}`;
   }
   if (CRYPTO_SLUGS[s]) return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;

@@ -282,7 +282,7 @@ async function supabaseRpc(env, fn, args = {}) {
   if (!res.ok) {
     const err = await res.text();
     console.error(`Supabase RPC ${fn} error:`, res.status, err);
-    throw new Error(`Database error: ${res.status}`);
+    throw new Error(`RPC ${fn}: ${res.status} - ${err}`);
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
@@ -1076,73 +1076,82 @@ async function handleBillingStatus(env, user) {
 
 // Verify a checkout session directly with Stripe (fallback for missed webhooks)
 async function handleVerifyCheckout(request, env, user) {
-  const { session_id } = await request.json();
-  if (!session_id) {
-    return corsJson({ error: 'Missing session_id' }, 400, env);
-  }
-
-  // Fetch the session from Stripe
-  const session = await stripeGet(env, `/checkout/sessions/${session_id}`);
-  if (session.error || !session.id) {
-    return corsJson({ error: 'Invalid session' }, 400, env);
-  }
-
-  // Security: only allow the user who created the session to verify it
-  if (session.metadata?.user_id !== user.id) {
-    return corsJson({ error: 'Session does not belong to this user' }, 403, env);
-  }
-
-  // Only process completed sessions
-  if (session.payment_status !== 'paid') {
-    return corsJson({ status: 'pending', payment_status: session.payment_status }, 200, env);
-  }
-
-  const metadata = session.metadata || {};
-  const credits = parseInt(metadata.credits) || 0;
-  const packId = metadata.pack_id || 'unknown';
-
-  // Check if credits were already added (idempotency via credit_transactions metadata)
-  let alreadyFulfilled = false;
   try {
-    const existing = await supabaseQuery(env,
-      `credit_transactions?user_id=eq.${user.id}&metadata->>stripe_session_id=eq.${session.id}&select=id&limit=1`
-    );
-    if (existing && existing.length > 0) alreadyFulfilled = true;
-  } catch (e) { /* ignore */ }
+    const body = await request.json().catch(() => ({}));
+    const session_id = body.session_id;
+    if (!session_id) {
+      return corsJson({ error: 'Missing session_id' }, 400, env);
+    }
 
-  if (!alreadyFulfilled && credits > 0) {
-    const pack = CREDIT_PACKS[packId];
-    const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
-    const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
-    await supabaseRpc(env, 'add_credits', {
-      p_user_id: user.id,
-      p_amount: credits,
-      p_type: txType,
-      p_description: desc,
-      p_metadata: { stripe_session_id: session.id, pack_id: packId },
-    });
+    // Fetch the session from Stripe
+    const session = await stripeGet(env, `/checkout/sessions/${session_id}`);
+    if (session.error || !session.id) {
+      console.error('Stripe session fetch failed:', JSON.stringify(session.error || session));
+      return corsJson({ error: 'Invalid session' }, 400, env);
+    }
+
+    // Security: only allow the user who created the session to verify it
+    if (session.metadata?.user_id !== user.id) {
+      return corsJson({ error: 'Session does not belong to this user' }, 403, env);
+    }
+
+    // Only process completed sessions
+    if (session.payment_status !== 'paid') {
+      return corsJson({ status: 'pending', payment_status: session.payment_status }, 200, env);
+    }
+
+    const metadata = session.metadata || {};
+    const credits = parseInt(metadata.credits) || 0;
+    const packId = metadata.pack_id || 'unknown';
+
+    // Add credits
+    if (credits > 0) {
+      try {
+        const pack = CREDIT_PACKS[packId];
+        const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
+        const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
+        await supabaseRpc(env, 'add_credits', {
+          p_user_id: user.id,
+          p_amount: credits,
+          p_type: txType,
+          p_description: desc,
+          p_metadata: { stripe_session_id: session.id, pack_id: packId },
+        });
+      } catch (e) {
+        // Credits may already have been added by webhook — that's OK
+        console.warn('add_credits failed (may be duplicate):', e.message);
+      }
+    }
+
+    // If subscription, ensure subscription ID is saved
+    if (session.mode === 'subscription' && session.subscription) {
+      try {
+        const customerId = session.customer;
+        await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
+          method: 'PATCH',
+          body: {
+            stripe_subscription_id: session.subscription,
+            subscription_status: 'active',
+          },
+        });
+      } catch (e) {
+        console.warn('Subscription update failed:', e.message);
+      }
+    }
+
+    // Return fresh profile
+    const updatedProfile = await getProfile(env, user.id);
+    return corsJson({
+      status: 'fulfilled',
+      credits_balance: updatedProfile?.credits_balance || 0,
+      has_credits: (updatedProfile?.credits_balance || 0) > 0,
+      subscription_status: updatedProfile?.subscription_status,
+    }, 200, env);
+
+  } catch (e) {
+    console.error('handleVerifyCheckout error:', e.message, e.stack);
+    return corsJson({ error: 'Verification failed: ' + (e.message || 'unknown error') }, 500, env);
   }
-
-  // If subscription, ensure subscription ID is saved
-  if (session.mode === 'subscription' && session.subscription) {
-    const customerId = session.customer;
-    await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
-      method: 'PATCH',
-      body: {
-        stripe_subscription_id: session.subscription,
-        subscription_status: 'active',
-      },
-    });
-  }
-
-  // Return fresh profile
-  const profile = await getProfile(env, user.id);
-  return corsJson({
-    status: 'fulfilled',
-    credits_balance: profile?.credits_balance || 0,
-    has_credits: (profile?.credits_balance || 0) > 0,
-    subscription_status: profile?.subscription_status,
-  }, 200, env);
 }
 
 async function handleStripeWebhook(request, env) {

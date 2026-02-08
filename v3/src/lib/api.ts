@@ -196,6 +196,7 @@ export async function analyze(params: {
   model: string
   max_tokens: number
   messages: any[]
+  system?: any
   prompt_hash?: string
   tweet_urls?: string[]
 }): Promise<any> {
