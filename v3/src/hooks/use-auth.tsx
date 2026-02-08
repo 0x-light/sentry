@@ -88,22 +88,21 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
   }, [user, refreshProfile, mockMode])
 
   // Verify checkout and update profile after returning from Stripe
-  // Uses direct session verification as primary, polling profile as fallback
+  // Stripe appends session_id to the success URL — we use it to verify directly
   useEffect(() => {
     if (mockMode || !user) return
     const params = new URLSearchParams(window.location.search)
     if (params.get('billing') !== 'success') return
 
+    const sessionId = params.get('session_id')
+
     // Clean up the URL
     const cleanUrl = window.location.pathname + window.location.hash
     window.history.replaceState({}, '', cleanUrl)
 
-    const sessionId = sessionStorage.getItem('stripe_session_id')
-
     const verify = async () => {
       // Try direct verification first (doesn't depend on webhook)
       if (sessionId) {
-        sessionStorage.removeItem('stripe_session_id')
         try {
           const result = await api.verifyCheckout(sessionId)
           if (result.status === 'fulfilled') {

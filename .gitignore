@@ -4,3 +4,4 @@ v3/.env
 v3/.env.local
 v3/.env.production
 v3/tsconfig.app.tsbuildinfo
+v3/api/.wrangler/
