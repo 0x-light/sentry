@@ -234,6 +234,7 @@ export async function saveScanToServer(data: {
   signal_count: number
   signals: any[]
   tweet_meta?: Record<string, any>
+  byok?: boolean
 }): Promise<{ ok: boolean; id?: string }> {
   return fetchApi('/api/scans', {
     method: 'POST',

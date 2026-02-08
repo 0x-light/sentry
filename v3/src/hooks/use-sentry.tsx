@@ -484,9 +484,11 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Paid users with credits use managed API keys via the server
-    // Free tier / BYOK users need their own local API keys
-    if (!hasCredits && !engine.bothKeys()) { openSettings('api'); return; }
+    // If user has their own keys, always use them (BYOK saves platform costs).
+    // If no own keys but has credits, use managed server keys.
+    // If no own keys and no credits, prompt for keys.
+    const hasBYOK = engine.bothKeys()
+    if (!hasBYOK && !hasCredits) { openSettings('api'); return; }
 
     abortRef.current?.abort()
     abortRef.current = new AbortController()
@@ -501,8 +503,9 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
 
     const days = RANGES[range].days
-    // Enable server API mode for paid users (managed keys)
-    engine.setUseServerApi(!!hasCredits)
+    // Use server API (managed keys) only when user has credits but no own keys
+    const useManaged = !!hasCredits && !hasBYOK
+    engine.setUseServerApi(useManaged)
     try {
       const result = await engine.runScan(
         accounts, days, abortRef.current.signal,
@@ -533,7 +536,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         }))
         if (allSymbols.size) fetchPrices([...allSymbols])
 
-        // Save to server (deducts credits) and refresh profile
+        // Save to server and refresh profile
+        // If BYOK, tell server to skip credit deduction
         if (isAuthenticated) {
           api.saveScanToServer({
             accounts,
@@ -543,6 +547,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
             signal_count: result.signals.length,
             signals: result.signals,
             tweet_meta: engine.loadCurrentScan()?.tweetMeta || {},
+            byok: !useManaged,
           }).then(() => refreshProfile()).catch(e => console.warn('Failed to save scan to server:', e))
         }
       }

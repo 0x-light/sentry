@@ -227,21 +227,20 @@ export function SettingsDialog() {
 
           {/* API Tab */}
           <TabsContent value="api" className="space-y-4 mt-4">
-            {hasCredits ? (
+            {hasCredits && (
               <div className="p-3 rounded-lg bg-accent/50 border space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-signal-green" />
                   <span className="text-sm font-medium">Managed API keys active</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Your credits include managed API keys. Scans use our platform keys — no setup needed.
+                  Scans use our platform keys by default. Add your own keys below to use them instead — your credits won't be consumed.
                 </p>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Your API keys are stored locally in your browser. Buy credits for managed keys.
-              </p>
             )}
+            <p className="text-sm text-muted-foreground">
+              API keys are stored locally in your browser — never sent to our servers.
+            </p>
 
             <div className="space-y-2">
               <Label>X/Twitter API key</Label>
@@ -250,7 +249,6 @@ export function SettingsDialog() {
                 value={twKey}
                 onChange={e => setTwKey(e.target.value)}
                 placeholder="Your twitterapi.io key"
-                disabled={hasCredits}
               />
               <p className="text-sm text-muted-foreground">
                 Get one at{' '}
@@ -264,7 +262,6 @@ export function SettingsDialog() {
                 value={anKey}
                 onChange={e => setAnKey(e.target.value)}
                 placeholder="sk-ant-..."
-                disabled={hasCredits}
               />
               <p className="text-sm text-muted-foreground">
                 Get one at{' '}

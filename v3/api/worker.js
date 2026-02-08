@@ -827,17 +827,17 @@ async function handleGetScans(env, user) {
 
 async function handleSaveScan(request, env, user, ctx) {
   const body = await request.json();
-  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash } = body;
+  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok } = body;
 
   const accountCount = accounts?.length || 0;
   const days = range_days || 1;
-  const creditsUsed = calculateScanCredits(accountCount, days);
+  const creditsUsed = byok ? 0 : calculateScanCredits(accountCount, days);
 
-  // Deduct credits if user has them
+  // Deduct credits if user has them and scan used managed keys (not BYOK)
   const profile = await getProfile(env, user.id);
   let newBalance = profile?.credits_balance || 0;
 
-  if (profile && profile.credits_balance > 0 && creditsUsed > 0) {
+  if (!byok && profile && profile.credits_balance > 0 && creditsUsed > 0) {
     const result = await supabaseRpc(env, 'deduct_credits', {
       p_user_id: user.id,
       p_amount: creditsUsed,

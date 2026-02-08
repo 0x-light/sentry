@@ -40,10 +40,9 @@ export function useChartPreview() {
 export function ChartPreview({ symbol, x, y }: PreviewState) {
   const { theme } = useSentry()
   const clean = symbol.replace(/^\$/, '').toUpperCase()
-  const isCrypto = engine.isCrypto(clean)
 
-  // TradingView symbol format
-  const tvSymbol = isCrypto ? engine.getTvSymbol(clean) : clean
+  // TradingView symbol format (handles crypto, commodities, indices via override map)
+  const tvSymbol = engine.getTvSymbol(clean)
   const colorTheme = theme === 'dark' ? 'dark' : 'light'
 
   // Clamp position to viewport

@@ -1255,10 +1255,12 @@ export function isCrypto(sym: string): boolean {
   return !!CRYPTO_SLUGS[sym.replace(/^\$/, '').toUpperCase()];
 }
 
-/** TradingView symbol for a crypto token, using override map or BINANCE:XUSDT default */
+/** TradingView symbol — checks override map, then BINANCE:XUSDT for crypto, else raw symbol */
 export function getTvSymbol(sym: string): string {
   const clean = sym.replace(/^\$/, '').toUpperCase();
-  return TV_SYMBOL_OVERRIDES[clean] || `BINANCE:${clean}USDT`;
+  if (TV_SYMBOL_OVERRIDES[clean]) return TV_SYMBOL_OVERRIDES[clean];
+  if (CRYPTO_SLUGS[clean]) return `BINANCE:${clean}USDT`;
+  return clean;
 }
 
 export function formatPrice(price: number): string {
@@ -1330,8 +1332,7 @@ export function tickerUrl(sym: string): string {
   const s = sym.replace(/^\$/, '').toUpperCase();
   const provider = getFinanceProvider();
   if (provider === 'tradingview') {
-    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(getTvSymbol(s))}`;
-    return `https://www.tradingview.com/chart/?symbol=${s}`;
+    return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(getTvSymbol(s))}`;
   }
   if (CRYPTO_SLUGS[s]) return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;
   if (provider === 'google') return `https://www.google.com/finance/quote/${s}?window=6M`;
