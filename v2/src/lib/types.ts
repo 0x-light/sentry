@@ -1,6 +1,7 @@
 export interface Preset {
   name: string;
   accounts: string[];
+  hidden?: boolean;
 }
 
 export interface Ticker {

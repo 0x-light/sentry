@@ -191,8 +191,16 @@ export function SignalList() {
 
   const signals = useMemo(() => {
     if (!scanResult?.signals) return []
-    if (!filters.category) return scanResult.signals
-    return scanResult.signals.filter(s => engine.normCat(s.category) === filters.category)
+    let result = scanResult.signals
+    if (filters.category) {
+      result = result.filter(s => engine.normCat(s.category) === filters.category)
+    }
+    if (filters.ticker) {
+      result = result.filter(s =>
+        (s.tickers || []).some(t => (t.symbol || '').replace(/^\$/, '').toUpperCase() === filters.ticker)
+      )
+    }
+    return result
   }, [scanResult, filters])
 
   if (!signals.length) {
@@ -211,7 +219,7 @@ export function SignalList() {
       {/* Signal count */}
       {scanResult && (
         <div className="px-4 py-2 text-sm text-muted-foreground border-b">
-          {filters.category
+          {filters.category || filters.ticker
             ? `${signals.length} of ${scanResult.signals.length} signals`
             : `${signals.length} signals`}
         </div>

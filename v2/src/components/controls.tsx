@@ -55,7 +55,7 @@ export function Controls() {
 
       {/* Presets + custom accounts */}
       <div className="flex flex-wrap items-center gap-1.5 px-4">
-        {presets.map(p => (
+        {presets.filter(p => !p.hidden).map(p => (
           <Badge
             key={p.name}
             variant={loadedPresets.includes(p.name) ? "default" : "outline"}
@@ -78,12 +78,12 @@ export function Controls() {
           </Badge>
         ))}
 
-        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={() => openPresetDialog()}>
+        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => openPresetDialog()}>
           <Plus className="h-3 w-3" />
         </Button>
 
         {presets.length > 0 && (
-          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={() => openPresetDialog()}>
+          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => openPresetDialog()}>
             <Pencil className="h-3 w-3" />
           </Button>
         )}
@@ -111,7 +111,7 @@ export function Controls() {
                 @{s}
               </Badge>
             ))}
-            <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={clearRecents}>
+            <Button variant="ghost" size="icon" className="h-5 w-5 rounded-md" onClick={clearRecents}>
               <X className="h-3 w-3 text-muted-foreground" />
             </Button>
           </div>

@@ -101,6 +101,13 @@
 body.font-geist { font-family: 'Geist Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 body.font-mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; }
 
+/* Font size variants — scales all rem-based sizes */
+html[data-font-size="xsmall"] { font-size: 13px; }
+html[data-font-size="small"] { font-size: 14.5px; }
+/* medium = default (16px), no override needed */
+html[data-font-size="large"] { font-size: 17.5px; }
+html[data-font-size="xlarge"] { font-size: 19px; }
+
 /* Minimal scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

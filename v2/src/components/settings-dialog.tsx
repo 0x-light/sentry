@@ -20,9 +20,10 @@ export function SettingsDialog() {
     settingsOpen, settingsTab, closeSettings,
     analysts, activeAnalystId, setActiveAnalystId, saveAnalysts,
     createAnalyst, deleteAnalyst, duplicateAnalyst,
-    financeProvider, font, fontSize, textCase, showTickerPrice, iconSet,
+    financeProvider, font, fontSize, showTickerPrice, iconSet,
     liveEnabled,
     exportData, importBackup, clearCache, cacheSize,
+    resetOnboarding,
   } = useSentry()
 
   const [twKey, setTwKey] = useState('')
@@ -32,7 +33,6 @@ export function SettingsDialog() {
   const [localFinance, setLocalFinance] = useState(financeProvider)
   const [localFont, setLocalFont] = useState(font)
   const [localFontSize, setLocalFontSize] = useState(fontSize)
-  const [localCase, setLocalCase] = useState(textCase)
   const [localLiveEnabled, setLocalLiveEnabled] = useState(liveEnabled)
   const [localShowTickerPrice, setLocalShowTickerPrice] = useState(showTickerPrice)
   const [localIconSet, setLocalIconSet] = useState(iconSet)
@@ -45,7 +45,6 @@ export function SettingsDialog() {
       setLocalFinance(engine.getFinanceProvider())
       setLocalFont(engine.getFont())
       setLocalFontSize(engine.getFontSize())
-      setLocalCase(engine.getCase())
       setLocalLiveEnabled(engine.isLiveEnabled())
       setLocalShowTickerPrice(engine.getShowTickerPrice())
       setLocalIconSet(engine.getIconSet())
@@ -59,7 +58,6 @@ export function SettingsDialog() {
     localStorage.setItem('signal_finance_provider', localFinance)
     engine.setFont(localFont)
     engine.setFontSize(localFontSize)
-    engine.setCase(localCase)
     engine.setLiveEnabled(localLiveEnabled)
     engine.setShowTickerPrice(localShowTickerPrice)
     engine.setIconSet(localIconSet)
@@ -184,7 +182,7 @@ export function SettingsDialog() {
                   {expandedAnalyst === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   <span className="text-sm font-normal flex-1">{a.name}</span>
                   {activeAnalystId === a.id ? (
-                    <Badge variant="default" className="text-sm">Active</Badge>
+                    <Badge variant="default" className="h-7 flex items-center text-sm">Active</Badge>
                   ) : (
                     <Button variant="ghost" size="sm" className="h-7 text-sm" onClick={(e) => { e.stopPropagation(); setActiveAnalystId(a.id) }}>
                       Use
@@ -269,16 +267,6 @@ export function SettingsDialog() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Text style</Label>
-              <Select value={localCase} onValueChange={setLocalCase}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lower">lowercase</SelectItem>
-                  <SelectItem value="sentence">Sentence case</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label>Icons</Label>
               <Select value={localIconSet} onValueChange={setLocalIconSet}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -342,6 +330,15 @@ export function SettingsDialog() {
               <div className="flex items-center gap-3">
                 <Button variant="outline" size="sm" onClick={clearCache}>Clear cache</Button>
                 <span className="text-sm text-muted-foreground">{cacheSize} entries</span>
+              </div>
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              <Label>Onboarding</Label>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={() => { resetOnboarding(); closeSettings() }}>
+                  Restart onboarding
+                </Button>
               </div>
             </div>
           </TabsContent>

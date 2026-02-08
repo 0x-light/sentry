@@ -21,41 +21,35 @@ const DEV_HTML = `<!DOCTYPE html>
 `
 
 function copyToRoot() {
-  let isBuild = false
   return {
     name: 'copy-to-root',
-    apply: undefined as any, // run in both dev and build
-    configResolved(config: any) {
-      isBuild = config.command === 'build'
-    },
-    buildStart() {
-      if (isBuild) return // Only restore in dev mode
-      // If index.html has been overwritten by a previous build, restore the dev version
+    config() {
+      // Runs before Vite reads index.html. If a previous build overwrote it
+      // with production asset references, restore the dev entry point.
       const indexPath = path.resolve(__dirname, 'index.html')
       const content = fs.readFileSync(indexPath, 'utf8')
       if (!content.includes('src/main.tsx')) {
         fs.writeFileSync(indexPath, DEV_HTML)
-        console.log('  ✓ Restored dev index.html')
+        console.log('  ✓ Restored dev index.html for build')
       }
     },
     closeBundle() {
-      if (!isBuild) return // Only copy in build mode
       // Copy built files from dist/ up to v2/ root so sentry.is/v2/ works
       const distDir = path.resolve(__dirname, 'dist')
       const rootDir = __dirname
       if (!fs.existsSync(distDir)) return
-
-      // Copy index.html
-      fs.copyFileSync(
-        path.join(distDir, 'index.html'),
-        path.join(rootDir, 'index.html')
-      )
 
       // Copy assets folder
       const assetsDir = path.join(distDir, 'assets')
       const targetAssets = path.join(rootDir, 'assets')
       if (fs.existsSync(targetAssets)) fs.rmSync(targetAssets, { recursive: true })
       fs.cpSync(assetsDir, targetAssets, { recursive: true })
+
+      // Copy production index.html (with hashed asset refs)
+      fs.copyFileSync(
+        path.join(distDir, 'index.html'),
+        path.join(rootDir, 'index.html')
+      )
 
       console.log('  ✓ Copied build to v2/ root for static serving')
     }

@@ -10,6 +10,7 @@ import { SignalList } from '@/components/signal-list'
 import { HistorySection } from '@/components/history-section'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { PresetDialog } from '@/components/preset-dialog'
+import { Onboarding } from '@/components/onboarding'
 import { Download } from '@/components/icons'
 import { IconSetProvider, type IconSet } from '@/components/icons'
 
@@ -17,7 +18,13 @@ function AppContent() {
   const {
     busy, status, notices, scanResult, hasPendingScan, pendingScanInfo,
     resumeScan, dismissResumeBanner, downloadScan, isSharedView, sharedSignal,
+    onboardingDone,
   } = useSentry()
+
+  // Show onboarding for new users (unless viewing a shared signal)
+  if (!onboardingDone && !isSharedView) {
+    return <Onboarding />
+  }
 
   if (isSharedView && sharedSignal) {
     return (

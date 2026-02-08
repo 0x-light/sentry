@@ -10,7 +10,7 @@ import {
   LS_DEFAULT_PROMPT_HASH, LS_ACCOUNTS, LS_LOADED_PRESETS, LS_PRESETS,
   LS_THEME, LS_FINANCE, LS_FONT, LS_FONT_SIZE, LS_CASE, LS_ICON_SET,
   LS_RECENTS, LS_ANALYSIS_CACHE, LS_PENDING_SCAN,
-  LS_LIVE_ENABLED, LS_MODEL, MAX_RECENTS, CAT_MIGRATE,
+  LS_LIVE_ENABLED, LS_MODEL, LS_ONBOARDING_DONE, MAX_RECENTS, CAT_MIGRATE,
 } from './constants'
 
 // ============================================================================
@@ -71,6 +71,17 @@ export function setIconSet(s: string) { localStorage.setItem(LS_ICON_SET, s); }
 export function getShowTickerPrice(): boolean { return localStorage.getItem('signal_show_ticker_price') === 'true'; }
 export function setShowTickerPrice(v: boolean) { localStorage.setItem('signal_show_ticker_price', v ? 'true' : 'false'); }
 
+export function isOnboardingDone(): boolean {
+  if (localStorage.getItem(LS_ONBOARDING_DONE) === 'true') return true
+  // Auto-skip for existing users who already have API keys or scan data
+  if (getTwKey() || getAnKey() || localStorage.getItem(LS_CURRENT)) {
+    setOnboardingDone()
+    return true
+  }
+  return false
+}
+export function setOnboardingDone(v = true) { localStorage.setItem(LS_ONBOARDING_DONE, v ? 'true' : 'false'); }
+
 export function bothKeys(): boolean {
   const tw = getTwKey();
   const an = getAnKey();
@@ -103,7 +114,22 @@ export function getPresets(): Preset[] {
     localStorage.setItem(LS_PRESETS, JSON.stringify(DEFAULT_PRESETS));
     return DEFAULT_PRESETS;
   }
-  try { return JSON.parse(stored); } catch { return DEFAULT_PRESETS; }
+  try {
+    const parsed: Preset[] = JSON.parse(stored);
+    // Merge: always use latest DEFAULT_PRESETS (accounts) + keep user-created presets
+    // Preserve user's hidden state for default presets
+    const storedMap = new Map(parsed.map(p => [p.name, p]));
+    const defaultNames = new Set(DEFAULT_PRESETS.map(p => p.name));
+    const defaults = DEFAULT_PRESETS.map(p => {
+      const s = storedMap.get(p.name);
+      return s?.hidden ? { ...p, hidden: true } : p;
+    });
+    const userPresets = parsed.filter(p => !defaultNames.has(p.name));
+    const merged = [...defaults, ...userPresets];
+    // Persist merged result so next load is fast
+    localStorage.setItem(LS_PRESETS, JSON.stringify(merged));
+    return merged;
+  } catch { return DEFAULT_PRESETS; }
 }
 export function savePresetsData(p: Preset[]) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
 
@@ -482,6 +508,99 @@ export async function fetchAllTweets(
     if (i + BATCH_SIZE < accounts.length) await new Promise(r => setTimeout(r, 50));
   }
   return accountTweets;
+}
+
+// ============================================================================
+// TWITTER FOLLOWING
+// ============================================================================
+
+export async function fetchFollowing(
+  username: string,
+  onProgress?: (msg: string) => void,
+  signal?: AbortSignal | null
+): Promise<string[]> {
+  const twKey = getTwKey();
+  if (!twKey) throw new Error('No Twitter API key configured. Add it in Settings.');
+
+  const allUsernames: string[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  const MAX_PAGES = 20; // Following lists can be long
+
+  while (pages < MAX_PAGES) {
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+
+    const params = new URLSearchParams({ userName: username });
+    if (cursor) params.set('cursor', cursor);
+    const targetUrl = `https://api.twitterapi.io/twitter/user/followings?${params}`;
+    const fetchUrl = CORS_PROXY + encodeURIComponent(targetUrl);
+    let data: any;
+    let retries = 0;
+    const maxRetries = 3;
+
+    while (retries <= maxRetries) {
+      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+      try {
+        const res = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: { 'X-API-Key': twKey, 'Accept': 'application/json' },
+          signal: signal ?? undefined,
+        });
+        if (res.status === 401 || res.status === 403) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API auth error: ${body.slice(0, 100) || 'invalid key'}`);
+        }
+        if (res.status === 429) {
+          const waitMs = backoffDelay(retries, 5000, 30000);
+          await new Promise(r => setTimeout(r, waitMs));
+          retries++; continue;
+        }
+        if (!res.ok) {
+          if (retries < maxRetries) {
+            await new Promise(r => setTimeout(r, backoffDelay(retries, 1000, 10000)));
+            retries++; continue;
+          }
+          const body = await res.text().catch(() => '');
+          throw new Error(`Twitter API error ${res.status}: ${body.slice(0, 100) || res.statusText}`);
+        }
+        const text = await res.text();
+        try { data = JSON.parse(text); } catch {
+          if (retries < maxRetries) { retries++; continue; }
+          throw new Error('Invalid JSON from Twitter API');
+        }
+        break;
+      } catch (e: any) {
+        if (e.name === 'AbortError') throw e;
+        if (e.message.includes('auth error') || e.message.includes('No Twitter API')) throw e;
+        if (retries >= maxRetries) throw e;
+        await new Promise(r => setTimeout(r, backoffDelay(retries, 1000, 10000)));
+        retries++;
+      }
+    }
+
+    const apiData = data?.data || data;
+    if (data?.status === 'error' || (data?.status !== 'success' && data?.message)) {
+      throw new Error(data?.message || 'Failed to fetch following list');
+    }
+
+    // Extract usernames from the following list
+    const users = apiData?.followings || apiData?.users || apiData?.following || [];
+    if (!users.length) break;
+
+    for (const user of users) {
+      const uname = user.userName || user.username || user.screen_name;
+      if (uname) allUsernames.push(uname.toLowerCase());
+    }
+
+    onProgress?.(`Fetched ${allUsernames.length} accounts...`);
+
+    if (!apiData.has_next_page || !apiData.next_cursor) break;
+    cursor = apiData.next_cursor;
+    pages++;
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  return [...new Set(allUsernames)]; // Deduplicate
 }
 
 // ============================================================================
@@ -1038,7 +1157,7 @@ export function loadPendingScan(): any | null {
 export function exportData(customAccounts: string[], loadedPresets: string[], analysts: Analyst[]): string {
   const data = {
     v: 1,
-    settings: { theme: getTheme(), font: getFont(), fontSize: getFontSize(), textCase: getCase(), financeProvider: getFinanceProvider(), model: getModel(), iconSet: getIconSet(), showTickerPrice: getShowTickerPrice() },
+    settings: { theme: getTheme(), font: getFont(), fontSize: getFontSize(), financeProvider: getFinanceProvider(), model: getModel(), iconSet: getIconSet(), showTickerPrice: getShowTickerPrice() },
     keys: { twitter: getTwKey(), anthropic: getAnKey() },
     presets: getPresets(), analysts, activeAnalyst: getActiveAnalystId(),
     accounts: customAccounts, loadedPresets, recents: getRecents(),

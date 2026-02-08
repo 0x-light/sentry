@@ -7,7 +7,7 @@ import { ACT_COLORS, CAT_COLORS } from '@/lib/constants'
 import { useChartPreview, ChartPreview } from '@/components/chart-preview'
 
 export function TickerBar() {
-  const { scanResult, priceCache, filters, setFilter, showTickerPrice } = useSentry()
+  const { scanResult, priceCache, filters, setFilter, setTickerFilter, showTickerPrice } = useSentry()
   const { chartPreview, showChart, moveChart, hideChart } = useChartPreview()
 
   const tickers = useMemo(() => {
@@ -52,21 +52,21 @@ export function TickerBar() {
             const sym = t.symbol.replace(/^\$/, '').toUpperCase()
             const price = priceCache[sym]
             const colors = ACT_COLORS[t.action] || ACT_COLORS.watch
-            const url = engine.tickerUrl(t.symbol)
+            const isActive = filters.ticker === sym
 
             return (
-              <a
+              <button
                 key={t.symbol}
-                href={url}
-                target="_blank"
-                rel="noopener"
+                onClick={() => setTickerFilter(sym)}
                 onMouseEnter={e => showChart(t.symbol, e)}
                 onMouseMove={moveChart}
                 onMouseLeave={hideChart}
                 className={cn(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm whitespace-nowrap",
+                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm whitespace-nowrap cursor-pointer transition-all",
                   colors.bg, colors.text,
-                  "hover:opacity-80 transition-opacity"
+                  isActive
+                    ? "ring-1 ring-current ring-opacity-50 opacity-100"
+                    : "hover:opacity-80"
                 )}
               >
                 <span className="font-normal">
@@ -86,9 +86,17 @@ export function TickerBar() {
                     {engine.formatChange(price.change)}
                   </span>
                 )}
-              </a>
+              </button>
             )
           })}
+          {filters.ticker && (
+            <button
+              onClick={() => setTickerFilter(null)}
+              className="text-sm text-muted-foreground hover:text-foreground ml-1"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 

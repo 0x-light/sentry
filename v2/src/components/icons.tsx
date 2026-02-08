@@ -8,6 +8,7 @@ import {
   Pencil as LPencil, Trash2 as LTrash2,
   Settings as LSettings, Sun as LSun, Moon as LMoon, Radio as LRadio,
   Loader2 as LLoader2,
+  Eye as LEye, EyeOff as LEyeOff,
 } from 'lucide-react'
 
 // ── Context ─────────────────────────────────────────────────────────────────
@@ -60,3 +61,5 @@ export const Sun = dual(sf.Sun, LSun, 'Sun')
 export const Moon = dual(sf.Moon, LMoon, 'Moon')
 export const Radio = dual(sf.Radio, LRadio, 'Radio')
 export const Loader2 = dual(sf.Loader2, LLoader2, 'Loader2')
+export const Eye = dual(sf.Eye, LEye, 'Eye')
+export const EyeOff = dual(sf.EyeOff, LEyeOff, 'EyeOff')

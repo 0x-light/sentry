@@ -21,6 +21,7 @@ interface SentryStore {
   clearAllAccounts: () => void;
   savePreset: (name: string, accounts: string[], editingName?: string | null) => void;
   deletePreset: (name: string) => void;
+  togglePresetVisibility: (name: string) => void;
 
   // Recents
   recents: string[];
@@ -42,8 +43,9 @@ interface SentryStore {
   pendingScanInfo: string;
 
   // Signals & Filters
-  filters: { category: string | null };
+  filters: { category: string | null; ticker: string | null };
   setFilter: (category: string | null) => void;
+  setTickerFilter: (ticker: string | null) => void;
 
   // History
   scanHistory: ScanHistoryEntry[];
@@ -75,7 +77,6 @@ interface SentryStore {
   financeProvider: string;
   font: string;
   fontSize: string;
-  textCase: string;
   showTickerPrice: boolean;
   iconSet: string;
 
@@ -99,6 +100,11 @@ interface SentryStore {
   // Prices
   priceCache: Record<string, { price: number; change: number; ts: number }>;
   fetchPrices: (symbols: string[]) => Promise<void>;
+
+  // Onboarding
+  onboardingDone: boolean;
+  completeOnboarding: () => void;
+  resetOnboarding: () => void;
 }
 
 const SentryContext = createContext<SentryStore | null>(null)
@@ -183,9 +189,10 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   // Presets
   const savePreset = useCallback((name: string, accounts: string[], editingName?: string | null) => {
     let p = engine.getPresets()
+    const existing = p.find(x => x.name === (editingName || name))
     if (editingName) p = p.filter(x => x.name !== editingName)
     p = p.filter(x => x.name !== name)
-    p.push({ name, accounts })
+    p.push({ name, accounts, hidden: existing?.hidden })
     engine.savePresetsData(p)
     setPresets(p)
     if (editingName && editingName !== name && loadedPresets.includes(editingName)) {
@@ -210,13 +217,21 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
   }, [loadedPresets])
 
+  const togglePresetVisibility = useCallback((name: string) => {
+    const p = engine.getPresets().map(x =>
+      x.name === name ? { ...x, hidden: !x.hidden } : x
+    )
+    engine.savePresetsData(p)
+    setPresets(p)
+  }, [])
+
   // Scanning
   const [range, setRange] = useState(0)
   const [busy, setBusy] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(() => engine.loadCurrentScan())
   const [status, setStatus] = useState<Status | null>(null)
   const [notices, setNotices] = useState<Notice[]>([])
-  const [filters, setFilters] = useState<{ category: string | null }>({ category: null })
+  const [filters, setFilters] = useState<{ category: string | null; ticker: string | null }>({ category: null, ticker: null })
   const [scanHistory, setScanHistory] = useState(() => engine.getScanHistory())
   const abortRef = useRef<AbortController | null>(null)
 
@@ -273,7 +288,6 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [financeProvider, setFinanceProvider] = useState(() => engine.getFinanceProvider())
   const [font, setFont] = useState(() => engine.getFont())
   const [fontSize, setFontSize] = useState(() => engine.getFontSize())
-  const [textCase, setTextCase] = useState(() => engine.getCase())
   const [showTickerPrice, setShowTickerPrice] = useState(() => engine.getShowTickerPrice())
   const [iconSet, setIconSet] = useState(() => engine.getIconSet())
 
@@ -283,6 +297,15 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     if (font === 'geist') document.body.classList.add('font-geist')
     else if (font === 'mono') document.body.classList.add('font-mono')
   }, [font])
+
+  // Apply font size to document
+  useEffect(() => {
+    if (fontSize && fontSize !== 'medium') {
+      document.documentElement.setAttribute('data-font-size', fontSize)
+    } else {
+      document.documentElement.removeAttribute('data-font-size')
+    }
+  }, [fontSize])
 
   // Settings dialog
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -354,6 +377,18 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     setPriceCacheVersion(v => v + 1)
   }, [])
 
+  // Onboarding
+  const [onboardingDone, setOnboardingDone] = useState(() => engine.isOnboardingDone())
+  const completeOnboarding = useCallback(() => {
+    engine.setOnboardingDone()
+    setOnboardingDone(true)
+  }, [])
+
+  const resetOnboarding = useCallback(() => {
+    engine.setOnboardingDone(false)
+    setOnboardingDone(false)
+  }, [])
+
   // Cache
   const [cacheSize, setCacheSize] = useState(() => {
     const cache = engine.loadAnalysisCache()
@@ -404,7 +439,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     setBusy(true)
     setNotices([])
     setStatus({ text: '', animate: true, showDownload: false })
-    setFilters({ category: null })
+    setFilters({ category: null, ticker: null })
 
     if (customAccounts.length) {
       engine.addToRecents(customAccounts)
@@ -473,7 +508,11 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const setFilter = useCallback((category: string | null) => {
-    setFilters(prev => ({ category: prev.category === category ? null : category }))
+    setFilters(prev => ({ ...prev, category: prev.category === category ? null : category }))
+  }, [])
+
+  const setTickerFilter = useCallback((ticker: string | null) => {
+    setFilters(prev => ({ ...prev, ticker: prev.ticker === ticker ? null : ticker }))
   }, [])
 
   const deleteHistoryScanHandler = useCallback((index: number) => {
@@ -506,12 +545,12 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     theme, toggleTheme,
     customAccounts, loadedPresets, presets,
     addAccount, removeAccount, togglePreset, clearAllAccounts,
-    savePreset, deletePreset,
+    savePreset, deletePreset, togglePresetVisibility,
     recents, addFromRecents, clearRecents: clearRecentsHandler,
     range, setRange, busy, scanResult, status, notices,
     scan, cancelScan, resumeScan, dismissResumeBanner,
     hasPendingScan, pendingScanInfo,
-    filters, setFilter,
+    filters, setFilter, setTickerFilter,
     scanHistory, deleteHistoryScan: deleteHistoryScanHandler, refreshHistory,
     settingsOpen, settingsTab, openSettings, closeSettings,
     presetDialogOpen, editingPreset, openPresetDialog, closePresetDialog,
@@ -519,11 +558,12 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     setActiveAnalystId: setActiveAnalystIdHandler,
     saveAnalysts: saveAnalystsHandler,
     createAnalyst, deleteAnalyst: deleteAnalystHandler, duplicateAnalyst,
-    financeProvider, font, fontSize, textCase, showTickerPrice, iconSet,
+    financeProvider, font, fontSize, showTickerPrice, iconSet,
     liveEnabled, isLiveMode, toggleLive,
     shareSignal, downloadScan, isSharedView, sharedSignal,
     exportData: exportDataFn, importBackup, clearCache, cacheSize,
     priceCache: engine.priceCache, fetchPrices,
+    onboardingDone, completeOnboarding, resetOnboarding,
   }
 
   return <SentryContext.Provider value={value}>{children}</SentryContext.Provider>
