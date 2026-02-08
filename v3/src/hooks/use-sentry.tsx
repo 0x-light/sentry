@@ -115,6 +115,9 @@ interface SentryStore {
   authDialogTab: 'login' | 'signup';
   pricingOpen: boolean;
   setPricingOpen: (open: boolean) => void;
+
+  // Settings apply (no page reload)
+  applySettings: () => void;
 }
 
 const SentryContext = createContext<SentryStore | null>(null)
@@ -390,14 +393,16 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       setIsLiveMode(false)
       if (liveIntervalRef.current) { clearInterval(liveIntervalRef.current); liveIntervalRef.current = null; }
     } else {
-      if (!engine.bothKeys()) { openSettings('api'); return; }
+      // Allow live mode with either BYOK keys or managed keys (credits)
+      const hasCredits = isAuthenticated && profile?.has_credits
+      if (!engine.bothKeys() && !hasCredits) { openSettings('api'); return; }
       setIsLiveMode(true)
       // Initialize seen tweets
       if (scanResult?.rawTweets) {
         scanResult.rawTweets.forEach(a => a.tweets.forEach(tw => seenTweetUrlsRef.current.add(engine.getTweetUrl(tw))))
       }
     }
-  }, [liveEnabled, isLiveMode, scanResult, openSettings])
+  }, [liveEnabled, isLiveMode, scanResult, openSettings, isAuthenticated, profile])
 
   // Sharing
   const isSharedView = typeof window !== 'undefined' && window.location.hash.startsWith('#s=')
@@ -546,6 +551,43 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     const days = RANGES[range].days
     // Use server API (managed keys) only when user has credits but no own keys
     const useManaged = !!hasCredits && !hasBYOK
+
+    // ── Pre-scan credit reservation (prevents API drain) ──
+    // For managed-key users, we reserve credits BEFORE the scan starts.
+    // This ensures users can't consume expensive API calls without enough credits.
+    let reservationId: string | undefined
+    if (useManaged && isAuthenticated) {
+      try {
+        setStatus({ text: 'Checking credits…', animate: true, showDownload: false })
+        const reservation = await api.reserveCredits(accounts.length, days)
+        if (!reservation.ok) {
+          setBusy(false)
+          setPricingOpen(true)
+          setNotices([{ type: 'error', message: reservation.error || 'Not enough credits.' }])
+          setStatus(null)
+          return
+        }
+        reservationId = reservation.reservation_id
+
+        // Low-credit warning: if remaining balance after scan would be < 20% of current
+        if (reservation.credits_balance && reservation.credits_needed) {
+          const remaining = reservation.credits_balance - reservation.credits_needed
+          if (remaining > 0 && remaining < reservation.credits_balance * 0.2) {
+            setNotices(prev => [...prev, { type: 'warning', message: `Low credits: ~${remaining.toLocaleString()} will remain after this scan.` }])
+          }
+        }
+      } catch (e: any) {
+        setBusy(false)
+        // If reservation fails due to insufficient credits, show pricing
+        if (e.message?.includes('credits') || e.message?.includes('free scan')) {
+          setPricingOpen(true)
+        }
+        setNotices([{ type: 'error', message: e.message || 'Failed to reserve credits.' }])
+        setStatus(null)
+        return
+      }
+    }
+
     engine.setUseServerApi(useManaged)
     try {
       const result = await engine.runScan(
@@ -590,7 +632,20 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
             tweet_meta: engine.loadCurrentScan()?.tweetMeta || {},
             prompt_hash: engine.getPromptHash(analysts),
             byok: !useManaged,
-          }).then(() => { refreshProfile(); loadServerHistory() }).catch(e => console.warn('Failed to save scan to server:', e))
+            reservation_id: reservationId,
+          }).then((saveResult) => {
+            refreshProfile()
+            loadServerHistory()
+            // Show remaining credit balance after deduction
+            if (useManaged && saveResult?.credits_balance !== undefined) {
+              const bal = saveResult.credits_balance
+              if (bal <= 0) {
+                setNotices(prev => [...prev, { type: 'error', message: 'Credits depleted. Buy more to keep scanning.' }])
+              } else if (bal < 500) {
+                setNotices(prev => [...prev, { type: 'warning', message: `${bal.toLocaleString()} credits remaining. Consider topping up.` }])
+              }
+            }
+          }).catch(e => console.warn('Failed to save scan to server:', e))
         }
       }
     } catch (e: any) {
@@ -673,6 +728,16 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
   }, []) // eslint-disable-line
 
+  // Re-read all display settings from engine/localStorage (avoids page reload)
+  const applySettings = useCallback(() => {
+    setFinanceProvider(engine.getFinanceProvider())
+    setFont(engine.getFont())
+    setFontSize(engine.getFontSize())
+    setShowTickerPrice(engine.getShowTickerPrice())
+    setIconSet(engine.getIconSet())
+    setLiveEnabledState(engine.isLiveEnabled())
+  }, [])
+
   const value: SentryStore = {
     theme, toggleTheme,
     customAccounts, loadedPresets, presets,
@@ -700,6 +765,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     authDialogOpen, setAuthDialogOpen,
     authDialogTab,
     pricingOpen, setPricingOpen,
+    applySettings,
   }
 
   return <SentryContext.Provider value={value}>{children}</SentryContext.Provider>

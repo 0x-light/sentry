@@ -27,6 +27,7 @@ export function SettingsDialog() {
     resetOnboarding,
     pricingOpen, setPricingOpen,
     authDialogOpen, setAuthDialogOpen,
+    applySettings,
   } = useSentry()
 
   const { isAuthenticated, user, profile, signOut } = useAuth()
@@ -67,10 +68,11 @@ export function SettingsDialog() {
     engine.setShowTickerPrice(localShowTickerPrice)
     engine.setIconSet(localIconSet)
     closeSettings()
-    window.location.reload()
+    applySettings()
   }
 
   const handleClearKeys = () => {
+    if (!confirm('Remove all API keys? You will need to re-enter them.')) return
     localStorage.removeItem('signal_twitter_key')
     localStorage.removeItem('signal_anthropic_key')
     setTwKey('')
@@ -94,7 +96,7 @@ export function SettingsDialog() {
       setImportStatus('success')
       setTimeout(() => {
         closeSettings()
-        window.location.reload()
+        applySettings()
       }, 500)
     } catch {
       setImportStatus('error')
@@ -329,7 +331,7 @@ export function SettingsDialog() {
                         <Copy className="h-3 w-3 mr-1" />Duplicate
                       </Button>
                       {!a.isDefault && (
-                        <Button variant="destructive" size="sm" onClick={() => deleteAnalyst(a.id)}>
+                        <Button variant="destructive" size="sm" onClick={() => { if (confirm(`Delete analyst "${a.name}"?`)) deleteAnalyst(a.id) }}>
                           <Trash2 className="h-3 w-3 mr-1" />Delete
                         </Button>
                       )}
@@ -442,7 +444,7 @@ export function SettingsDialog() {
             <div className="space-y-2">
               <Label>Cache</Label>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={clearCache}>Clear cache</Button>
+                <Button variant="outline" size="sm" onClick={() => { if (confirm('Clear all cached analysis results?')) clearCache() }}>Clear cache</Button>
                 <span className="text-sm text-muted-foreground">{cacheSize} entries</span>
               </div>
             </div>

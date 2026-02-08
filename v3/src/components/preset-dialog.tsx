@@ -190,7 +190,7 @@ export function PresetDialog() {
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPresetDialog(p.name)}>
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deletePreset(p.name)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => { if (confirm(`Delete preset "${p.name}"?`)) deletePreset(p.name) }}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>

@@ -226,6 +226,21 @@ export async function checkScanCache(accounts: string[], days: number, promptHas
   })
 }
 
+export async function reserveCredits(accountsCount: number, rangeDays: number): Promise<{
+  ok: boolean
+  reservation_id?: string
+  credits_needed: number
+  credits_balance?: number
+  free_tier?: boolean
+  error?: string
+  code?: string
+}> {
+  return fetchApi('/api/scans/reserve', {
+    method: 'POST',
+    body: JSON.stringify({ accounts_count: accountsCount, range_days: rangeDays }),
+  })
+}
+
 export async function saveScanToServer(data: {
   accounts: string[]
   range_label: string
@@ -236,7 +251,8 @@ export async function saveScanToServer(data: {
   tweet_meta?: Record<string, any>
   prompt_hash?: string
   byok?: boolean
-}): Promise<{ ok: boolean; id?: string }> {
+  reservation_id?: string
+}): Promise<{ ok: boolean; id?: string; credits_used?: number; credits_balance?: number }> {
   return fetchApi('/api/scans', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -346,6 +362,7 @@ export const api = {
   // Scans
   getScanHistory,
   checkScanCache,
+  reserveCredits,
   saveScan: saveScanToServer,
   deleteScan: deleteScanFromServer,
   // Billing

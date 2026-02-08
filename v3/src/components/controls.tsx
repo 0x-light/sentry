@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
+import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { RANGES } from '@/lib/constants'
+import { calculateScanCredits } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Plus, X, Pencil, Search, Loader2 } from '@/components/icons'
 
@@ -16,6 +18,7 @@ export function Controls() {
     range, setRange, busy, scan, cancelScan,
     openPresetDialog,
   } = useSentry()
+  const { isAuthenticated, profile } = useAuth()
 
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -29,6 +32,23 @@ export function Controls() {
   }
 
   const hasAccounts = customAccounts.length > 0 || loadedPresets.length > 0
+
+  // Calculate total account count (same logic as getAllAccounts in use-sentry)
+  const totalAccounts = useMemo(() => {
+    const all = new Set(customAccounts)
+    for (const name of loadedPresets) {
+      const p = presets.find(p => p.name === name)
+      if (p) p.accounts.forEach(a => all.add(a))
+    }
+    return all.size
+  }, [customAccounts, loadedPresets, presets])
+
+  // Show estimated credit cost for managed-key users
+  const hasCredits = isAuthenticated && profile?.has_credits
+  const estimatedCredits = useMemo(() => {
+    if (!hasCredits || !totalAccounts) return 0
+    return calculateScanCredits(totalAccounts, RANGES[range].days)
+  }, [hasCredits, totalAccounts, range])
 
   return (
     <div className="border-b">
@@ -155,10 +175,17 @@ export function Controls() {
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={scan} disabled={!hasAccounts}>
-              <Search className="h-3.5 w-3.5" />
-              Scan
-            </Button>
+            <div className="flex items-center gap-2">
+              {estimatedCredits > 0 && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  ~{estimatedCredits.toLocaleString()} cr
+                </span>
+              )}
+              <Button size="sm" onClick={scan} disabled={!hasAccounts}>
+                <Search className="h-3.5 w-3.5" />
+                Scan
+              </Button>
+            </div>
           )}
         </div>
       </div>

@@ -103,7 +103,7 @@ export function Onboarding() {
     setPricingOpen,
   } = useSentry()
 
-  const { isAuthenticated, signInWithGoogle, profile } = useAuth()
+  const { isAuthenticated, signIn, signUp, signInWithGoogle, resetPassword, profile } = useAuth()
 
   const [step, setStep] = useState(0)
   const [setupPath, setSetupPath] = useState<'signin' | 'byok' | null>(null)
@@ -113,6 +113,10 @@ export function Onboarding() {
   const [selectedAnalysts, setSelectedAnalysts] = useState<Set<string>>(new Set())
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState('')
+  const [signInEmail, setSignInEmail] = useState('')
+  const [signInPassword, setSignInPassword] = useState('')
+  const [signInMessage, setSignInMessage] = useState('')
+  const [signInMode, setSignInMode] = useState<'choose' | 'email'>('choose')
 
   // Import following state
   const [importUsername, setImportUsername] = useState('')
@@ -203,6 +207,49 @@ export function Onboarding() {
       await signInWithGoogle()
     } catch (err: any) {
       setSignInError(err.message || 'Sign in failed')
+      setSigningIn(false)
+    }
+  }
+
+  const handleEmailAuth = async (mode: 'login' | 'signup') => {
+    if (!signInEmail.trim() || !signInPassword.trim()) {
+      setSignInError('Please enter email and password')
+      return
+    }
+    if (mode === 'signup' && signInPassword.length < 6) {
+      setSignInError('Password must be at least 6 characters')
+      return
+    }
+    setSigningIn(true)
+    setSignInError('')
+    setSignInMessage('')
+    try {
+      if (mode === 'signup') {
+        await signUp(signInEmail.trim(), signInPassword)
+        setSignInMessage('Check your email for a confirmation link!')
+        setSigningIn(false)
+      } else {
+        await signIn(signInEmail.trim(), signInPassword)
+      }
+    } catch (err: any) {
+      setSignInError(err.message || 'Authentication failed')
+      setSigningIn(false)
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    if (!signInEmail.trim()) {
+      setSignInError('Enter your email first')
+      return
+    }
+    setSigningIn(true)
+    setSignInError('')
+    try {
+      await resetPassword(signInEmail.trim())
+      setSignInMessage('Password reset email sent!')
+    } catch (err: any) {
+      setSignInError(err.message || 'Failed to send reset email')
+    } finally {
       setSigningIn(false)
     }
   }
@@ -370,18 +417,91 @@ export function Onboarding() {
                   {signInError && (
                     <p className="text-sm text-destructive text-center">{signInError}</p>
                   )}
+                  {signInMessage && (
+                    <p className="text-sm text-signal-green text-center">{signInMessage}</p>
+                  )}
 
-                  <Button
-                    className="w-full"
-                    onClick={handleGoogleSignIn}
-                    disabled={signingIn}
-                  >
-                    {signingIn ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Continue with Google'
-                    )}
-                  </Button>
+                  {signInMode === 'choose' ? (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={handleGoogleSignIn}
+                        disabled={signingIn}
+                      >
+                        {signingIn ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Continue with Google'
+                        )}
+                      </Button>
+
+                      <div className="relative flex items-center">
+                        <Separator className="flex-1" />
+                        <span className="px-3 text-xs text-muted-foreground">or</span>
+                        <Separator className="flex-1" />
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setSignInMode('email')}
+                        disabled={signingIn}
+                      >
+                        Continue with email
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input
+                            type="email"
+                            value={signInEmail}
+                            onChange={e => setSignInEmail(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleEmailAuth('login') }}
+                            placeholder="you@email.com"
+                            disabled={signingIn}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Password</Label>
+                          <Input
+                            type="password"
+                            value={signInPassword}
+                            onChange={e => setSignInPassword(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleEmailAuth('login') }}
+                            placeholder="••••••••"
+                            disabled={signingIn}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button className="flex-1" onClick={() => handleEmailAuth('login')} disabled={signingIn}>
+                          {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Log in'}
+                        </Button>
+                        <Button variant="outline" className="flex-1" onClick={() => handleEmailAuth('signup')} disabled={signingIn}>
+                          {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign up'}
+                        </Button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={handleForgotPassword}
+                          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Forgot password?
+                        </button>
+                        <button
+                          onClick={() => setSignInMode('choose')}
+                          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Use Google instead
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                   <div className="text-center">
                     <button
@@ -393,7 +513,7 @@ export function Onboarding() {
                   </div>
 
                   <div className="flex items-center justify-between pt-2">
-                    <Button variant="ghost" size="sm" onClick={() => setSetupPath(null)}>
+                    <Button variant="ghost" size="sm" onClick={() => { setSetupPath(null); setSignInMode('choose') }}>
                       Back
                     </Button>
                     <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground">

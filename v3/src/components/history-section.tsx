@@ -68,7 +68,7 @@ export function HistorySection() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-destructive"
-                    onClick={(e) => { e.stopPropagation(); deleteHistoryScan(i) }}
+                    onClick={(e) => { e.stopPropagation(); if (confirm('Delete this scan from history?')) deleteHistoryScan(i) }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

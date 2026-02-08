@@ -21,6 +21,60 @@ import { IconSetProvider, type IconSet } from '@/components/icons'
 
 const isDev = import.meta.env.DEV
 
+// ---------------------------------------------------------------------------
+// Error boundary — catches uncaught React errors and shows a recovery UI
+// instead of a blank screen.
+// ---------------------------------------------------------------------------
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('Sentry ErrorBoundary caught:', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-8">
+          <Card className="max-w-md w-full p-6 space-y-4 text-center">
+            <h2 className="text-lg font-semibold">Something went wrong</h2>
+            <p className="text-sm text-muted-foreground">
+              {this.state.error?.message || 'An unexpected error occurred.'}
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button
+                size="sm"
+                onClick={() => this.setState({ hasError: false, error: null })}
+              >
+                Try again
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                Reload page
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 function AppContent() {
   const {
     busy, status, notices, scanResult, hasPendingScan, pendingScanInfo,
@@ -143,14 +197,16 @@ export default function App() {
   }
 
   return (
-    <AuthProvider mockMode={isDev}>
-      <SentryProvider>
-        <IconSetWrapper>
-          <TooltipProvider>
-            <AppContent />
-          </TooltipProvider>
-        </IconSetWrapper>
-      </SentryProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider mockMode={isDev}>
+        <SentryProvider>
+          <IconSetWrapper>
+            <TooltipProvider>
+              <AppContent />
+            </TooltipProvider>
+          </IconSetWrapper>
+        </SentryProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

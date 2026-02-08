@@ -524,6 +524,12 @@ export async function fetchAllTweets(
   accounts: string[], days: number,
   onProgress: (msg: string) => void, signal: AbortSignal | null
 ): Promise<AccountTweets[]> {
+  // Server API: use the batch endpoint for fewer round-trips
+  if (_useServerApi) {
+    return fetchAllTweetsServerBatch(accounts, days, onProgress, signal);
+  }
+
+  // BYOK: fetch individually with retry logic
   const BATCH_SIZE = 3;
   const accountTweets: AccountTweets[] = [];
   for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
@@ -543,6 +549,38 @@ export async function fetchAllTweets(
     accountTweets.push(...results);
     if (i + BATCH_SIZE < accounts.length) await new Promise(r => setTimeout(r, 50));
   }
+  return accountTweets;
+}
+
+// Server batch endpoint: sends up to 25 accounts per request, reducing round-trips
+async function fetchAllTweetsServerBatch(
+  accounts: string[], days: number,
+  onProgress: (msg: string) => void, signal: AbortSignal | null
+): Promise<AccountTweets[]> {
+  const { fetchTweetsBatch } = await import('./api');
+  const SERVER_BATCH_SIZE = 25; // matches worker's maxBatch
+  const accountTweets: AccountTweets[] = [];
+
+  for (let i = 0; i < accounts.length; i += SERVER_BATCH_SIZE) {
+    if (signal?.aborted) throw new DOMException('Scan cancelled', 'AbortError');
+    const batch = accounts.slice(i, i + SERVER_BATCH_SIZE);
+    const start = i + 1;
+    const end = Math.min(i + batch.length, accounts.length);
+    onProgress(`Fetching ${start}-${end} of ${accounts.length}`);
+
+    const { results } = await fetchTweetsBatch(batch, days);
+
+    for (const r of results) {
+      const tweets = (r.tweets || []) as Tweet[];
+      // Also populate the in-memory cache so subsequent reads are instant
+      if (tweets.length > 0) {
+        const key = getCacheKey(r.account, days);
+        tweetCache.set(key, tweets);
+      }
+      accountTweets.push({ account: r.account, tweets, error: r.error || null });
+    }
+  }
+
   return accountTweets;
 }
 

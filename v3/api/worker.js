@@ -18,6 +18,7 @@
 //   POST /api/scans              - Save a scan
 //   DELETE /api/scans            - Delete a scan
 //   POST /api/scans/check-cache  - Check if a scan result is cached
+//   POST /api/scans/reserve      - Pre-check & reserve credits before scan
 //   POST /api/billing/checkout   - Create Stripe checkout (credit packs)
 //   POST /api/billing/portal     - Stripe billing portal
 //   GET  /api/billing/status     - Billing & credit status
@@ -164,6 +165,9 @@ export default {
       }
       if (path === '/api/scans/check-cache' && method === 'POST') {
         return handleCheckScanCache(request, env, user);
+      }
+      if (path === '/api/scans/reserve' && method === 'POST') {
+        return handleReserveCredits(request, env, user);
       }
 
       // Billing
@@ -369,6 +373,16 @@ async function handleFetchTweets(request, env, user, ctx) {
   }
 
   const result = await fetchTweetsCoalesced(account, days, env, ctx);
+
+  // Non-blocking usage log (only for non-cached calls that hit the Twitter API)
+  if (!result.cached) {
+    ctx.waitUntil(logUsage(env, user.id, 'tweet_fetch', {
+      accounts_count: 1,
+      tweets_count: result.tweets?.length || 0,
+      cost_twitter: 0.0035, // ~$0.0035 per account fetch
+    }));
+  }
+
   return corsJson(result, 200, env);
 }
 
@@ -413,6 +427,17 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
       })
     );
     results.push(...chunkResults);
+  }
+
+  // Non-blocking usage log for the whole batch
+  const uncachedCount = results.filter(r => !r.cached).length;
+  if (uncachedCount > 0) {
+    const totalTweets = results.reduce((sum, r) => sum + (r.tweets?.length || 0), 0);
+    ctx.waitUntil(logUsage(env, user.id, 'tweet_fetch_batch', {
+      accounts_count: results.length,
+      tweets_count: totalTweets,
+      cost_twitter: uncachedCount * 0.0035, // ~$0.0035 per uncached account
+    }));
   }
 
   return corsJson({ results }, 200, env);
@@ -827,7 +852,7 @@ async function handleGetScans(env, user) {
 
 async function handleSaveScan(request, env, user, ctx) {
   const body = await request.json();
-  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok } = body;
+  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok, reservation_id } = body;
 
   const accountCount = accounts?.length || 0;
   const days = range_days || 1;
@@ -838,11 +863,23 @@ async function handleSaveScan(request, env, user, ctx) {
   let newBalance = profile?.credits_balance || 0;
 
   if (!byok && profile && profile.credits_balance > 0 && creditsUsed > 0) {
+    // Consume the credit reservation if one was provided
+    if (reservation_id) {
+      const reservation = creditReservations.get(reservation_id);
+      if (!reservation || reservation.userId !== user.id) {
+        // Reservation expired or doesn't belong to this user — still try to deduct
+        console.warn(`Reservation ${reservation_id} not found or mismatched, falling back to direct deduct`);
+      } else {
+        // Valid reservation — remove it so it can't be reused
+        creditReservations.delete(reservation_id);
+      }
+    }
+
     const result = await supabaseRpc(env, 'deduct_credits', {
       p_user_id: user.id,
       p_amount: creditsUsed,
       p_description: `Scan: ${accountCount} accounts × ${days}d`,
-      p_metadata: { accounts_count: accountCount, range_days: days },
+      p_metadata: { accounts_count: accountCount, range_days: days, reservation_id: reservation_id || null },
     });
     if (result === -1) {
       return corsJson({
@@ -922,6 +959,85 @@ async function handleCheckScanCache(request, env, user) {
   }
 
   return corsJson({ cached: false }, 200, env);
+}
+
+// ---------------------------------------------------------------------------
+// CREDIT RESERVATION — pre-check and lock credits before a scan starts
+// Prevents API drain: users can't consume expensive API calls without
+// having enough credits. The reservation is stored in-memory (per-isolate)
+// and committed when the scan is saved, or released if the scan fails.
+// ---------------------------------------------------------------------------
+const creditReservations = new Map(); // reservationId -> { userId, credits, ts }
+
+// Clean up stale reservations (older than 10 minutes)
+function cleanupReservations() {
+  const cutoff = Date.now() - 600000;
+  for (const [id, r] of creditReservations) {
+    if (r.ts < cutoff) creditReservations.delete(id);
+  }
+}
+
+async function handleReserveCredits(request, env, user) {
+  const { accounts_count, range_days } = await request.json();
+  if (!accounts_count || !range_days) {
+    return corsJson({ error: 'Missing accounts_count or range_days' }, 400, env);
+  }
+
+  if (accounts_count > MAX_ACCOUNTS_PER_SCAN) {
+    return corsJson({ error: `Maximum ${MAX_ACCOUNTS_PER_SCAN} accounts per scan.`, code: 'TOO_MANY_ACCOUNTS' }, 400, env);
+  }
+
+  const creditsNeeded = calculateScanCredits(accounts_count, range_days);
+  const profile = await getProfile(env, user.id);
+
+  if (!profile) {
+    return corsJson({ error: 'Profile not found' }, 404, env);
+  }
+
+  // Free tier check
+  if (profile.credits_balance <= 0) {
+    const canFree = await supabaseRpc(env, 'check_free_scan_today', { p_user_id: user.id });
+    if (!canFree) {
+      return corsJson({
+        error: 'Daily free scan used. Buy credits or come back tomorrow.',
+        code: 'NO_FREE_SCANS',
+      }, 403, env);
+    }
+    if (accounts_count > FREE_TIER.max_accounts) {
+      return corsJson({
+        error: `Free tier allows up to ${FREE_TIER.max_accounts} accounts. Buy credits for more.`,
+        code: 'FREE_TIER_LIMIT',
+      }, 403, env);
+    }
+    // Free tier — no credit reservation needed
+    return corsJson({ ok: true, credits_needed: 0, free_tier: true }, 200, env);
+  }
+
+  // Paid user — check they have enough credits
+  if (profile.credits_balance < creditsNeeded) {
+    return corsJson({
+      error: `Not enough credits. Need ${creditsNeeded}, have ${profile.credits_balance}.`,
+      code: 'INSUFFICIENT_CREDITS',
+      credits_needed: creditsNeeded,
+      credits_balance: profile.credits_balance,
+    }, 403, env);
+  }
+
+  // Create a reservation (in-memory, per isolate)
+  cleanupReservations();
+  const reservationId = crypto.randomUUID();
+  creditReservations.set(reservationId, {
+    userId: user.id,
+    credits: creditsNeeded,
+    ts: Date.now(),
+  });
+
+  return corsJson({
+    ok: true,
+    reservation_id: reservationId,
+    credits_needed: creditsNeeded,
+    credits_balance: profile.credits_balance,
+  }, 200, env);
 }
 
 // Save scan result to cross-user cache (called after successful scan save)
