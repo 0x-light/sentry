@@ -33,31 +33,31 @@ function copyToRoot() {
       }
     },
     closeBundle() {
-      // Copy built files from dist/ up to v3/ root so sentry.is/v3/ works
+      // Copy built files to repo root so sentry.is/ serves v3 directly
       const distDir = path.resolve(__dirname, 'dist')
-      const rootDir = __dirname
+      const repoRoot = path.resolve(__dirname, '..')
       if (!fs.existsSync(distDir)) return
 
-      // Copy index.html
+      // Copy index.html to repo root
       fs.copyFileSync(
         path.join(distDir, 'index.html'),
-        path.join(rootDir, 'index.html')
+        path.join(repoRoot, 'index.html')
       )
 
-      // Copy assets folder
+      // Copy assets folder to repo root
       const assetsDir = path.join(distDir, 'assets')
-      const targetAssets = path.join(rootDir, 'assets')
+      const targetAssets = path.join(repoRoot, 'assets')
       if (fs.existsSync(targetAssets)) fs.rmSync(targetAssets, { recursive: true })
       fs.cpSync(assetsDir, targetAssets, { recursive: true })
 
-      console.log('  ✓ Copied build to v3/ root for static serving')
+      console.log('  ✓ Copied build to repo root for sentry.is/')
     }
   }
 }
 
 export default defineConfig({
   plugins: [react(), copyToRoot()],
-  base: "/v3/",
+  base: "/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
