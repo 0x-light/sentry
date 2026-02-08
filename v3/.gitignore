@@ -1,7 +1,19 @@
+# Dependencies
 node_modules
+api/node_modules
+
+# Build output
 dist
+
+# Environment files (may contain secrets)
 .env
-.env.local
-.env.production
+.env.*
+
+# TypeScript build info
 tsconfig.app.tsbuildinfo
+
+# Cloudflare Wrangler local state
 api/.wrangler/
+
+# macOS
+.DS_Store

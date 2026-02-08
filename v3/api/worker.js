@@ -1104,22 +1104,27 @@ async function handleVerifyCheckout(request, env, user) {
     const credits = parseInt(metadata.credits) || 0;
     const packId = metadata.pack_id || 'unknown';
 
-    // Add credits
+    // Add credits — but only if the webhook hasn't already processed this session.
+    // Check credit_transactions for an existing entry with this stripe_session_id.
     if (credits > 0) {
       try {
-        const pack = CREDIT_PACKS[packId];
-        const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
-        const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
-        await supabaseRpc(env, 'add_credits', {
-          p_user_id: user.id,
-          p_amount: credits,
-          p_type: txType,
-          p_description: desc,
-          p_metadata: { stripe_session_id: session.id, pack_id: packId },
-        });
+        const existing = await supabaseQuery(env,
+          `credit_transactions?user_id=eq.${user.id}&metadata->>stripe_session_id=eq.${session.id}&select=id&limit=1`
+        );
+        if (!existing?.length) {
+          const pack = CREDIT_PACKS[packId];
+          const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
+          const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
+          await supabaseRpc(env, 'add_credits', {
+            p_user_id: user.id,
+            p_amount: credits,
+            p_type: txType,
+            p_description: desc,
+            p_metadata: { stripe_session_id: session.id, pack_id: packId },
+          });
+        }
       } catch (e) {
-        // Credits may already have been added by webhook — that's OK
-        console.warn('add_credits failed (may be duplicate):', e.message);
+        console.warn('add_credits/dedup check failed:', e.message);
       }
     }
 
@@ -1165,15 +1170,20 @@ async function handleStripeWebhook(request, env) {
 
   const event = JSON.parse(body);
 
-  // Log the event
+  // Log the event — billing_events has a UNIQUE constraint on stripe_event_id,
+  // so a duplicate insert returns 409. If we've already processed this event,
+  // return immediately to prevent double-crediting.
   try {
     await supabaseQuery(env, 'billing_events', {
       method: 'POST',
       body: { stripe_event_id: event.id, type: event.type, data: event.data },
     });
   } catch (e) {
-    // Duplicate event, ignore
-    if (!e.message.includes('duplicate')) console.warn('Webhook log failed:', e.message);
+    // 409 = unique constraint violation → duplicate event, already processed
+    if (e.message.includes('409') || e.message.includes('duplicate') || e.message.includes('23505')) {
+      return corsJson({ received: true }, 200, env);
+    }
+    console.warn('Webhook log failed:', e.message);
   }
 
   const obj = event.data.object;

@@ -1,7 +1,28 @@
+# Dependencies
 v3/node_modules/
+v3/api/node_modules/
+node_modules/
+
+# Build output
 v3/dist/
+
+# Environment files (may contain secrets)
+.env
+.env.*
 v3/.env
-v3/.env.local
-v3/.env.production
+v3/.env.*
+
+# TypeScript build info
 v3/tsconfig.app.tsbuildinfo
+
+# Cloudflare Wrangler local state
 v3/api/.wrangler/
+.wrangler/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~

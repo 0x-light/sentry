@@ -222,6 +222,13 @@ alter table presets enable row level security;
 alter table analysts enable row level security;
 alter table scans enable row level security;
 alter table usage_log enable row level security;
+alter table billing_events enable row level security;
+alter table tweet_cache enable row level security;
+alter table analysis_cache enable row level security;
+-- Note: billing_events, tweet_cache, and analysis_cache have NO user-facing
+-- policies. They are only accessed by the worker via SUPABASE_SERVICE_KEY
+-- (which bypasses RLS). This prevents anyone with the public anon key from
+-- reading Stripe billing data or manipulating caches.
 
 -- Users can only see/edit their own data
 create policy "Users can view own profile"   on profiles   for select using (auth.uid() = id);
