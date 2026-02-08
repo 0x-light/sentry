@@ -547,6 +547,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
             signal_count: result.signals.length,
             signals: result.signals,
             tweet_meta: engine.loadCurrentScan()?.tweetMeta || {},
+            prompt_hash: engine.getPromptHash(analysts),
             byok: !useManaged,
           }).then(() => refreshProfile()).catch(e => console.warn('Failed to save scan to server:', e))
         }

@@ -675,6 +675,8 @@ export async function anthropicCall(
       max_tokens: body.max_tokens,
       messages: body.messages,
       system: body.system,
+      prompt_hash: body.prompt_hash,
+      tweet_urls: body.tweet_urls,
     })
     onStreamProgress?.({ receivingData: true, outputTokens: result.usage?.output_tokens || 0, inputTokens: result.usage?.input_tokens || 0 })
     return result
@@ -1032,6 +1034,8 @@ export async function analyzeWithBatching(
             max_tokens: 16384,
             system: [{ type: 'text', text: prompt }],
             messages: [{ role: 'user', content: messageContent }],
+            prompt_hash: promptHash,
+            tweet_urls: batch.tweetUrls,
           },
           5, signal,
           (progress) => { Object.assign(streamState, progress); },
@@ -1073,6 +1077,30 @@ export async function runScan(
   analysts: Analyst[]
 ): Promise<ScanResult | null> {
   onStatus('', true);
+
+  // ── Cross-user scan cache check ──────────────────────────────────────
+  // If using server API, check if another user already scanned the same
+  // accounts + range + analyst. If so, return their result instantly.
+  if (_useServerApi) {
+    try {
+      const promptHash = getPromptHash(analysts);
+      const { checkScanCache } = await import('./api');
+      const cached = await checkScanCache(accounts, days, promptHash);
+      if (cached.cached && cached.signals?.length) {
+        onStatus(`${cached.signals.length} signals (from cache)`, false);
+        return {
+          date: new Date().toISOString(),
+          range: '',
+          days,
+          accounts: [...accounts],
+          totalTweets: cached.total_tweets || 0,
+          signals: cached.signals,
+        };
+      }
+    } catch {
+      // Cache miss or error — continue with full scan
+    }
+  }
 
   const accountTweets = await fetchAllTweets(accounts, days, (msg) => onStatus(msg, true), signal);
   const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
