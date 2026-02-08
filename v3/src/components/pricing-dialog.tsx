@@ -74,13 +74,15 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
     setLoadingPack(packId)
     setError(null)
     try {
-      const { url } = await api.buyCredits({
+      const { url, id } = await api.buyCredits({
         packId,
         recurring,
         successUrl: window.location.origin + '/?billing=success',
         cancelUrl: window.location.origin + '/?billing=cancel',
       })
       if (url) {
+        // Save session ID so we can verify on return
+        if (id) sessionStorage.setItem('stripe_session_id', id)
         window.location.href = url
       } else {
         setError('No checkout URL returned. Please try again.')

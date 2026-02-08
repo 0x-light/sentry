@@ -87,6 +87,56 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
     }
   }, [user, refreshProfile, mockMode])
 
+  // Verify checkout and update profile after returning from Stripe
+  // Uses direct session verification as primary, polling profile as fallback
+  useEffect(() => {
+    if (mockMode || !user) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('billing') !== 'success') return
+
+    // Clean up the URL
+    const cleanUrl = window.location.pathname + window.location.hash
+    window.history.replaceState({}, '', cleanUrl)
+
+    const sessionId = sessionStorage.getItem('stripe_session_id')
+
+    const verify = async () => {
+      // Try direct verification first (doesn't depend on webhook)
+      if (sessionId) {
+        sessionStorage.removeItem('stripe_session_id')
+        try {
+          const result = await api.verifyCheckout(sessionId)
+          if (result.status === 'fulfilled') {
+            await refreshProfile()
+            return
+          }
+        } catch (e) {
+          console.warn('Checkout verify failed, falling back to polling:', e)
+        }
+      }
+
+      // Fallback: poll profile until credits appear (webhook may be slow)
+      let attempts = 0
+      const maxAttempts = 10
+      const interval = setInterval(async () => {
+        attempts++
+        try {
+          const p = await api.getProfile()
+          if (p && (p.credits_balance > 0 || p.subscription_status === 'active')) {
+            setProfile(p)
+            clearInterval(interval)
+          } else if (attempts >= maxAttempts) {
+            clearInterval(interval)
+          }
+        } catch {
+          if (attempts >= maxAttempts) clearInterval(interval)
+        }
+      }, 2000)
+    }
+
+    verify()
+  }, [user, mockMode])
+
   const handleSignUp = useCallback(async (email: string, password: string) => {
     if (mockMode) {
       // Mock: instantly "sign up" and "sign in"

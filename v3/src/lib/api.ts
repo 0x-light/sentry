@@ -286,6 +286,18 @@ export async function getBillingStatus(): Promise<{
   return fetchApi('/api/billing/status')
 }
 
+export async function verifyCheckout(sessionId: string): Promise<{
+  status: string
+  credits_balance?: number
+  has_credits?: boolean
+  subscription_status?: string | null
+}> {
+  return fetchApi('/api/billing/verify', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId }),
+  })
+}
+
 // ============================================================================
 // HEALTH CHECK
 // ============================================================================
