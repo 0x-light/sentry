@@ -34,9 +34,6 @@ export function Topbar() {
             <span className="text-sm font-normal">Live</span>
           </Button>
         )}
-        <Button variant="ghost" size="icon" onClick={toggleTheme}>
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
         {isAuthenticated ? (
           <Button
             variant="ghost"
@@ -68,6 +65,9 @@ export function Topbar() {
             <span className="text-sm font-normal">Sign in</span>
           </Button>
         )}
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <Button variant="ghost" size="icon" onClick={() => openSettings()}>
           <Settings className="h-4 w-4" />
         </Button>
