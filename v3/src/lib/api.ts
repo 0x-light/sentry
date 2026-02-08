@@ -56,7 +56,7 @@ export async function signIn(email: string, password: string) {
 export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin + '/v3/' },
+    options: { redirectTo: window.location.origin + '/' },
   })
   if (error) throw error
   return data
@@ -69,7 +69,7 @@ export async function signOut() {
 
 export async function resetPassword(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + '/v3/',
+    redirectTo: window.location.origin + '/',
   })
   if (error) throw error
 }
