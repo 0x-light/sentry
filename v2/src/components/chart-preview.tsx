@@ -14,7 +14,7 @@ const HEIGHT = 200
 
 export function useChartPreview() {
   const [state, setState] = useState<PreviewState | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const show = useCallback((symbol: string, e: React.MouseEvent) => {
     clearTimeout(timerRef.current)

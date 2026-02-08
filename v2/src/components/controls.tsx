@@ -74,7 +74,7 @@ export function Controls() {
             className="cursor-pointer select-none gap-1"
           >
             @{a}
-            <X className="h-3 w-3 opacity-50 hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); removeAccount(a) }} />
+            <X className="h-3 w-3 opacity-50 hover:opacity-100 transition-opacity" onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeAccount(a) }} />
           </Badge>
         ))}
 
