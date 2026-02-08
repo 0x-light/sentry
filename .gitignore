@@ -1,1 +1,6 @@
-v3/
+v3/node_modules/
+v3/dist/
+v3/.env
+v3/.env.local
+v3/.env.production
+v3/tsconfig.app.tsbuildinfo

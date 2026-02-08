@@ -1,0 +1,40 @@
+{
+	"name": "sentry-api",
+	"main": "worker.js",
+	"compatibility_date": "2024-12-01",
+	"workers_dev": true,
+	// Production route
+	"routes": [
+		{
+			"pattern": "api.sentry.is",
+			"custom_domain": true
+		}
+	],
+	// KV namespaces for caching
+	"kv_namespaces": [
+		{
+			"binding": "TWEET_CACHE",
+			"id": "8334ef0b45724de8b7beb94690d9e087"
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	// Environment variables (set secrets via `wrangler secret put`)
+	// Required secrets:
+	//   SUPABASE_URL          - Your Supabase project URL
+	//   SUPABASE_SERVICE_KEY  - Supabase service role key (for server-side auth)
+	//   SUPABASE_ANON_KEY     - Supabase anon key (for client reference)
+	//   TWITTER_API_KEY       - twitterapi.io API key
+	//   ANTHROPIC_API_KEY     - Anthropic API key
+	//   STRIPE_SECRET_KEY     - Stripe secret key
+	//   STRIPE_WEBHOOK_SECRET - Stripe webhook signing secret
+	//
+	// Non-secret env vars:
+	"vars": {
+		"STRIPE_PRICE_PRO": "price_pro_monthly",
+		"STRIPE_PRICE_ULTRA": "price_ultra_monthly",
+		"CORS_ORIGIN": "https://sentry.is",
+		"ENVIRONMENT": "production"
+	}
+}
