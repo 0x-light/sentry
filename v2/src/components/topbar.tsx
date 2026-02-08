@@ -16,7 +16,6 @@ export function Topbar() {
           )}
         />
         <span className="font-normal text-sm tracking-tight">sentry</span>
-        <span className="text-sm text-muted-foreground font-normal">v2</span>
       </div>
       <div className="flex items-center gap-1">
         {liveEnabled && (
