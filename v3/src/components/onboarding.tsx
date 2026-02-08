@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
+import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { ChevronRight, Check, ExternalLink, Plus, X, Download, Loader2 } from '@/components/icons'
 import * as engine from '@/lib/engine'
 
-const STEPS = ['Welcome', 'API Keys', 'Accounts', 'Analysts', 'Ready'] as const
+const STEPS = ['Welcome', 'Setup', 'Accounts', 'Analysts', 'Ready'] as const
 type Step = (typeof STEPS)[number]
 
 // ── Suggested analysts ───────────────────────────────────────────────────
@@ -99,13 +100,19 @@ export function Onboarding() {
     presets, loadedPresets, togglePreset,
     customAccounts, addAccount, removeAccount,
     analysts, createAnalyst, savePreset,
+    setPricingOpen,
   } = useSentry()
 
+  const { isAuthenticated, signInWithGoogle, profile } = useAuth()
+
   const [step, setStep] = useState(0)
+  const [setupPath, setSetupPath] = useState<'signin' | 'byok' | null>(null)
   const [twKey, setTwKey] = useState('')
   const [anKey, setAnKey] = useState('')
   const [accountInput, setAccountInput] = useState('')
   const [selectedAnalysts, setSelectedAnalysts] = useState<Set<string>>(new Set())
+  const [signingIn, setSigningIn] = useState(false)
+  const [signInError, setSignInError] = useState('')
 
   // Import following state
   const [importUsername, setImportUsername] = useState('')
@@ -167,7 +174,6 @@ export function Onboarding() {
   const handleCreateAnalysts = () => {
     for (const sa of SUGGESTED_ANALYSTS) {
       if (selectedAnalysts.has(sa.id)) {
-        // Don't create if one with the same name already exists
         if (!analysts.some(a => a.name === sa.name)) {
           createAnalyst(sa.name, sa.prompt)
         }
@@ -176,17 +182,29 @@ export function Onboarding() {
   }
 
   const handleNext = () => {
-    if (step === 1) handleSaveKeys()
+    if (step === 1 && setupPath === 'byok') handleSaveKeys()
     if (step === 3) handleCreateAnalysts()
     if (step < STEPS.length - 1) setStep(step + 1)
   }
 
   const handleBack = () => {
+    if (step === 1) setSetupPath(null)
     if (step > 0) setStep(step - 1)
   }
 
   const handleFinish = () => {
     completeOnboarding()
+  }
+
+  const handleGoogleSignIn = async () => {
+    setSigningIn(true)
+    setSignInError('')
+    try {
+      await signInWithGoogle()
+    } catch (err: any) {
+      setSignInError(err.message || 'Sign in failed')
+      setSigningIn(false)
+    }
   }
 
   const handleAddAccount = () => {
@@ -206,8 +224,9 @@ export function Onboarding() {
     })
   }
 
-  const hasKeys = twKey.trim().length >= 20 && anKey.trim().length >= 20
+  const hasKeys = isAuthenticated || (twKey.trim().length >= 20 && anKey.trim().length >= 20)
   const hasAccounts = customAccounts.length > 0 || loadedPresets.length > 0
+  const hasTwKey = isAuthenticated || twKey.trim().length >= 20
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -248,7 +267,7 @@ export function Onboarding() {
                   <div className="mt-0.5 w-5 h-5 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
                     <span className="text-xs">1</span>
                   </div>
-                  <span className="text-muted-foreground">Add your API keys for X and Anthropic</span>
+                  <span className="text-muted-foreground">Sign in or add your own API keys</span>
                 </div>
                 <div className="flex items-start gap-3 text-sm">
                   <div className="mt-0.5 w-5 h-5 rounded-full bg-foreground/5 flex items-center justify-center shrink-0">
@@ -271,70 +290,192 @@ export function Onboarding() {
             </div>
           )}
 
-          {/* ── Step 1: API Keys ─────────────────────────────────── */}
-          {currentStep === 'API Keys' && (
+          {/* ── Step 1: Setup (Sign in or BYOK) ─────────────────── */}
+          {currentStep === 'Setup' && (
             <div className="space-y-6">
-              <div className="text-center space-y-2">
-                <h2 className="text-lg tracking-tight">API keys</h2>
-                <p className="text-sm text-muted-foreground">
-                  Your keys are stored locally and only sent to their respective APIs. Nothing leaves your browser.
-                </p>
-              </div>
+              {/* Already signed in during this step */}
+              {isAuthenticated ? (
+                <div className="text-center space-y-4 py-4">
+                  <div className="w-10 h-10 rounded-full bg-signal-green-bg flex items-center justify-center mx-auto">
+                    <Check className="h-5 w-5 text-signal-green" />
+                  </div>
+                  <div className="space-y-2">
+                    <h2 className="text-lg tracking-tight">You're signed in</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Managed API keys are active — no setup needed. Your scans will use our platform keys.
+                    </p>
+                  </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>X/Twitter API key</Label>
-                  <Input
-                    type="password"
-                    value={twKey}
-                    onChange={e => setTwKey(e.target.value)}
-                    placeholder="Your twitterapi.io key"
-                  />
-                  <a
-                    href="https://twitterapi.io"
-                    target="_blank"
-                    rel="noopener"
-                    className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  <div className="flex items-center justify-between pt-4">
+                    <Button variant="ghost" size="sm" onClick={handleBack}>
+                      Back
+                    </Button>
+                    <Button onClick={handleNext} className="gap-1.5">
+                      Continue
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : !setupPath ? (
+                /* Choose path */
+                <div className="space-y-6">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-lg tracking-tight">How do you want to use Sentry?</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Sign in for the easiest experience, or bring your own API keys.
+                    </p>
+                  </div>
+
+                  {/* Option 1: Sign in */}
+                  <button
+                    onClick={() => { setSetupPath('signin') }}
+                    className="w-full text-left rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2 transition-colors hover:border-primary/40"
                   >
-                    Get one at twitterapi.io
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default" className="text-xs">Recommended</Badge>
+                    </div>
+                    <h3 className="text-sm font-medium">Sign in</h3>
+                    <p className="text-sm text-muted-foreground">
+                      We handle the API keys. Just sign in and start scanning. Free plan includes 3 scans/month.
+                    </p>
+                  </button>
 
-                <div className="space-y-2">
-                  <Label>Anthropic API key</Label>
-                  <Input
-                    type="password"
-                    value={anKey}
-                    onChange={e => setAnKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                  />
-                  <a
-                    href="https://console.anthropic.com/settings/keys"
-                    target="_blank"
-                    rel="noopener"
-                    className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  {/* Option 2: BYOK */}
+                  <button
+                    onClick={() => setSetupPath('byok')}
+                    className="w-full text-left rounded-lg border p-4 space-y-2 transition-colors hover:border-foreground/20"
                   >
-                    Get one at console.anthropic.com
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              </div>
+                    <h3 className="text-sm font-medium">Use your own API keys</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Bring your own X/Twitter and Anthropic keys. Unlimited scans, you pay the APIs directly.
+                    </p>
+                  </button>
 
-              <div className="flex items-center justify-between pt-2">
-                <Button variant="ghost" size="sm" onClick={handleBack}>
-                  Back
-                </Button>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground">
-                    Skip
-                  </Button>
-                  <Button onClick={handleNext} disabled={!hasKeys} className="gap-1.5">
-                    Continue
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center justify-between pt-2">
+                    <Button variant="ghost" size="sm" onClick={handleBack}>
+                      Back
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              ) : setupPath === 'signin' ? (
+                /* Sign in path */
+                <div className="space-y-6">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-lg tracking-tight">Sign in</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Create an account to get started with managed API keys.
+                    </p>
+                  </div>
+
+                  {signInError && (
+                    <p className="text-sm text-destructive text-center">{signInError}</p>
+                  )}
+
+                  <Button
+                    className="w-full"
+                    onClick={handleGoogleSignIn}
+                    disabled={signingIn}
+                  >
+                    {signingIn ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Continue with Google'
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <button
+                      onClick={() => setSetupPath('byok')}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Use your own API keys instead
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <Button variant="ghost" size="sm" onClick={() => setSetupPath(null)}>
+                      Back
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground">
+                      Skip
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* BYOK path */
+                <div className="space-y-6">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-lg tracking-tight">API keys</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Your keys are stored locally in your browser. Nothing is sent to our servers.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>X/Twitter API key</Label>
+                      <Input
+                        type="password"
+                        value={twKey}
+                        onChange={e => setTwKey(e.target.value)}
+                        placeholder="Your twitterapi.io key"
+                      />
+                      <a
+                        href="https://twitterapi.io"
+                        target="_blank"
+                        rel="noopener"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Get one at twitterapi.io
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Anthropic API key</Label>
+                      <Input
+                        type="password"
+                        value={anKey}
+                        onChange={e => setAnKey(e.target.value)}
+                        placeholder="sk-ant-..."
+                      />
+                      <a
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noopener"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Get one at console.anthropic.com
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <button
+                      onClick={() => setSetupPath('signin')}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Sign in instead for managed keys
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <Button variant="ghost" size="sm" onClick={() => setSetupPath(null)}>
+                      Back
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground">
+                        Skip
+                      </Button>
+                      <Button onClick={handleNext} disabled={!hasKeys} className="gap-1.5">
+                        Continue
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -394,7 +535,7 @@ export function Onboarding() {
                     placeholder="@ your username"
                     className="flex-1"
                     onKeyDown={e => { if (e.key === 'Enter') handleImportFollowing() }}
-                    disabled={importing || !twKey.trim()}
+                    disabled={importing || !hasTwKey}
                   />
                   {importing ? (
                     <Button variant="outline" size="icon" onClick={handleCancelImport}>
@@ -405,13 +546,13 @@ export function Onboarding() {
                       variant="outline"
                       size="icon"
                       onClick={handleImportFollowing}
-                      disabled={!importUsername.trim() || !twKey.trim()}
+                      disabled={!importUsername.trim() || !hasTwKey}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
-                {!twKey.trim() && (
+                {!hasTwKey && (
                   <p className="text-xs text-muted-foreground">Requires a Twitter API key (set in the previous step).</p>
                 )}
                 {importing && (
@@ -570,14 +711,27 @@ export function Onboarding() {
 
               <div className="space-y-2 text-sm text-left max-w-xs mx-auto">
                 <div className="flex items-center justify-between py-1.5">
-                  <span className="text-muted-foreground">API keys</span>
-                  <span>{hasKeys ? (
-                    <span className="text-signal-green flex items-center gap-1"><Check className="h-3.5 w-3.5" />configured</span>
+                  <span className="text-muted-foreground">Account</span>
+                  <span>{isAuthenticated ? (
+                    <span className="text-signal-green flex items-center gap-1"><Check className="h-3.5 w-3.5" />signed in</span>
                   ) : (
-                    <span className="text-muted-foreground">skipped</span>
+                    <span className="text-muted-foreground">not signed in</span>
                   )}</span>
                 </div>
                 <Separator />
+                {!isAuthenticated && (
+                  <>
+                    <div className="flex items-center justify-between py-1.5">
+                      <span className="text-muted-foreground">API keys</span>
+                      <span>{hasKeys ? (
+                        <span className="text-signal-green flex items-center gap-1"><Check className="h-3.5 w-3.5" />configured</span>
+                      ) : (
+                        <span className="text-muted-foreground">skipped</span>
+                      )}</span>
+                    </div>
+                    <Separator />
+                  </>
+                )}
                 <div className="flex items-center justify-between py-1.5">
                   <span className="text-muted-foreground">Accounts</span>
                   <span>
@@ -602,6 +756,16 @@ export function Onboarding() {
                   </span>
                 </div>
               </div>
+
+              {!isAuthenticated && (
+                <p className="text-sm text-muted-foreground">
+                  You can{' '}
+                  <button onClick={() => { completeOnboarding(); setPricingOpen(true) }} className="underline hover:text-foreground transition-colors">
+                    view plans
+                  </button>
+                  {' '}anytime to get managed keys and more scans.
+                </p>
+              )}
 
               <div className="flex flex-col gap-2 pt-2">
                 <Button onClick={handleFinish} className="gap-2">

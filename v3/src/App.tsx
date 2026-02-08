@@ -13,7 +13,6 @@ import { SettingsDialog } from '@/components/settings-dialog'
 import { PresetDialog } from '@/components/preset-dialog'
 import { Onboarding } from '@/components/onboarding'
 import { AuthDialog } from '@/components/auth-dialog'
-import { UserMenu } from '@/components/user-menu'
 import { PricingDialog } from '@/components/pricing-dialog'
 import { DevToolbar } from '@/components/dev-toolbar'
 import { Download } from '@/components/icons'
@@ -26,7 +25,6 @@ function AppContent() {
     busy, status, notices, scanResult, hasPendingScan, pendingScanInfo,
     resumeScan, dismissResumeBanner, downloadScan, isSharedView, sharedSignal,
     authDialogOpen, setAuthDialogOpen, authDialogTab,
-    userMenuOpen, setUserMenuOpen,
     pricingOpen, setPricingOpen,
     openSettings,
     onboardingDone,
@@ -121,12 +119,6 @@ function AppContent() {
         open={authDialogOpen}
         onOpenChange={setAuthDialogOpen}
         defaultTab={authDialogTab}
-      />
-      <UserMenu
-        open={userMenuOpen}
-        onOpenChange={setUserMenuOpen}
-        onOpenSettings={openSettings}
-        onOpenPricing={() => setPricingOpen(true)}
       />
       <PricingDialog
         open={pricingOpen}

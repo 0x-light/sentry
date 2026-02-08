@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { DEFAULT_PROMPT } from '@/lib/constants'
-import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download } from '@/components/icons'
+import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download, Settings, Loader2 } from '@/components/icons'
 
 export function SettingsDialog() {
   const {
@@ -25,9 +25,11 @@ export function SettingsDialog() {
     liveEnabled,
     exportData, importBackup, clearCache, cacheSize,
     resetOnboarding,
+    pricingOpen, setPricingOpen,
+    authDialogOpen, setAuthDialogOpen,
   } = useSentry()
 
-  const { isAuthenticated, profile } = useAuth()
+  const { isAuthenticated, user, profile, signOut } = useAuth()
 
   const [twKey, setTwKey] = useState('')
   const [anKey, setAnKey] = useState('')
@@ -110,24 +112,124 @@ export function SettingsDialog() {
     saveAnalysts(updated)
   }
 
+  const handleSignOut = async () => {
+    await signOut()
+    closeSettings()
+  }
+
   // Determine if user has a paid plan (Pro/Ultra) — they use server-side API keys
   const hasPaidPlan = isAuthenticated && profile?.subscription_status === 'active'
+
+  const subscriptionLabel = profile?.subscription_status === 'active'
+    ? (profile?.plan === 'ultra' ? 'Ultra' : 'Pro')
+    : profile?.subscription_status === 'trialing'
+      ? 'Trial'
+      : 'Free'
+
+  const subscriptionColor = profile?.subscription_status === 'active'
+    ? 'text-signal-green bg-signal-green-bg'
+    : profile?.subscription_status === 'trialing'
+      ? 'text-signal-blue bg-signal-blue-bg'
+      : 'text-muted-foreground bg-muted'
+
+  // Which tabs to show
+  const showAccountTab = true // always show
+  const tabCount = 5
 
   return (
     <Sheet open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
       <SheetContent className="overflow-y-auto sm:max-w-lg w-full">
         <SheetHeader>
           <SheetTitle>Settings</SheetTitle>
-          <SheetDescription>Configure your API keys, analysts, and display preferences.</SheetDescription>
+          <SheetDescription>
+            {isAuthenticated ? user?.email : 'Configure your API keys, analysts, and preferences.'}
+          </SheetDescription>
         </SheetHeader>
 
-        <Tabs defaultValue={settingsTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs value={settingsTab} className="mt-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="api">API</TabsTrigger>
             <TabsTrigger value="analyst">Analyst</TabsTrigger>
             <TabsTrigger value="display">Display</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
           </TabsList>
+
+          {/* Account Tab */}
+          <TabsContent value="account" className="space-y-4 mt-4">
+            {isAuthenticated ? (
+              <>
+                {/* Plan & Usage */}
+                <div className="p-4 rounded-lg border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Plan</span>
+                    <Badge variant="outline" className={subscriptionColor}>
+                      {subscriptionLabel}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Scans remaining</span>
+                    <span className="text-sm font-medium">
+                      {profile?.scans_remaining === -1
+                        ? 'Unlimited'
+                        : profile?.scans_remaining ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Used this month</span>
+                    <span className="text-sm text-muted-foreground">
+                      {profile?.scans_this_month ?? 0} scans
+                    </span>
+                  </div>
+                </div>
+
+                {/* Upgrade / Manage */}
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => { closeSettings(); setPricingOpen(true) }}
+                >
+                  <span className="flex-1 text-left">
+                    {profile?.subscription_status === 'active' ? 'Manage subscription' : 'Upgrade plan'}
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+
+                <Separator />
+
+                {/* Sign out */}
+                <Button
+                  variant="ghost"
+                  className="w-full text-destructive hover:text-destructive"
+                  onClick={handleSignOut}
+                >
+                  Sign out
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-4 text-center py-4">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">Sign in to unlock more</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Sync your data across devices, get managed API keys, and access premium features.
+                  </p>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => { closeSettings(); setAuthDialogOpen(true) }}
+                >
+                  Sign in
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => { closeSettings(); setPricingOpen(true) }}
+                >
+                  View plans
+                </Button>
+              </div>
+            )}
+          </TabsContent>
 
           {/* API Tab */}
           <TabsContent value="api" className="space-y-4 mt-4">
@@ -138,8 +240,7 @@ export function SettingsDialog() {
                   <span className="text-sm font-medium">Managed API keys active</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Your {profile?.subscription_status === 'active' ? 'plan' : 'subscription'} includes managed API keys.
-                  Scans use our platform keys — no setup needed.
+                  Your plan includes managed API keys. Scans use our platform keys — no setup needed.
                 </p>
               </div>
             ) : (
@@ -369,15 +470,19 @@ export function SettingsDialog() {
           </TabsContent>
         </Tabs>
 
-        <Separator className="my-4" />
-
-        <div className="flex flex-wrap gap-2 justify-end">
-          <Button variant="destructive" size="sm" onClick={handleClearKeys}>
-            Clear all
-          </Button>
-          <Button variant="outline" size="sm" onClick={closeSettings}>Cancel</Button>
-          <Button size="sm" onClick={handleSave}>Save</Button>
-        </div>
+        {/* Save/Cancel — only show for non-account tabs */}
+        {settingsTab !== 'account' && (
+          <>
+            <Separator className="my-4" />
+            <div className="flex flex-wrap gap-2 justify-end">
+              <Button variant="destructive" size="sm" onClick={handleClearKeys}>
+                Clear all
+              </Button>
+              <Button variant="outline" size="sm" onClick={closeSettings}>Cancel</Button>
+              <Button size="sm" onClick={handleSave}>Save</Button>
+            </div>
+          </>
+        )}
       </SheetContent>
     </Sheet>
   )

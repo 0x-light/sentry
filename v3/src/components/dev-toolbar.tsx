@@ -134,10 +134,10 @@ export function DevToolbar() {
             Auth
           </button>
           <button
-            onClick={() => sentry.setUserMenuOpen(true)}
+            onClick={() => sentry.openSettings('account')}
             className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
           >
-            User
+            Account
           </button>
           <button
             onClick={() => sentry.setPricingOpen(true)}

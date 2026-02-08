@@ -112,8 +112,6 @@ interface SentryStore {
   authDialogOpen: boolean;
   setAuthDialogOpen: (open: boolean) => void;
   authDialogTab: 'login' | 'signup';
-  userMenuOpen: boolean;
-  setUserMenuOpen: (open: boolean) => void;
   pricingOpen: boolean;
   setPricingOpen: (open: boolean) => void;
 }
@@ -336,13 +334,9 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState('api')
   const openSettings = useCallback((tab?: string) => {
-    // V3: Handle special "auth" and "account" pseudo-tabs
+    // V3: Handle special "auth" pseudo-tab
     if (tab === 'auth') {
       setAuthDialogOpen(true)
-      return
-    }
-    if (tab === 'account') {
-      setUserMenuOpen(true)
       return
     }
     if (tab) setSettingsTab(tab)
@@ -378,7 +372,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [authDialogTab, setAuthDialogTab] = useState<'login' | 'signup'>('login')
 
   // V3: User menu state
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
+
 
   // V3: Pricing dialog state
   const [pricingOpen, setPricingOpen] = useState(false)
@@ -623,7 +617,6 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     // V3: Auth-related UI state
     authDialogOpen, setAuthDialogOpen,
     authDialogTab,
-    userMenuOpen, setUserMenuOpen,
     pricingOpen, setPricingOpen,
   }
 

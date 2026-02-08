@@ -78,8 +78,8 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
     try {
       const { url } = await api.createCheckoutSession({
         plan: planId,
-        successUrl: window.location.origin + '/v3/?billing=success',
-        cancelUrl: window.location.origin + '/v3/?billing=cancel',
+        successUrl: window.location.origin + '/?billing=success',
+        cancelUrl: window.location.origin + '/?billing=cancel',
       })
       if (url) {
         window.location.href = url
