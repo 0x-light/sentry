@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Settings, ExternalLink } from '@/components/icons'
+import { cn } from '@/lib/utils'
 
 interface UserMenuProps {
   open: boolean
@@ -22,17 +23,22 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
     onOpenChange(false)
   }
 
-  const subscriptionLabel = profile?.subscription_status === 'active'
-    ? 'Active'
-    : profile?.subscription_status === 'trialing'
-      ? 'Trial'
-      : 'Free'
+  const credits = profile?.credits_balance || 0
+  const hasCredits = credits > 0
+  const hasSubscription = profile?.subscription_status === 'active'
 
-  const subscriptionColor = profile?.subscription_status === 'active'
-    ? 'text-signal-green bg-signal-green-bg'
-    : profile?.subscription_status === 'trialing'
-      ? 'text-signal-blue bg-signal-blue-bg'
-      : 'text-muted-foreground bg-muted'
+  // Progress bar: show relative to a "typical" balance for visual feedback
+  // We cap the visual at 100% — the number itself is always accurate
+  const maxVisual = 15000 // Standard pack
+  const barPercent = Math.min((credits / maxVisual) * 100, 100)
+
+  const barColor = credits > 5000
+    ? 'bg-signal-green'
+    : credits > 1000
+      ? 'bg-signal-yellow'
+      : credits > 0
+        ? 'bg-signal-red'
+        : 'bg-muted-foreground/30'
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -43,42 +49,76 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
-          {/* Credits & Subscription */}
+          {/* Credit Balance */}
           <div className="p-4 rounded-lg border space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Scans remaining</span>
+              <span className="text-sm text-muted-foreground">Credits</span>
               <span className="text-sm font-medium">
-                {profile?.scans_remaining === -1
-                  ? 'Unlimited'
-                  : profile?.scans_remaining ?? 0}
+                {credits.toLocaleString()}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Plan</span>
-              <Badge variant="outline" className={subscriptionColor}>
-                {subscriptionLabel}
-              </Badge>
+
+            {/* Progress bar */}
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-500", barColor)}
+                style={{ width: `${barPercent}%` }}
+              />
             </div>
+
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">This month</span>
-              <span className="text-sm text-muted-foreground">
-                {profile?.scans_this_month ?? 0} scans used
+              <span className="text-xs text-muted-foreground">
+                {hasCredits ? 'Managed API keys active' : 'No credits — BYOK mode'}
               </span>
+              {hasSubscription && (
+                <Badge variant="outline" className="text-xs text-signal-green bg-signal-green-bg">
+                  Auto-refill
+                </Badge>
+              )}
             </div>
+
+            {/* Buy credits button */}
+            <Button
+              variant={hasCredits ? 'outline' : 'default'}
+              className="w-full"
+              onClick={() => { onOpenChange(false); onOpenPricing() }}
+            >
+              {hasCredits ? 'Buy more credits' : 'Buy credits'}
+            </Button>
           </div>
+
+          {/* Free tier info */}
+          {!hasCredits && (
+            <div className="p-3 rounded-lg bg-muted/30 space-y-1">
+              <p className="text-xs text-muted-foreground">
+                Free tier: 1 scan/day, up to 10 accounts, using your own API keys.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {profile?.free_scan_available
+                  ? '✓ Free scan available today'
+                  : '✗ Free scan used today — come back tomorrow'}
+              </p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => { onOpenChange(false); onOpenPricing() }}
-            >
-              <span className="flex-1 text-left">
-                {profile?.subscription_status === 'active' ? 'Manage subscription' : 'Upgrade plan'}
-              </span>
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
+            {hasSubscription && (
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={async () => {
+                  onOpenChange(false)
+                  try {
+                    const { url } = await import('@/lib/api').then(m => m.getBillingPortalUrl())
+                    if (url) window.location.href = url
+                  } catch (e) { console.error(e) }
+                }}
+              >
+                <span className="flex-1 text-left">Manage subscription</span>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            )}
 
             <Button
               variant="outline"

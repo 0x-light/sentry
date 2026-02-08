@@ -18,7 +18,7 @@ import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, Clipboard
 
 export function SettingsDialog() {
   const {
-    settingsOpen, settingsTab, closeSettings,
+    settingsOpen, settingsTab, setSettingsTab, closeSettings,
     analysts, activeAnalystId, setActiveAnalystId, saveAnalysts,
     createAnalyst, deleteAnalyst, duplicateAnalyst,
     financeProvider, font, fontSize, showTickerPrice, iconSet,
@@ -117,20 +117,16 @@ export function SettingsDialog() {
     closeSettings()
   }
 
-  // Determine if user has a paid plan (Pro/Ultra) — they use server-side API keys
-  const hasPaidPlan = isAuthenticated && profile?.subscription_status === 'active'
+  // Determine if user has credits — they use server-side API keys
+  const hasCredits = isAuthenticated && (profile?.credits_balance || 0) > 0
 
-  const subscriptionLabel = profile?.subscription_status === 'active'
-    ? (profile?.plan === 'ultra' ? 'Ultra' : 'Pro')
-    : profile?.subscription_status === 'trialing'
-      ? 'Trial'
-      : 'Free'
+  const statusLabel = hasCredits
+    ? `${(profile?.credits_balance || 0).toLocaleString()} credits`
+    : 'Free (BYOK)'
 
-  const subscriptionColor = profile?.subscription_status === 'active'
+  const statusColor = hasCredits
     ? 'text-signal-green bg-signal-green-bg'
-    : profile?.subscription_status === 'trialing'
-      ? 'text-signal-blue bg-signal-blue-bg'
-      : 'text-muted-foreground bg-muted'
+    : 'text-muted-foreground bg-muted'
 
   // Which tabs to show
   const showAccountTab = true // always show
@@ -146,7 +142,7 @@ export function SettingsDialog() {
           </SheetDescription>
         </SheetHeader>
 
-        <Tabs value={settingsTab} className="mt-6">
+        <Tabs value={settingsTab} onValueChange={setSettingsTab} className="mt-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="api">API</TabsTrigger>
@@ -159,38 +155,36 @@ export function SettingsDialog() {
           <TabsContent value="account" className="space-y-4 mt-4">
             {isAuthenticated ? (
               <>
-                {/* Plan & Usage */}
+                {/* Credits & Status */}
                 <div className="p-4 rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Plan</span>
-                    <Badge variant="outline" className={subscriptionColor}>
-                      {subscriptionLabel}
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge variant="outline" className={statusColor}>
+                      {statusLabel}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Scans remaining</span>
+                    <span className="text-sm text-muted-foreground">API keys</span>
                     <span className="text-sm font-medium">
-                      {profile?.scans_remaining === -1
-                        ? 'Unlimited'
-                        : profile?.scans_remaining ?? 0}
+                      {hasCredits ? 'Managed (included)' : 'Bring your own'}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Used this month</span>
-                    <span className="text-sm text-muted-foreground">
-                      {profile?.scans_this_month ?? 0} scans
-                    </span>
-                  </div>
+                  {profile?.subscription_status === 'active' && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Auto-refill</span>
+                      <Badge variant="outline" className="text-signal-green bg-signal-green-bg">Active</Badge>
+                    </div>
+                  )}
                 </div>
 
-                {/* Upgrade / Manage */}
+                {/* Buy credits / Manage */}
                 <Button
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => { closeSettings(); setPricingOpen(true) }}
                 >
                   <span className="flex-1 text-left">
-                    {profile?.subscription_status === 'active' ? 'Manage subscription' : 'Upgrade plan'}
+                    {hasCredits ? 'Buy more credits' : 'Buy credits'}
                   </span>
                   <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
@@ -225,7 +219,7 @@ export function SettingsDialog() {
                   className="w-full"
                   onClick={() => { closeSettings(); setPricingOpen(true) }}
                 >
-                  View plans
+                  Buy credits
                 </Button>
               </div>
             )}
@@ -233,19 +227,19 @@ export function SettingsDialog() {
 
           {/* API Tab */}
           <TabsContent value="api" className="space-y-4 mt-4">
-            {hasPaidPlan ? (
+            {hasCredits ? (
               <div className="p-3 rounded-lg bg-accent/50 border space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-signal-green" />
                   <span className="text-sm font-medium">Managed API keys active</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Your plan includes managed API keys. Scans use our platform keys — no setup needed.
+                  Your credits include managed API keys. Scans use our platform keys — no setup needed.
                 </p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Your API keys are stored locally in your browser. Upgrade to Pro or Ultra for managed keys.
+                Your API keys are stored locally in your browser. Buy credits for managed keys.
               </p>
             )}
 
@@ -256,7 +250,7 @@ export function SettingsDialog() {
                 value={twKey}
                 onChange={e => setTwKey(e.target.value)}
                 placeholder="Your twitterapi.io key"
-                disabled={hasPaidPlan}
+                disabled={hasCredits}
               />
               <p className="text-sm text-muted-foreground">
                 Get one at{' '}
@@ -270,7 +264,7 @@ export function SettingsDialog() {
                 value={anKey}
                 onChange={e => setAnKey(e.target.value)}
                 placeholder="sk-ant-..."
-                disabled={hasPaidPlan}
+                disabled={hasCredits}
               />
               <p className="text-sm text-muted-foreground">
                 Get one at{' '}

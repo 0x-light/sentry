@@ -18,10 +18,10 @@
 //   POST /api/scans              - Save a scan
 //   DELETE /api/scans            - Delete a scan
 //   POST /api/scans/check-cache  - Check if a scan result is cached
-//   POST /api/billing/checkout   - Create Stripe checkout
+//   POST /api/billing/checkout   - Create Stripe checkout (credit packs)
 //   POST /api/billing/portal     - Stripe billing portal
-//   GET  /api/billing/status     - Billing status
-//   POST /api/billing/webhook    - Stripe webhook
+//   GET  /api/billing/status     - Billing & credit status
+//   POST /api/billing/webhook    - Stripe webhook (credit fulfillment)
 //   GET  /api/proxy              - CORS proxy (for Yahoo Finance etc.)
 // ============================================================================
 
@@ -31,6 +31,49 @@
 // same millisecond, only one Twitter API call is made.
 // ---------------------------------------------------------------------------
 const inflight = new Map();
+
+// ---------------------------------------------------------------------------
+// CREDIT SYSTEM CONSTANTS
+// ---------------------------------------------------------------------------
+const CREDIT_PACKS = {
+  starter:  { id: 'starter',  name: 'Starter',  credits: 1000,  price_cents: 900 },
+  standard: { id: 'standard', name: 'Standard', credits: 5000,  price_cents: 3900 },
+  pro:      { id: 'pro',      name: 'Pro',      credits: 15000, price_cents: 9900 },
+  max:      { id: 'max',      name: 'Max',      credits: 40000, price_cents: 19900 },
+};
+
+const FREE_TIER = {
+  max_accounts: 10,
+  scans_per_day: 1,
+};
+
+const MAX_ACCOUNTS_PER_SCAN = 1000; // hard server-side cap
+
+function calculateScanCredits(accountsCount, rangeDays) {
+  let multiplier;
+  if (rangeDays <= 1) multiplier = 1;
+  else if (rangeDays <= 3) multiplier = 2;
+  else if (rangeDays <= 7) multiplier = 3;
+  else if (rangeDays <= 14) multiplier = 5;
+  else if (rangeDays <= 30) multiplier = 8;
+  else multiplier = 10;
+  return accountsCount * multiplier;
+}
+
+function getStripePriceId(env, packId, recurring) {
+  // Env vars: STRIPE_PRICE_STARTER, STRIPE_PRICE_STANDARD, etc.
+  // For recurring: STRIPE_PRICE_STARTER_RECURRING, etc.
+  const suffix = recurring ? '_RECURRING' : '';
+  return env[`STRIPE_PRICE_${packId.toUpperCase()}${suffix}`];
+}
+
+function packFromPriceId(env, priceId) {
+  for (const pack of Object.values(CREDIT_PACKS)) {
+    if (env[`STRIPE_PRICE_${pack.id.toUpperCase()}`] === priceId) return pack;
+    if (env[`STRIPE_PRICE_${pack.id.toUpperCase()}_RECURRING`] === priceId) return pack;
+  }
+  return null;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -316,6 +359,12 @@ async function handleFetchTweets(request, env, user, ctx) {
     return corsJson({ error: 'Missing account or days' }, 400, env);
   }
 
+  // Credits > 0 = managed keys; no credits = BYOK
+  const profile = await getProfile(env, user.id);
+  if (!profile || profile.credits_balance <= 0) {
+    return corsJson({ error: 'No credits remaining. Buy a credit pack or use your own API keys.', code: 'NO_CREDITS' }, 403, env);
+  }
+
   const result = await fetchTweetsCoalesced(account, days, env, ctx);
   return corsJson(result, 200, env);
 }
@@ -328,6 +377,17 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
   const { accounts, days } = await request.json();
   if (!accounts?.length || !days) {
     return corsJson({ error: 'Missing accounts or days' }, 400, env);
+  }
+
+  // Credits > 0 = managed keys
+  const profile = await getProfile(env, user.id);
+  if (!profile || profile.credits_balance <= 0) {
+    return corsJson({ error: 'No credits remaining. Buy a credit pack or use your own API keys.', code: 'NO_CREDITS' }, 403, env);
+  }
+
+  // Hard cap on accounts per scan
+  if (accounts.length > MAX_ACCOUNTS_PER_SCAN) {
+    return corsJson({ error: `Maximum ${MAX_ACCOUNTS_PER_SCAN} accounts per scan.`, code: 'TOO_MANY_ACCOUNTS' }, 400, env);
   }
 
   // Limit batch size
@@ -426,24 +486,13 @@ async function handleAnalyze(request, env, user) {
     return corsJson({ error: 'Missing messages' }, 400, env);
   }
 
-  // Check plan limits — must have scans remaining
+  // Credits > 0 = managed keys; no credits = BYOK
   const profile = await getProfile(env, user.id);
-  const allowance = await supabaseRpc(env, 'check_scan_allowance', { p_user_id: user.id });
-  if (allowance === 0) {
+  if (!profile || profile.credits_balance <= 0) {
     return corsJson({
-      error: 'Scan limit reached. Upgrade your plan for more scans.',
-      code: 'SCAN_LIMIT',
-      plan: profile.plan,
-    }, 403, env);
-  }
-
-  // Check model access
-  const plan = await getPlan(env, profile.plan);
-  const isExpensiveModel = (model || '').toLowerCase().includes('opus');
-  if (isExpensiveModel && !plan.all_models) {
-    return corsJson({
-      error: 'Opus model requires Pro or Ultra plan.',
-      code: 'MODEL_RESTRICTED',
+      error: 'No credits remaining. Buy a credit pack or use your own API keys.',
+      code: 'NO_CREDITS',
+      credits_balance: profile?.credits_balance || 0,
     }, 403, env);
   }
 
@@ -614,29 +663,26 @@ async function getProfile(env, userId) {
   return rows?.[0] || null;
 }
 
-async function getPlan(env, planId) {
-  const rows = await supabaseQuery(env, `plans?id=eq.${planId}&select=*`);
-  return rows?.[0] || { id: 'free', scans_per_month: 3, max_accounts_per_scan: 10, live_feed: false, all_models: false };
-}
-
 async function handleGetUser(env, user) {
   const profile = await getProfile(env, user.id);
   if (!profile) {
     return corsJson({ error: 'Profile not found' }, 404, env);
   }
-  const plan = await getPlan(env, profile.plan);
-  const allowance = await supabaseRpc(env, 'check_scan_allowance', { p_user_id: user.id });
+
+  // Check free tier daily scan count
+  const canFreeScanToday = profile.credits_balance <= 0
+    ? await supabaseRpc(env, 'check_free_scan_today', { p_user_id: user.id })
+    : true;
+
   return corsJson({
     id: profile.id,
     email: profile.email,
     name: profile.name,
     avatar_url: profile.avatar_url,
-    plan: profile.plan,
-    plan_details: plan,
-    scans_this_month: profile.scans_this_month,
-    scans_remaining: allowance,
+    credits_balance: profile.credits_balance,
+    has_credits: profile.credits_balance > 0,
+    free_scan_available: canFreeScanToday,
     subscription_status: profile.subscription_status,
-    current_period_end: profile.current_period_end,
   }, 200, env);
 }
 
@@ -780,28 +826,52 @@ async function handleSaveScan(request, env, user, ctx) {
   const body = await request.json();
   const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash } = body;
 
-  // Increment scan counter
-  await supabaseRpc(env, 'increment_scan_count', { p_user_id: user.id });
+  const accountCount = accounts?.length || 0;
+  const days = range_days || 1;
+  const creditsUsed = calculateScanCredits(accountCount, days);
+
+  // Deduct credits if user has them
+  const profile = await getProfile(env, user.id);
+  let newBalance = profile?.credits_balance || 0;
+
+  if (profile && profile.credits_balance > 0 && creditsUsed > 0) {
+    const result = await supabaseRpc(env, 'deduct_credits', {
+      p_user_id: user.id,
+      p_amount: creditsUsed,
+      p_description: `Scan: ${accountCount} accounts × ${days}d`,
+      p_metadata: { accounts_count: accountCount, range_days: days },
+    });
+    if (result === -1) {
+      return corsJson({
+        error: 'Insufficient credits for this scan.',
+        code: 'INSUFFICIENT_CREDITS',
+        credits_needed: creditsUsed,
+        credits_balance: profile.credits_balance,
+      }, 403, env);
+    }
+    newBalance = result;
+  }
 
   const data = {
     user_id: user.id,
     accounts: accounts || [],
     range_label: range_label || '',
-    range_days: range_days || 1,
+    range_days: days,
     total_tweets: total_tweets || 0,
     signal_count: signal_count || signals?.length || 0,
     signals: signals || [],
     tweet_meta: tweet_meta || {},
+    credits_used: creditsUsed,
   };
 
   const rows = await supabaseQuery(env, 'scans', { method: 'POST', body: data });
 
   // Also save to cross-user whole-scan cache
   if (prompt_hash && signals?.length) {
-    cacheScanResult(env, ctx, accounts, range_days, prompt_hash, signals, total_tweets);
+    cacheScanResult(env, ctx, accounts, days, prompt_hash, signals, total_tweets);
   }
 
-  return corsJson({ ok: true, id: rows?.[0]?.id }, 200, env);
+  return corsJson({ ok: true, id: rows?.[0]?.id, credits_used: creditsUsed, credits_balance: newBalance }, 200, env);
 }
 
 async function handleDeleteScan(request, env, user) {
@@ -908,26 +978,54 @@ async function getOrCreateStripeCustomer(env, user) {
 }
 
 async function handleCheckout(request, env, user) {
-  const { plan, success_url, cancel_url } = await request.json();
-  if (!plan || !['pro', 'ultra'].includes(plan)) {
-    return corsJson({ error: 'Invalid plan' }, 400, env);
+  const { pack_id, recurring, success_url, cancel_url } = await request.json();
+
+  const pack = CREDIT_PACKS[pack_id];
+  if (!pack) {
+    return corsJson({ error: 'Invalid credit pack' }, 400, env);
   }
 
   const customerId = await getOrCreateStripeCustomer(env, user);
-  const priceId = plan === 'pro' ? env.STRIPE_PRICE_PRO : env.STRIPE_PRICE_ULTRA;
+  const priceId = getStripePriceId(env, pack_id, recurring);
 
-  const session = await stripeRequest(env, '/checkout/sessions', {
+  if (!priceId) {
+    return corsJson({ error: 'Price not configured for this pack' }, 500, env);
+  }
+
+  const mode = recurring ? 'subscription' : 'payment';
+
+  const params = {
     'customer': customerId,
-    'mode': 'subscription',
+    'mode': mode,
     'payment_method_types[0]': 'card',
     'line_items[0][price]': priceId,
     'line_items[0][quantity]': '1',
     'success_url': success_url || 'https://sentry.is/v3/?billing=success',
     'cancel_url': cancel_url || 'https://sentry.is/v3/?billing=cancel',
     'allow_promotion_codes': 'true',
-    // Enable Apple Pay / Google Pay via Payment Method Types
-    'payment_method_collection': 'always',
-  });
+    'metadata[pack_id]': pack.id,
+    'metadata[credits]': pack.credits.toString(),
+    'metadata[user_id]': user.id,
+  };
+
+  // For subscriptions, also add metadata to the subscription itself
+  if (recurring) {
+    params['subscription_data[metadata][pack_id]'] = pack.id;
+    params['subscription_data[metadata][credits]'] = pack.credits.toString();
+    params['subscription_data[metadata][user_id]'] = user.id;
+  }
+
+  const session = await stripeRequest(env, '/checkout/sessions', params);
+
+  if (session.error) {
+    console.error('Stripe checkout error:', session.error);
+    return corsJson({ error: session.error.message || 'Failed to create checkout session' }, 400, env);
+  }
+
+  if (!session.url) {
+    console.error('Stripe checkout: no URL returned', JSON.stringify(session));
+    return corsJson({ error: 'Checkout session created but no redirect URL was returned' }, 500, env);
+  }
 
   return corsJson({ url: session.url, id: session.id }, 200, env);
 }
@@ -941,21 +1039,35 @@ async function handleBillingPortal(request, env, user) {
     'return_url': return_url || 'https://sentry.is/v3/',
   });
 
+  if (session.error) {
+    console.error('Stripe portal error:', session.error);
+    return corsJson({ error: session.error.message || 'Failed to create billing portal session' }, 400, env);
+  }
+
+  if (!session.url) {
+    console.error('Stripe portal: no URL returned', JSON.stringify(session));
+    return corsJson({ error: 'Portal session created but no redirect URL was returned' }, 500, env);
+  }
+
   return corsJson({ url: session.url }, 200, env);
 }
 
 async function handleBillingStatus(env, user) {
   const profile = await getProfile(env, user.id);
-  const plan = await getPlan(env, profile.plan);
-  const allowance = await supabaseRpc(env, 'check_scan_allowance', { p_user_id: user.id });
+
+  // Get recent credit transactions
+  let recentTransactions = [];
+  try {
+    recentTransactions = await supabaseQuery(env,
+      `credit_transactions?user_id=eq.${user.id}&select=type,amount,balance_after,description,created_at&order=created_at.desc&limit=10`
+    );
+  } catch (e) { /* ignore */ }
 
   return corsJson({
-    plan: profile.plan,
-    plan_details: plan,
-    subscription_status: profile.subscription_status,
-    current_period_end: profile.current_period_end,
-    scans_this_month: profile.scans_this_month,
-    scans_remaining: allowance,
+    credits_balance: profile?.credits_balance || 0,
+    has_credits: (profile?.credits_balance || 0) > 0,
+    subscription_status: profile?.subscription_status,
+    recent_transactions: recentTransactions || [],
   }, 200, env);
 }
 
@@ -984,38 +1096,75 @@ async function handleStripeWebhook(request, env) {
   const obj = event.data.object;
 
   switch (event.type) {
+    // One-time or first-time subscription checkout completed
     case 'checkout.session.completed': {
-      if (obj.mode === 'subscription') {
-        const customerId = obj.customer;
-        const subscriptionId = obj.subscription;
-        // Fetch subscription to get plan details
-        const sub = await stripeGet(env, `/subscriptions/${subscriptionId}`);
-        const priceId = sub.items?.data?.[0]?.price?.id;
-        const plan = priceId === env.STRIPE_PRICE_ULTRA ? 'ultra' : 'pro';
+      const customerId = obj.customer;
+      const metadata = obj.metadata || {};
+      const credits = parseInt(metadata.credits) || 0;
+      const packId = metadata.pack_id || 'unknown';
+      const userId = metadata.user_id;
+
+      if (credits > 0 && userId) {
+        // Add credits to user
+        const pack = CREDIT_PACKS[packId];
+        const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
+        const txType = obj.mode === 'subscription' ? 'recurring' : 'purchase';
+        await supabaseRpc(env, 'add_credits', {
+          p_user_id: userId,
+          p_amount: credits,
+          p_type: txType,
+          p_description: desc,
+          p_metadata: { stripe_session_id: obj.id, pack_id: packId },
+        });
+      }
+
+      // If subscription, save the subscription ID
+      if (obj.mode === 'subscription' && obj.subscription) {
         await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
           method: 'PATCH',
           body: {
-            plan,
-            stripe_subscription_id: subscriptionId,
-            subscription_status: sub.status,
-            current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-            scans_this_month: 0, // Reset on upgrade
+            stripe_subscription_id: obj.subscription,
+            subscription_status: 'active',
           },
         });
       }
       break;
     }
 
+    // Recurring subscription renewal (invoice paid)
+    case 'invoice.paid': {
+      // Only process recurring renewals, not the first payment (handled by checkout.session.completed)
+      if (obj.billing_reason === 'subscription_cycle') {
+        const subscriptionId = obj.subscription;
+        if (subscriptionId) {
+          const sub = await stripeGet(env, `/subscriptions/${subscriptionId}`);
+          const metadata = sub.metadata || {};
+          const credits = parseInt(metadata.credits) || 0;
+          const packId = metadata.pack_id || 'unknown';
+          const userId = metadata.user_id;
+
+          if (credits > 0 && userId) {
+            const pack = CREDIT_PACKS[packId];
+            const desc = pack ? `${pack.name} pack renewal (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits (renewal)`;
+            await supabaseRpc(env, 'add_credits', {
+              p_user_id: userId,
+              p_amount: credits,
+              p_type: 'recurring',
+              p_description: desc,
+              p_metadata: { stripe_invoice_id: obj.id, pack_id: packId },
+            });
+          }
+        }
+      }
+      break;
+    }
+
     case 'customer.subscription.updated': {
       const customerId = obj.customer;
-      const priceId = obj.items?.data?.[0]?.price?.id;
-      const plan = priceId === env.STRIPE_PRICE_ULTRA ? 'ultra' : 'pro';
       await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
         method: 'PATCH',
         body: {
-          plan: obj.status === 'active' ? plan : 'free',
           subscription_status: obj.status,
-          current_period_end: new Date(obj.current_period_end * 1000).toISOString(),
         },
       });
       break;
@@ -1026,7 +1175,6 @@ async function handleStripeWebhook(request, env) {
       await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
         method: 'PATCH',
         body: {
-          plan: 'free',
           stripe_subscription_id: null,
           subscription_status: 'canceled',
         },

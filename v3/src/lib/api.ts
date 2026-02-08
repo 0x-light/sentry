@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { supabase } from './supabase'
-import type { Analyst, UserProfile, ApiKeyInfo, PricingPlan, CreditPack } from './types'
+import type { Analyst, UserProfile } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://sentry-api.tomaspalmeirim.workers.dev'
 
@@ -103,13 +103,13 @@ export async function updateSettings(updates: Record<string, any>): Promise<void
 // platform keys configured as Cloudflare Worker secrets.
 // ============================================================================
 
-export async function getApiKeys(): Promise<ApiKeyInfo[]> {
+export async function getApiKeys(): Promise<any[]> {
   // API keys are local-only for now — return empty array
   // This is called by settings-dialog to check if keys are synced
   return []
 }
 
-export async function saveApiKey(_provider: string, _keyValue: string): Promise<ApiKeyInfo> {
+export async function saveApiKey(_provider: string, _keyValue: string): Promise<any> {
   throw new Error('API key storage is local-only. Keys are saved in your browser.')
 }
 
@@ -251,15 +251,17 @@ export async function deleteScanFromServer(id: string): Promise<void> {
 // BILLING (matches worker routes: /api/billing/*)
 // ============================================================================
 
-export async function createCheckoutSession(params: {
-  plan: 'pro' | 'ultra'
+export async function buyCredits(params: {
+  packId: string
+  recurring?: boolean
   successUrl?: string
   cancelUrl?: string
 }): Promise<{ url: string; id: string }> {
   return fetchApi('/api/billing/checkout', {
     method: 'POST',
     body: JSON.stringify({
-      plan: params.plan,
+      pack_id: params.packId,
+      recurring: params.recurring || false,
       success_url: params.successUrl || window.location.origin + '/v3/?billing=success',
       cancel_url: params.cancelUrl || window.location.origin + '/v3/?billing=cancel',
     }),
@@ -276,20 +278,12 @@ export async function getBillingPortalUrl(returnUrl?: string): Promise<{ url: st
 }
 
 export async function getBillingStatus(): Promise<{
-  plan: string
-  plan_details: any
+  credits_balance: number
+  has_credits: boolean
   subscription_status: string | null
-  current_period_end: string | null
-  scans_this_month: number
-  scans_remaining: number
+  recent_transactions: any[]
 }> {
   return fetchApi('/api/billing/status')
-}
-
-export async function getProducts(): Promise<{ plans: PricingPlan[]; creditPacks: CreditPack[] }> {
-  // Products are defined in the pricing dialog as defaults
-  // This could be a server endpoint later
-  throw new Error('Products are hardcoded in the pricing dialog')
 }
 
 // ============================================================================
@@ -340,10 +334,9 @@ export const api = {
   saveScan: saveScanToServer,
   deleteScan: deleteScanFromServer,
   // Billing
-  createCheckoutSession,
+  buyCredits,
   getBillingPortalUrl,
   getBillingStatus,
-  getProducts,
   // Health
   healthCheck,
 }

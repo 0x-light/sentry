@@ -7,30 +7,6 @@
 create extension if not exists "uuid-ossp";
 
 -- ============================================================================
--- PLANS & LIMITS
--- ============================================================================
-
-create type plan_type as enum ('free', 'pro', 'ultra');
-
--- Plan configuration (reference table)
-create table plans (
-  id plan_type primary key,
-  name text not null,
-  scans_per_month int not null,        -- 0 = unlimited
-  max_accounts_per_scan int not null,   -- 0 = unlimited
-  live_feed boolean not null default false,
-  scheduled_scans boolean not null default false,
-  all_models boolean not null default false,
-  api_access boolean not null default false,
-  price_monthly int not null default 0  -- cents
-);
-
-insert into plans (id, name, scans_per_month, max_accounts_per_scan, live_feed, scheduled_scans, all_models, api_access, price_monthly) values
-  ('free',  'Free',  3,   10,  false, false, false, false, 0),
-  ('pro',   'Pro',   100, 0,   true,  false, true,  false, 1900),
-  ('ultra', 'Ultra', 0,   0,   true,  true,  true,  true,  4900);
-
--- ============================================================================
 -- USER PROFILES
 -- ============================================================================
 
@@ -39,13 +15,10 @@ create table profiles (
   email text,
   name text,
   avatar_url text,
-  plan plan_type not null default 'free',
+  credits_balance int not null default 0,        -- current credit balance
   stripe_customer_id text unique,
-  stripe_subscription_id text,
-  subscription_status text,                    -- 'active', 'past_due', 'canceled', etc.
-  current_period_end timestamptz,
-  scans_this_month int not null default 0,
-  month_reset_at timestamptz not null default date_trunc('month', now()) + interval '1 month',
+  stripe_subscription_id text,                   -- for recurring credit packs
+  subscription_status text,                      -- 'active', 'canceled', etc.
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -99,6 +72,23 @@ create trigger on_profile_created
   for each row execute function handle_new_profile();
 
 -- ============================================================================
+-- CREDIT TRANSACTIONS (audit trail for all credit changes)
+-- ============================================================================
+
+create table credit_transactions (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  type text not null,                            -- 'purchase', 'recurring', 'scan', 'refund', 'bonus'
+  amount int not null,                           -- positive = add, negative = deduct
+  balance_after int not null,                    -- balance after this transaction
+  description text,                              -- e.g. "Standard pack (5,000 credits)", "Scan: 200 accounts × 1d"
+  metadata jsonb default '{}',                   -- stripe_session_id, scan details, etc.
+  created_at timestamptz not null default now()
+);
+
+create index idx_credit_tx_user on credit_transactions(user_id, created_at desc);
+
+-- ============================================================================
 -- PRESETS
 -- ============================================================================
 
@@ -149,9 +139,7 @@ create table scans (
   signal_count int not null default 0,
   signals jsonb not null default '[]',
   tweet_meta jsonb default '{}',
-  cost_twitter numeric(10,6) not null default 0,
-  cost_anthropic numeric(10,6) not null default 0,
-  cost_total numeric(10,6) not null default 0,
+  credits_used int not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -229,6 +217,7 @@ create table billing_events (
 
 alter table profiles enable row level security;
 alter table user_settings enable row level security;
+alter table credit_transactions enable row level security;
 alter table presets enable row level security;
 alter table analysts enable row level security;
 alter table scans enable row level security;
@@ -241,6 +230,8 @@ create policy "Users can update own profile" on profiles   for update using (aut
 create policy "Users can view own settings"   on user_settings for select using (auth.uid() = user_id);
 create policy "Users can update own settings" on user_settings for update using (auth.uid() = user_id);
 create policy "Users can insert own settings" on user_settings for insert with check (auth.uid() = user_id);
+
+create policy "Users can view own credits"   on credit_transactions for select using (auth.uid() = user_id);
 
 create policy "Users can view own presets"    on presets for select using (auth.uid() = user_id);
 create policy "Users can insert own presets"  on presets for insert with check (auth.uid() = user_id);
@@ -264,49 +255,80 @@ create policy "Users can view own usage"      on usage_log for select using (aut
 -- HELPER FUNCTIONS
 -- ============================================================================
 
--- Reset monthly scan count
-create or replace function reset_monthly_scans()
-returns void as $$
+-- Calculate credits for a scan: accounts × range multiplier
+-- Range multipliers: 1d=1, 7d=3, 30d=8
+create or replace function calculate_scan_credits(p_accounts_count int, p_range_days int)
+returns int as $$
 begin
-  update profiles
-  set scans_this_month = 0,
-      month_reset_at = date_trunc('month', now()) + interval '1 month'
-  where month_reset_at <= now();
+  return p_accounts_count * (
+    case
+      when p_range_days <= 1  then 1
+      when p_range_days <= 3  then 2
+      when p_range_days <= 7  then 3
+      when p_range_days <= 14 then 5
+      when p_range_days <= 30 then 8
+      else 10
+    end
+  );
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql immutable;
 
--- Check if user can scan (returns remaining scans or -1 for unlimited)
-create or replace function check_scan_allowance(p_user_id uuid)
+-- Deduct credits for a scan (returns new balance, or -1 if insufficient)
+create or replace function deduct_credits(p_user_id uuid, p_amount int, p_description text, p_metadata jsonb default '{}')
 returns int as $$
 declare
-  v_plan plan_type;
-  v_scans_used int;
-  v_limit int;
+  v_balance int;
 begin
-  -- Reset if needed
+  -- Lock the row to prevent race conditions
+  select credits_balance into v_balance
+  from profiles where id = p_user_id for update;
+
+  if v_balance < p_amount then
+    return -1;  -- insufficient credits
+  end if;
+
+  v_balance := v_balance - p_amount;
+
   update profiles
-  set scans_this_month = 0,
-      month_reset_at = date_trunc('month', now()) + interval '1 month'
-  where id = p_user_id and month_reset_at <= now();
+  set credits_balance = v_balance, updated_at = now()
+  where id = p_user_id;
 
-  select plan, scans_this_month into v_plan, v_scans_used
-  from profiles where id = p_user_id;
+  insert into credit_transactions (user_id, type, amount, balance_after, description, metadata)
+  values (p_user_id, 'scan', -p_amount, v_balance, p_description, p_metadata);
 
-  select scans_per_month into v_limit from plans where id = v_plan;
-
-  if v_limit = 0 then return -1; end if;  -- unlimited
-  return greatest(v_limit - v_scans_used, 0);
+  return v_balance;
 end;
 $$ language plpgsql security definer;
 
--- Increment scan counter
-create or replace function increment_scan_count(p_user_id uuid)
-returns void as $$
+-- Add credits (purchase, recurring, bonus)
+create or replace function add_credits(p_user_id uuid, p_amount int, p_type text, p_description text, p_metadata jsonb default '{}')
+returns int as $$
+declare
+  v_balance int;
 begin
   update profiles
-  set scans_this_month = scans_this_month + 1,
-      updated_at = now()
-  where id = p_user_id;
+  set credits_balance = credits_balance + p_amount, updated_at = now()
+  where id = p_user_id
+  returning credits_balance into v_balance;
+
+  insert into credit_transactions (user_id, type, amount, balance_after, description, metadata)
+  values (p_user_id, p_type, p_amount, v_balance, p_description, p_metadata);
+
+  return v_balance;
+end;
+$$ language plpgsql security definer;
+
+-- Check if free user can scan today (1 scan/day, 10 accounts max)
+create or replace function check_free_scan_today(p_user_id uuid)
+returns boolean as $$
+declare
+  v_scans_today int;
+begin
+  select count(*) into v_scans_today
+  from scans
+  where user_id = p_user_id
+    and created_at >= date_trunc('day', now() at time zone 'UTC');
+  return v_scans_today < 1;
 end;
 $$ language plpgsql security definer;
 

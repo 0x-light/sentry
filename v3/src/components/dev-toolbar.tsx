@@ -4,20 +4,18 @@ import { useSentry } from '@/hooks/use-sentry'
 import type { User } from '@supabase/supabase-js'
 import type { UserProfile } from '@/lib/types'
 
-const PLANS = ['free', 'pro', 'ultra'] as const
+const CREDIT_PRESETS = [0, 100, 1000, 5000, 15000] as const
 
 export function DevToolbar() {
   const auth = useAuth()
   const sentry = useSentry()
   const [collapsed, setCollapsed] = useState(false)
-  const [scansUsed, setScansUsed] = useState(0)
+  const [mockCredits, setMockCredits] = useState(5000)
 
   const mock = auth._mock
   if (!mock) return null // Only render in mock mode
 
-  const currentPlan = auth.profile?.plan || 'free'
-
-  const setMockAuth = (plan: typeof PLANS[number]) => {
+  const setMockAuth = (credits: number) => {
     const email = 'tester@sentry.is'
     const user = {
       id: 'mock-user-id',
@@ -29,7 +27,7 @@ export function DevToolbar() {
     } as User
 
     mock.setUser(user)
-    mock.setProfile(makeMockProfile(email, plan, { scans_this_month: scansUsed }))
+    mock.setProfile(makeMockProfile(email, { credits_balance: credits }))
   }
 
   const handleLogout = () => {
@@ -37,11 +35,10 @@ export function DevToolbar() {
     mock.setProfile(null)
   }
 
-  const handleSetScans = (n: number) => {
-    setScansUsed(n)
+  const handleSetCredits = (n: number) => {
+    setMockCredits(n)
     if (auth.isAuthenticated && auth.profile) {
-      const plan = auth.profile.plan
-      mock.setProfile(makeMockProfile(auth.profile.email, plan, { scans_this_month: n }))
+      mock.setProfile(makeMockProfile(auth.profile.email, { credits_balance: n }))
     }
   }
 
@@ -80,20 +77,20 @@ export function DevToolbar() {
 
         <div className="w-px h-4 bg-zinc-700" />
 
-        {/* Plan switcher */}
+        {/* Credits switcher */}
         <div className="flex items-center gap-1.5">
-          <span className="text-zinc-500">Plan:</span>
-          {PLANS.map(plan => (
+          <span className="text-zinc-500">Credits:</span>
+          {CREDIT_PRESETS.map(credits => (
             <button
-              key={plan}
-              onClick={() => setMockAuth(plan)}
+              key={credits}
+              onClick={() => { handleSetCredits(credits); if (!auth.isAuthenticated) setMockAuth(credits) }}
               className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                auth.isAuthenticated && currentPlan === plan
+                auth.isAuthenticated && (auth.profile?.credits_balance || 0) === credits
                   ? 'bg-violet-600 text-white'
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
               }`}
             >
-              {plan}
+              {credits === 0 ? 'free' : credits.toLocaleString()}
             </button>
           ))}
           {auth.isAuthenticated && (
@@ -104,22 +101,6 @@ export function DevToolbar() {
               logout
             </button>
           )}
-        </div>
-
-        <div className="w-px h-4 bg-zinc-700" />
-
-        {/* Scans slider */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-zinc-500">Scans used:</span>
-          <input
-            type="range"
-            min={0}
-            max={10}
-            value={scansUsed}
-            onChange={e => handleSetScans(Number(e.target.value))}
-            className="w-16 h-1 accent-violet-500"
-          />
-          <span className="text-zinc-400 tabular-nums w-4 text-center">{scansUsed}</span>
         </div>
 
         <div className="w-px h-4 bg-zinc-700" />
@@ -143,7 +124,7 @@ export function DevToolbar() {
             onClick={() => sentry.setPricingOpen(true)}
             className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
           >
-            Pricing
+            Credits
           </button>
           <button
             onClick={() => sentry.openSettings('api')}

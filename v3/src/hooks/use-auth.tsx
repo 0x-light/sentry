@@ -91,7 +91,7 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
     if (mockMode) {
       // Mock: instantly "sign up" and "sign in"
       setUser({ id: 'mock-user-id', email, app_metadata: {}, user_metadata: {}, aud: 'authenticated', created_at: new Date().toISOString() } as User)
-      setProfile(makeMockProfile(email, 'free'))
+      setProfile(makeMockProfile(email))
       return
     }
     await api.signUp(email, password)
@@ -100,7 +100,7 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
   const handleSignIn = useCallback(async (email: string, password: string) => {
     if (mockMode) {
       setUser({ id: 'mock-user-id', email, app_metadata: {}, user_metadata: {}, aud: 'authenticated', created_at: new Date().toISOString() } as User)
-      setProfile(makeMockProfile(email, 'free'))
+      setProfile(makeMockProfile(email))
       return
     }
     await api.signIn(email, password)
@@ -110,7 +110,7 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
     if (mockMode) {
       const email = 'demo@google.com'
       setUser({ id: 'mock-google-id', email, app_metadata: {}, user_metadata: { full_name: 'Demo User' }, aud: 'authenticated', created_at: new Date().toISOString() } as User)
-      setProfile(makeMockProfile(email, 'pro'))
+      setProfile(makeMockProfile(email, { credits_balance: 5000 }))
       return
     }
     await api.signInWithGoogle()
@@ -162,30 +162,20 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
 // MOCK PROFILE FACTORY
 // ============================================================================
 
-const PLAN_DETAILS = {
-  free: { scans_per_month: 3, max_accounts_per_scan: 10, live_feed: false, all_models: false, api_access: false },
-  pro: { scans_per_month: 100, max_accounts_per_scan: 0, live_feed: true, all_models: true, api_access: false },
-  ultra: { scans_per_month: 0, max_accounts_per_scan: 0, live_feed: true, all_models: true, api_access: true },
-}
-
 export function makeMockProfile(
   email: string,
-  plan: 'free' | 'pro' | 'ultra',
   overrides: Partial<UserProfile> = {},
 ): UserProfile {
-  const details = PLAN_DETAILS[plan]
-  const scansPerMonth = details.scans_per_month
+  const credits = overrides.credits_balance ?? 0
   return {
     id: 'mock-user-id',
     email,
     name: email.split('@')[0],
     avatar_url: null,
-    plan,
-    plan_details: details,
-    scans_this_month: overrides.scans_this_month ?? 0,
-    scans_remaining: scansPerMonth === 0 ? -1 : Math.max(scansPerMonth - (overrides.scans_this_month ?? 0), 0),
-    subscription_status: plan === 'free' ? null : 'active',
-    current_period_end: plan === 'free' ? null : new Date(Date.now() + 30 * 86400000).toISOString(),
+    credits_balance: credits,
+    has_credits: credits > 0,
+    free_scan_available: true,
+    subscription_status: credits > 0 ? 'active' : null,
     ...overrides,
   }
 }

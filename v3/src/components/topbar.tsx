@@ -48,11 +48,9 @@ export function Topbar() {
                 </span>
               </div>
               <span className="text-sm font-normal hidden sm:inline max-w-[120px] truncate">
-                {profile?.scans_remaining != null
-                  ? profile.scans_remaining === -1
-                    ? '∞ scans'
-                    : `${profile.scans_remaining} scans`
-                  : ''}
+                {profile?.has_credits
+                  ? `${(profile.credits_balance || 0).toLocaleString()} cr`
+                  : 'free'}
               </span>
             </div>
           </Button>

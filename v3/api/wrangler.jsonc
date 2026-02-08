@@ -31,9 +31,26 @@
 	//   STRIPE_WEBHOOK_SECRET - Stripe webhook signing secret
 	//
 	// Non-secret env vars:
+	// Non-secret env vars:
+	// Credit pack Stripe price IDs (one-time):
+	//   STRIPE_PRICE_STARTER   - Starter pack ($9, 1K credits)
+	//   STRIPE_PRICE_STANDARD  - Standard pack ($39, 5K credits)
+	//   STRIPE_PRICE_PRO       - Pro pack ($99, 15K credits)
+	//   STRIPE_PRICE_MAX       - Max pack ($199, 40K credits)
+	// Credit pack Stripe price IDs (recurring monthly):
+	//   STRIPE_PRICE_STARTER_RECURRING
+	//   STRIPE_PRICE_STANDARD_RECURRING
+	//   STRIPE_PRICE_PRO_RECURRING
+	//   STRIPE_PRICE_MAX_RECURRING
 	"vars": {
-		"STRIPE_PRICE_PRO": "price_pro_monthly",
-		"STRIPE_PRICE_ULTRA": "price_ultra_monthly",
+		"STRIPE_PRICE_STARTER": "price_1SydoiPhxDggg8gg7suGMdaX",
+		"STRIPE_PRICE_STANDARD": "price_1SydqxPhxDggg8ggHVD5x3QC",
+		"STRIPE_PRICE_PRO": "price_1SydsnPhxDggg8gg9ClVL7ct",
+		"STRIPE_PRICE_MAX": "price_1SydubPhxDggg8gga18TYfnE",
+		"STRIPE_PRICE_STARTER_RECURRING": "price_1SydpvPhxDggg8ggH7o1cdx8",
+		"STRIPE_PRICE_STANDARD_RECURRING": "price_1SydrNPhxDggg8gg8b1D96Og",
+		"STRIPE_PRICE_PRO_RECURRING": "price_1SydtRPhxDggg8ggtp1iCfqX",
+		"STRIPE_PRICE_MAX_RECURRING": "price_1SydvwPhxDggg8ggaGUoqqho",
 		"CORS_ORIGIN": "https://sentry.is",
 		"ENVIRONMENT": "production"
 	}

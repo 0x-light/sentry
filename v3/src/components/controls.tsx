@@ -45,12 +45,10 @@ export function Controls() {
             className="flex-1 bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground"
           />
         </div>
-        {inputValue.trim() && (
-          <Button variant="ghost" size="sm" onClick={handleAdd}>
-            <Plus className="h-3.5 w-3.5" />
-            Add
-          </Button>
-        )}
+        <Button variant="ghost" size="sm" onClick={handleAdd} className={cn(!inputValue.trim() && "invisible")}>
+          <Plus className="h-3.5 w-3.5" />
+          Add
+        </Button>
       </div>
 
       {/* Presets + custom accounts */}

@@ -302,7 +302,7 @@ export function Onboarding() {
                   <div className="space-y-2">
                     <h2 className="text-lg tracking-tight">You're signed in</h2>
                     <p className="text-sm text-muted-foreground">
-                      Managed API keys are active — no setup needed. Your scans will use our platform keys.
+                        Signed in! Buy credits for managed API keys, or use your own keys for free.
                     </p>
                   </div>
 
@@ -336,7 +336,7 @@ export function Onboarding() {
                     </div>
                     <h3 className="text-sm font-medium">Sign in</h3>
                     <p className="text-sm text-muted-foreground">
-                      We handle the API keys. Just sign in and start scanning. Free plan includes 3 scans/month.
+                      Sign in and buy credits for managed API keys. Or use our free tier with your own keys (1 scan/day, 10 accounts).
                     </p>
                   </button>
 
@@ -761,9 +761,9 @@ export function Onboarding() {
                 <p className="text-sm text-muted-foreground">
                   You can{' '}
                   <button onClick={() => { completeOnboarding(); setPricingOpen(true) }} className="underline hover:text-foreground transition-colors">
-                    view plans
+                    buy credits
                   </button>
-                  {' '}anytime to get managed keys and more scans.
+                  {' '}anytime for managed API keys and unlimited accounts.
                 </p>
               )}
 

@@ -100,7 +100,7 @@ export interface ScanCallbacks {
 }
 
 // ============================================================================
-// V3 NEW TYPES - User accounts, payments, subscriptions
+// V3 NEW TYPES - User accounts, credits, payments
 // ============================================================================
 
 export interface UserProfile {
@@ -108,50 +108,44 @@ export interface UserProfile {
   email: string;
   name: string | null;
   avatar_url: string | null;
-  plan: 'free' | 'pro' | 'ultra';
-  plan_details: {
-    scans_per_month: number;
-    max_accounts_per_scan: number;
-    live_feed: boolean;
-    all_models: boolean;
-    api_access: boolean;
-  } | null;
-  scans_this_month: number;
-  scans_remaining: number;         // -1 = unlimited
-  subscription_status: string | null;
-  current_period_end: string | null;
-  // Legacy compat: computed credits for display
-  credits?: number;
-}
-
-export interface ApiKeyInfo {
-  id: string;
-  provider: string;          // 'twitter' | 'anthropic'
-  created_at: string;
-  last_used_at: string | null;
-  masked_key?: string;       // e.g. "sk-ant-...xxxx"
-}
-
-export interface PricingPlan {
-  id: string;
-  name: string;
-  description: string;
-  priceId: string;
-  amount: number;            // cents
-  currency: string;
-  interval: string;          // 'month' | 'year'
-  features: string[];
-  scansPerMonth: number | 'unlimited';
-  recommended?: boolean;
+  credits_balance: number;
+  has_credits: boolean;          // credits_balance > 0
+  free_scan_available: boolean;  // for BYOK users: can they scan today?
+  subscription_status: string | null;  // 'active' if recurring credit pack
 }
 
 export interface CreditPack {
   id: string;
   name: string;
-  priceId: string;
-  amount: number;            // cents
   credits: number;
-  currency: string;
+  price: number;               // cents
+  perCredit: number;           // price per credit in dollars
+  savings?: string;            // e.g. "13% off"
+  recommended?: boolean;
+  estimates: {
+    label: string;
+    count: number;
+  }[];
+}
+
+// Range multipliers for credit calculation (must match backend)
+export const CREDIT_MULTIPLIERS: Record<number, number> = {
+  1: 1,
+  3: 2,
+  7: 3,
+  14: 5,
+  30: 8,
+};
+
+export function calculateScanCredits(accounts: number, rangeDays: number): number {
+  let multiplier = 1;
+  if (rangeDays <= 1) multiplier = 1;
+  else if (rangeDays <= 3) multiplier = 2;
+  else if (rangeDays <= 7) multiplier = 3;
+  else if (rangeDays <= 14) multiplier = 5;
+  else if (rangeDays <= 30) multiplier = 8;
+  else multiplier = 10;
+  return accounts * multiplier;
 }
 
 export type AuthState = {

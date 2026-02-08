@@ -57,6 +57,7 @@ interface SentryStore {
   // Settings
   settingsOpen: boolean;
   settingsTab: string;
+  setSettingsTab: (tab: string) => void;
   openSettings: (tab?: string) => void;
   closeSettings: () => void;
 
@@ -468,12 +469,17 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     const accounts = getAllAccounts()
     if (!accounts.length || busy) return
 
-    // V3: Check if user has scans remaining
+    // V3: Credit-based access control
     if (isAuthenticated && profile) {
-      const scansRemaining = profile.scans_remaining
-      if (scansRemaining === 0) {
+      const hasCredits = profile.has_credits
+      if (!hasCredits && !profile.free_scan_available) {
         setPricingOpen(true)
-        setNotices([{ type: 'error', message: 'Monthly scan limit reached. Upgrade your plan for more scans.' }])
+        setNotices([{ type: 'error', message: 'Daily free scan used. Buy credits or come back tomorrow.' }])
+        return
+      }
+      if (!hasCredits && accounts.length > 10) {
+        setPricingOpen(true)
+        setNotices([{ type: 'error', message: 'Free tier allows up to 10 accounts. Buy credits for more.' }])
         return
       }
     }
@@ -602,7 +608,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     hasPendingScan, pendingScanInfo,
     filters, setFilter, setTickerFilter,
     scanHistory, deleteHistoryScan: deleteHistoryScanHandler, refreshHistory,
-    settingsOpen, settingsTab, openSettings, closeSettings,
+    settingsOpen, settingsTab, setSettingsTab, openSettings, closeSettings,
     presetDialogOpen, editingPreset, openPresetDialog, closePresetDialog,
     analysts, activeAnalystId,
     setActiveAnalystId: setActiveAnalystIdHandler,
