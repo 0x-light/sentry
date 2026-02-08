@@ -712,8 +712,10 @@ export async function anthropicCall(
             .map((block: any, i: number) => i === 0 ? { ...block, cache_control: { type: 'ephemeral' } } : block)
         : undefined;
 
+      // Strip non-Anthropic fields before sending to the API directly
+      const { prompt_hash: _ph, tweet_urls: _tu, ...anthropicBody } = body;
       const streamBody = {
-        ...body,
+        ...anthropicBody,
         stream: true,
         ...(systemWithCache ? { system: systemWithCache } : {}),
       };

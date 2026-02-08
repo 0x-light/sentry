@@ -108,6 +108,21 @@ html[data-font-size="small"] { font-size: 14.5px; }
 html[data-font-size="large"] { font-size: 17.5px; }
 html[data-font-size="xlarge"] { font-size: 19px; }
 
+/* On mobile at medium font size, bump .text-sm to 16px for readability (except monospace) */
+@media (max-width: 639px) {
+  html:not([data-font-size]) body:not(.font-mono) .text-sm {
+    font-size: 16px;
+  }
+}
+
+/* Disable modal animations on mobile — instant open/close */
+@media (max-width: 639px) {
+  [role="dialog"],
+  :has(+ [role="dialog"]) {
+    animation-duration: 0s !important;
+  }
+}
+
 /* Minimal scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

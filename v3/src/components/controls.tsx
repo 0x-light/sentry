@@ -137,23 +137,29 @@ export function Controls() {
 
         <div className="ml-auto flex gap-2">
           {busy && (
-            <Button variant="outline" size="sm" onClick={cancelScan}>
+            <Button variant="outline" size="sm" onClick={cancelScan} className="hidden sm:inline-flex">
               Cancel
             </Button>
           )}
-          <Button size="sm" onClick={scan} disabled={busy || !hasAccounts}>
-            {busy ? (
-              <>
+          {busy ? (
+            <>
+              {/* Mobile: single Cancel button replaces Scan */}
+              <Button variant="outline" size="sm" onClick={cancelScan} className="sm:hidden">
+                <X className="h-3.5 w-3.5" />
+                Cancel
+              </Button>
+              {/* Desktop: keep the scanning indicator button */}
+              <Button size="sm" disabled className="hidden sm:inline-flex">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Scanning
-              </>
-            ) : (
-              <>
-                <Search className="h-3.5 w-3.5" />
-                Scan
-              </>
-            )}
-          </Button>
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={scan} disabled={!hasAccounts}>
+              <Search className="h-3.5 w-3.5" />
+              Scan
+            </Button>
+          )}
         </div>
       </div>
     </div>

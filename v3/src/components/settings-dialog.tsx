@@ -143,7 +143,7 @@ export function SettingsDialog() {
         </SheetHeader>
 
         <Tabs value={settingsTab} onValueChange={setSettingsTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-5">
             <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="api">API</TabsTrigger>
             <TabsTrigger value="analyst">Analyst</TabsTrigger>
@@ -466,7 +466,7 @@ export function SettingsDialog() {
           <>
             <Separator className="my-4" />
             <div className="flex flex-wrap gap-2 justify-end">
-              <Button variant="destructive" size="sm" onClick={handleClearKeys}>
+              <Button variant="destructive" size="sm" onClick={handleClearKeys} className="mr-auto">
                 Clear all
               </Button>
               <Button variant="outline" size="sm" onClick={closeSettings}>Cancel</Button>
