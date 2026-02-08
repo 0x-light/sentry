@@ -77,6 +77,7 @@ interface SentryStore {
   fontSize: string;
   textCase: string;
   showTickerPrice: boolean;
+  iconSet: string;
 
   // Live feed
   liveEnabled: boolean;
@@ -274,6 +275,14 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [fontSize, setFontSize] = useState(() => engine.getFontSize())
   const [textCase, setTextCase] = useState(() => engine.getCase())
   const [showTickerPrice, setShowTickerPrice] = useState(() => engine.getShowTickerPrice())
+  const [iconSet, setIconSet] = useState(() => engine.getIconSet())
+
+  // Apply font class to body
+  useEffect(() => {
+    document.body.classList.remove('font-geist', 'font-mono')
+    if (font === 'geist') document.body.classList.add('font-geist')
+    else if (font === 'mono') document.body.classList.add('font-mono')
+  }, [font])
 
   // Settings dialog
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -371,6 +380,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       if (data.settings.fontSize) { engine.setFontSize(data.settings.fontSize); setFontSize(data.settings.fontSize); }
       if (data.settings.financeProvider) localStorage.setItem('signal_finance_provider', data.settings.financeProvider)
       if (data.settings.model) localStorage.setItem('signal_model', data.settings.model)
+      if (data.settings.iconSet) { engine.setIconSet(data.settings.iconSet); setIconSet(data.settings.iconSet); }
+      if (data.settings.showTickerPrice !== undefined) { engine.setShowTickerPrice(data.settings.showTickerPrice); setShowTickerPrice(data.settings.showTickerPrice); }
     }
     if (data.analysts) { engine.saveAnalysts(data.analysts); setAnalysts(data.analysts); }
     if (data.activeAnalyst) { engine.setActiveAnalystId(data.activeAnalyst); setActiveAnalystIdState(data.activeAnalyst); }
@@ -508,7 +519,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     setActiveAnalystId: setActiveAnalystIdHandler,
     saveAnalysts: saveAnalystsHandler,
     createAnalyst, deleteAnalyst: deleteAnalystHandler, duplicateAnalyst,
-    financeProvider, font, fontSize, textCase, showTickerPrice,
+    financeProvider, font, fontSize, textCase, showTickerPrice, iconSet,
     liveEnabled, isLiveMode, toggleLive,
     shareSignal, downloadScan, isSharedView, sharedSignal,
     exportData: exportDataFn, importBackup, clearCache, cacheSize,

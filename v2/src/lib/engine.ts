@@ -8,7 +8,7 @@ import {
   CORS_PROXY, CRYPTO_SLUGS, INDEX_MAP, MODEL_PRICING,
   LS_TW, LS_AN, LS_SCANS, LS_CURRENT, LS_ANALYSTS, LS_ACTIVE_ANALYST,
   LS_DEFAULT_PROMPT_HASH, LS_ACCOUNTS, LS_LOADED_PRESETS, LS_PRESETS,
-  LS_THEME, LS_FINANCE, LS_FONT, LS_FONT_SIZE, LS_CASE,
+  LS_THEME, LS_FINANCE, LS_FONT, LS_FONT_SIZE, LS_CASE, LS_ICON_SET,
   LS_RECENTS, LS_ANALYSIS_CACHE, LS_PENDING_SCAN,
   LS_LIVE_ENABLED, LS_MODEL, MAX_RECENTS, CAT_MIGRATE,
 } from './constants'
@@ -57,14 +57,16 @@ export function getAnKey(): string { return localStorage.getItem(LS_AN) || ''; }
 export function getModel(): string { return localStorage.getItem(LS_MODEL) || DEFAULT_MODEL; }
 export function getTheme(): string { return localStorage.getItem(LS_THEME) || 'light'; }
 export function getFinanceProvider(): string { return localStorage.getItem(LS_FINANCE) || 'tradingview'; }
-export function getFont(): string { return localStorage.getItem(LS_FONT) || 'mono'; }
+export function getFont(): string { return localStorage.getItem(LS_FONT) || 'system'; }
 export function getFontSize(): string { return localStorage.getItem(LS_FONT_SIZE) || 'medium'; }
 export function getCase(): string { return localStorage.getItem(LS_CASE) || 'lower'; }
+export function getIconSet(): string { return localStorage.getItem(LS_ICON_SET) || 'sf'; }
 
 export function setTheme(t: string) { localStorage.setItem(LS_THEME, t); }
 export function setFont(f: string) { localStorage.setItem(LS_FONT, f); }
 export function setFontSize(s: string) { localStorage.setItem(LS_FONT_SIZE, s); }
 export function setCase(c: string) { localStorage.setItem(LS_CASE, c); }
+export function setIconSet(s: string) { localStorage.setItem(LS_ICON_SET, s); }
 
 export function getShowTickerPrice(): boolean { return localStorage.getItem('signal_show_ticker_price') === 'true'; }
 export function setShowTickerPrice(v: boolean) { localStorage.setItem('signal_show_ticker_price', v ? 'true' : 'false'); }
@@ -1036,7 +1038,7 @@ export function loadPendingScan(): any | null {
 export function exportData(customAccounts: string[], loadedPresets: string[], analysts: Analyst[]): string {
   const data = {
     v: 1,
-    settings: { theme: getTheme(), font: getFont(), fontSize: getFontSize(), textCase: getCase(), financeProvider: getFinanceProvider(), model: getModel() },
+    settings: { theme: getTheme(), font: getFont(), fontSize: getFontSize(), textCase: getCase(), financeProvider: getFinanceProvider(), model: getModel(), iconSet: getIconSet(), showTickerPrice: getShowTickerPrice() },
     keys: { twitter: getTwKey(), anthropic: getAnKey() },
     presets: getPresets(), analysts, activeAnalyst: getActiveAnalystId(),
     accounts: customAccounts, loadedPresets, recents: getRecents(),

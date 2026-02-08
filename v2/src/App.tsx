@@ -1,3 +1,4 @@
+import React from 'react'
 import { SentryProvider, useSentry } from '@/hooks/use-sentry'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,8 @@ import { SignalList } from '@/components/signal-list'
 import { HistorySection } from '@/components/history-section'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { PresetDialog } from '@/components/preset-dialog'
-import { Download } from 'lucide-react'
+import { Download } from '@/components/icons'
+import { IconSetProvider, type IconSet } from '@/components/icons'
 
 function AppContent() {
   const {
@@ -88,7 +90,7 @@ function AppContent() {
           <HistorySection />
 
           {scanResult?.signals?.length ? (
-            <div className="px-4 py-3 text-xs text-muted-foreground">
+            <div className="px-4 py-3 text-sm text-muted-foreground">
               Not financial advice
             </div>
           ) : null}
@@ -101,12 +103,19 @@ function AppContent() {
   )
 }
 
+function IconSetWrapper({ children }: { children: React.ReactNode }) {
+  const { iconSet } = useSentry()
+  return <IconSetProvider value={iconSet as IconSet}>{children}</IconSetProvider>
+}
+
 export default function App() {
   return (
     <SentryProvider>
-      <TooltipProvider>
-        <AppContent />
-      </TooltipProvider>
+      <IconSetWrapper>
+        <TooltipProvider>
+          <AppContent />
+        </TooltipProvider>
+      </IconSetWrapper>
     </SentryProvider>
   )
 }

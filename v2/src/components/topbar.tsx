@@ -1,7 +1,7 @@
 import { useSentry } from '@/hooks/use-sentry'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Settings, Sun, Moon, Radio } from 'lucide-react'
+import { Settings, Sun, Moon, Radio } from '@/components/icons'
 
 export function Topbar() {
   const { theme, toggleTheme, liveEnabled, isLiveMode, toggleLive, openSettings, busy } = useSentry()
@@ -11,12 +11,12 @@ export function Topbar() {
       <div className="flex items-center gap-2.5">
         <div
           className={cn(
-            "w-2 h-5 bg-foreground rounded-[2px] transition-opacity",
+            "w-2 h-3 bg-foreground rounded-[2px] transition-opacity",
             busy && "animate-blink"
           )}
         />
         <span className="font-normal text-sm tracking-tight">sentry</span>
-        <span className="text-xs text-muted-foreground font-normal">v2</span>
+        <span className="text-sm text-muted-foreground font-normal">v2</span>
       </div>
       <div className="flex items-center gap-1">
         {liveEnabled && (
@@ -30,7 +30,7 @@ export function Topbar() {
             )}
           >
             <Radio className={cn("h-3.5 w-3.5", isLiveMode && "animate-pulse")} />
-            <span className="text-xs font-normal">Live</span>
+            <span className="text-sm font-normal">Live</span>
           </Button>
         )}
         <Button variant="ghost" size="icon" onClick={toggleTheme}>

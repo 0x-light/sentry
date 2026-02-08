@@ -13,14 +13,14 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { DEFAULT_PROMPT } from '@/lib/constants'
-import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download } from 'lucide-react'
+import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download } from '@/components/icons'
 
 export function SettingsDialog() {
   const {
     settingsOpen, settingsTab, closeSettings,
     analysts, activeAnalystId, setActiveAnalystId, saveAnalysts,
     createAnalyst, deleteAnalyst, duplicateAnalyst,
-    financeProvider, font, fontSize, textCase, showTickerPrice,
+    financeProvider, font, fontSize, textCase, showTickerPrice, iconSet,
     liveEnabled,
     exportData, importBackup, clearCache, cacheSize,
   } = useSentry()
@@ -35,6 +35,7 @@ export function SettingsDialog() {
   const [localCase, setLocalCase] = useState(textCase)
   const [localLiveEnabled, setLocalLiveEnabled] = useState(liveEnabled)
   const [localShowTickerPrice, setLocalShowTickerPrice] = useState(showTickerPrice)
+  const [localIconSet, setLocalIconSet] = useState(iconSet)
 
   useEffect(() => {
     if (settingsOpen) {
@@ -47,6 +48,7 @@ export function SettingsDialog() {
       setLocalCase(engine.getCase())
       setLocalLiveEnabled(engine.isLiveEnabled())
       setLocalShowTickerPrice(engine.getShowTickerPrice())
+      setLocalIconSet(engine.getIconSet())
     }
   }, [settingsOpen])
 
@@ -60,6 +62,7 @@ export function SettingsDialog() {
     engine.setCase(localCase)
     engine.setLiveEnabled(localLiveEnabled)
     engine.setShowTickerPrice(localShowTickerPrice)
+    engine.setIconSet(localIconSet)
     closeSettings()
     window.location.reload()
   }
@@ -135,7 +138,7 @@ export function SettingsDialog() {
                 onChange={e => setTwKey(e.target.value)}
                 placeholder="Your twitterapi.io key"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Get one at{' '}
                 <a href="https://twitterapi.io" target="_blank" className="underline">twitterapi.io</a>
               </p>
@@ -148,7 +151,7 @@ export function SettingsDialog() {
                 onChange={e => setAnKey(e.target.value)}
                 placeholder="sk-ant-..."
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Get one at{' '}
                 <a href="https://console.anthropic.com/settings/keys" target="_blank" className="underline">console.anthropic.com</a>
               </p>
@@ -166,7 +169,7 @@ export function SettingsDialog() {
                   <SelectItem value="claude-opus-4-20250514">Claude Opus 4</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{engine.formatModelCost(model)}</p>
+              <p className="text-sm text-muted-foreground">{engine.formatModelCost(model)}</p>
             </div>
           </TabsContent>
 
@@ -181,9 +184,9 @@ export function SettingsDialog() {
                   {expandedAnalyst === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                   <span className="text-sm font-normal flex-1">{a.name}</span>
                   {activeAnalystId === a.id ? (
-                    <Badge variant="default" className="text-xs">Active</Badge>
+                    <Badge variant="default" className="text-sm">Active</Badge>
                   ) : (
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); setActiveAnalystId(a.id) }}>
+                    <Button variant="ghost" size="sm" className="h-7 text-sm" onClick={(e) => { e.stopPropagation(); setActiveAnalystId(a.id) }}>
                       Use
                     </Button>
                   )}
@@ -246,8 +249,9 @@ export function SettingsDialog() {
               <Select value={localFont} onValueChange={setLocalFont}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="mono">Monospace</SelectItem>
                   <SelectItem value="system">System</SelectItem>
+                  <SelectItem value="geist">Geist</SelectItem>
+                  <SelectItem value="mono">Monospace</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -275,6 +279,16 @@ export function SettingsDialog() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Icons</Label>
+              <Select value={localIconSet} onValueChange={setLocalIconSet}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sf">SF Symbols</SelectItem>
+                  <SelectItem value="geist">Geist</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Ticker price</Label>
               <div className="flex items-center gap-3">
                 <Switch checked={localShowTickerPrice} onCheckedChange={setLocalShowTickerPrice} />
@@ -290,7 +304,7 @@ export function SettingsDialog() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Live feed</Label>
-                <Badge variant="outline" className="text-xs">beta</Badge>
+                <Badge variant="outline" className="text-sm">beta</Badge>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={localLiveEnabled} onCheckedChange={setLocalLiveEnabled} />
@@ -302,7 +316,7 @@ export function SettingsDialog() {
             <Separator />
             <div className="space-y-2">
               <Label>Backup</Label>
-              <p className="text-xs text-muted-foreground">Export copies your settings to clipboard. Import reads from clipboard.</p>
+              <p className="text-sm text-muted-foreground">Export copies your settings to clipboard. Import reads from clipboard.</p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleExport}>
                   {exportStatus === 'copied' ? (

@@ -64,7 +64,7 @@ export function TickerBar() {
                 onMouseMove={moveChart}
                 onMouseLeave={hideChart}
                 className={cn(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs whitespace-nowrap",
+                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm whitespace-nowrap",
                   colors.bg, colors.text,
                   "hover:opacity-80 transition-opacity"
                 )}
@@ -95,7 +95,7 @@ export function TickerBar() {
       {/* Filter bar */}
       {categories.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 border-t">
-          <span className="text-xs text-muted-foreground mr-1">Filter</span>
+          <span className="text-sm text-muted-foreground mr-1">Filter</span>
           {categories.map(([cat, count]) => {
             const isActive = filters.category === cat
             const colors = CAT_COLORS[cat] || CAT_COLORS.Trade
@@ -104,7 +104,7 @@ export function TickerBar() {
                 key={cat}
                 onClick={() => setFilter(cat)}
                 className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-normal transition-all",
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-normal transition-all",
                   isActive
                     ? `${colors.text} ${colors.bg} ring-1 ring-current ring-opacity-30`
                     : "text-muted-foreground hover:text-foreground"
@@ -118,7 +118,7 @@ export function TickerBar() {
           {filters.category && (
             <button
               onClick={() => setFilter(null)}
-              className="text-xs text-muted-foreground hover:text-foreground ml-1"
+              className="text-sm text-muted-foreground hover:text-foreground ml-1"
             >
               ✕
             </button>

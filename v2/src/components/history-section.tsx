@@ -3,7 +3,7 @@ import { useSentry } from '@/hooks/use-sentry'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { ChevronDown, ChevronRight, Trash2, Download } from 'lucide-react'
+import { ChevronDown, ChevronRight, Trash2, Download } from '@/components/icons'
 import * as engine from '@/lib/engine'
 
 export function HistorySection() {
@@ -35,7 +35,7 @@ export function HistorySection() {
       >
         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         History
-        <span className="text-xs opacity-60">{scanHistory.length}</span>
+        <span className="text-sm opacity-60">{scanHistory.length}</span>
       </button>
 
       {expanded && (
@@ -53,9 +53,9 @@ export function HistorySection() {
                 >
                   {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                   <span className="text-sm flex-1">{dateStr}</span>
-                  <span className="text-xs text-muted-foreground">{entry.range}</span>
-                  <span className="text-xs text-muted-foreground">{entry.accounts} accts</span>
-                  <span className="text-xs text-muted-foreground">{entry.signalCount} signals</span>
+                  <span className="text-sm text-muted-foreground">{entry.range}</span>
+                  <span className="text-sm text-muted-foreground">{entry.accounts} accts</span>
+                  <span className="text-sm text-muted-foreground">{entry.signalCount} signals</span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -79,15 +79,15 @@ export function HistorySection() {
                     {entry.signals.map((s, j) => (
                       <div key={j} className="py-2 border-t first:border-t-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs text-muted-foreground">{engine.normCat(s.category)}</span>
-                          <span className="text-xs text-muted-foreground">@{s.source}</span>
+                          <span className="text-sm text-muted-foreground">{engine.normCat(s.category)}</span>
+                          <span className="text-sm text-muted-foreground">@{s.source}</span>
                         </div>
                         <p className="text-sm font-normal">{s.title}</p>
-                        <p className="text-xs text-muted-foreground">{s.summary}</p>
+                        <p className="text-sm text-muted-foreground">{s.summary}</p>
                         {s.tickers?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {s.tickers.map((t, k) => (
-                              <span key={k} className="text-xs text-muted-foreground">{t.symbol} ({t.action})</span>
+                              <span key={k} className="text-sm text-muted-foreground">{t.symbol} ({t.action})</span>
                             ))}
                           </div>
                         )}

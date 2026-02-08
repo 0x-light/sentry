@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { ACT_COLORS, CAT_COLORS } from '@/lib/constants'
-import { ExternalLink, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { ExternalLink, Copy, Check, ChevronDown, ChevronUp } from '@/components/icons'
 import { useChartPreview, ChartPreview } from '@/components/chart-preview'
 
 function formatTime(dateStr?: string): string | null {
@@ -47,28 +47,28 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
   return (
     <div className="border-b last:border-b-0 animate-slide-in">
       <div className="px-4 py-3">
-        {/* Header: Category + Source + Tweet link */}
+        {/* Header: Category + Source + Post link */}
         <div className="flex items-center gap-2 mb-1">
-          <span className={cn("text-xs font-normal", catColors.text)}>{cat}</span>
-          <span className="text-xs text-muted-foreground">·</span>
+          <span className={cn("text-sm font-normal", catColors.text)}>{cat}</span>
+          <span className="text-sm text-muted-foreground">·</span>
           <a
             href={`https://x.com/${signal.source}`}
             target="_blank"
             rel="noopener"
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
             @{signal.source}
           </a>
           {timeStr && (
             <>
-              <span className="text-xs text-muted-foreground">·</span>
-              <span className="text-xs text-muted-foreground">{timeStr}</span>
+              <span className="text-sm text-muted-foreground">·</span>
+              <span className="text-sm text-muted-foreground">{timeStr}</span>
             </>
           )}
           <span className="ml-auto flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               {copied ? 'Copied' : 'Share'}
@@ -78,10 +78,10 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                 href={signal.tweet_url}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ExternalLink className="h-3 w-3" />
-                Tweet
+                Post
               </a>
             )}
           </span>
@@ -112,7 +112,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                   onMouseMove={moveChart}
                   onMouseLeave={hideChart}
                   className={cn(
-                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm",
                     colors.bg, colors.text,
                     "hover:opacity-80 transition-opacity"
                   )}
@@ -136,15 +136,15 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
           </div>
         )}
 
-        {/* Tweet text (expandable) */}
+        {/* Post text (expandable) */}
         {tweetMeta && (
           <div className="mt-2">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              Original tweet
+              Original post
             </button>
             {expanded && (
               <p className="mt-1 text-sm text-muted-foreground p-2 bg-muted rounded-md whitespace-pre-wrap">
@@ -163,7 +163,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                 href={link}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ExternalLink className="h-3 w-3" />
                 Link
@@ -210,7 +210,7 @@ export function SignalList() {
     <div>
       {/* Signal count */}
       {scanResult && (
-        <div className="px-4 py-2 text-xs text-muted-foreground border-b">
+        <div className="px-4 py-2 text-sm text-muted-foreground border-b">
           {filters.category
             ? `${signals.length} of ${scanResult.signals.length} signals`
             : `${signals.length} signals`}

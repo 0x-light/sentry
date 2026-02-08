@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Trash2, Pencil } from 'lucide-react'
+import { Trash2, Pencil } from '@/components/icons'
 
 export function PresetDialog() {
   const {

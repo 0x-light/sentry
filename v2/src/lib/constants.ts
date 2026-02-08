@@ -49,6 +49,7 @@ export const LS_FINANCE = 'signal_finance_provider';
 export const LS_FONT = 'signal_font';
 export const LS_FONT_SIZE = 'signal_font_size';
 export const LS_CASE = 'signal_case';
+export const LS_ICON_SET = 'signal_icon_set';
 export const LS_RECENTS = 'signal_recent_accounts';
 export const LS_ANALYSIS_CACHE = 'signal_analysis_cache';
 export const LS_PENDING_SCAN = 'signal_pending_scan';

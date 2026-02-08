@@ -92,11 +92,14 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Geist Sans', ui-sans-serif, system-ui, -apple-system,
-      BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Font variants */
+body.font-geist { font-family: 'Geist Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+body.font-mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; }
 
 /* Minimal scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }

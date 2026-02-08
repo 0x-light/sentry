@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { RANGES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { Plus, X, Pencil, Search, Loader2 } from 'lucide-react'
+import { Plus, X, Pencil, Search, Loader2 } from '@/components/icons'
 
 export function Controls() {
   const {
@@ -54,7 +54,7 @@ export function Controls() {
       </div>
 
       {/* Presets + custom accounts */}
-      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+      <div className="flex flex-wrap items-center gap-1.5 px-4">
         {presets.map(p => (
           <Badge
             key={p.name}
@@ -89,7 +89,7 @@ export function Controls() {
         )}
 
         {hasAccounts && (
-          <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={clearAllAccounts}>
+          <Button variant="ghost" size="sm" className="h-6 text-sm text-muted-foreground" onClick={clearAllAccounts}>
             Clear
           </Button>
         )}
@@ -100,7 +100,7 @@ export function Controls() {
         <>
           <Separator />
           <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
-            <span className="text-xs text-muted-foreground font-normal mr-1">Recent</span>
+            <span className="text-sm text-muted-foreground font-normal mr-1">Recent</span>
             {recents.map(s => (
               <Badge
                 key={s}
@@ -119,8 +119,7 @@ export function Controls() {
       )}
 
       {/* Range + Scan */}
-      <Separator />
-      <div className="flex items-center gap-2 px-4 py-3">
+      <div className="flex items-center gap-2 px-4 py-4">
         <div className="flex items-center gap-0.5 bg-muted rounded-lg p-[3px]">
           {RANGES.map((r, i) => (
             <button
