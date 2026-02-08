@@ -15,6 +15,7 @@ import { Onboarding } from '@/components/onboarding'
 import { AuthDialog } from '@/components/auth-dialog'
 import { PricingDialog } from '@/components/pricing-dialog'
 import { DevToolbar } from '@/components/dev-toolbar'
+import { TosPage } from '@/components/tos-page'
 import { Download } from '@/components/icons'
 import { IconSetProvider, type IconSet } from '@/components/icons'
 
@@ -137,6 +138,10 @@ function IconSetWrapper({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  if (window.location.pathname === '/tos') {
+    return <TosPage />
+  }
+
   return (
     <AuthProvider mockMode={isDev}>
       <SentryProvider>

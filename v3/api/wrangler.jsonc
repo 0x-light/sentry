@@ -43,14 +43,14 @@
 	//   STRIPE_PRICE_PRO_RECURRING
 	//   STRIPE_PRICE_MAX_RECURRING
 	"vars": {
-		"STRIPE_PRICE_STARTER": "price_1SydoiPhxDggg8gg7suGMdaX",
-		"STRIPE_PRICE_STANDARD": "price_1SydqxPhxDggg8ggHVD5x3QC",
-		"STRIPE_PRICE_PRO": "price_1SydsnPhxDggg8gg9ClVL7ct",
-		"STRIPE_PRICE_MAX": "price_1SydubPhxDggg8gga18TYfnE",
-		"STRIPE_PRICE_STARTER_RECURRING": "price_1SydpvPhxDggg8ggH7o1cdx8",
-		"STRIPE_PRICE_STANDARD_RECURRING": "price_1SydrNPhxDggg8gg8b1D96Og",
-		"STRIPE_PRICE_PRO_RECURRING": "price_1SydtRPhxDggg8ggtp1iCfqX",
-		"STRIPE_PRICE_MAX_RECURRING": "price_1SydvwPhxDggg8ggaGUoqqho",
+		"STRIPE_PRICE_STARTER": "price_1SyeQ4PhxDggg8ggiC9M7f4H",
+		"STRIPE_PRICE_STANDARD": "price_1SyePCPhxDggg8gg8cazPZ3m",
+		"STRIPE_PRICE_PRO": "price_1SyeRIPhxDggg8ggTXKkSaaI",
+		"STRIPE_PRICE_MAX": "price_1SyeRnPhxDggg8ggz0ECIeLV",
+		"STRIPE_PRICE_STARTER_RECURRING": "price_1SyeQWPhxDggg8ggMvv6B4db",
+		"STRIPE_PRICE_STANDARD_RECURRING": "price_1SyePpPhxDggg8ggeb3uF45C",
+		"STRIPE_PRICE_PRO_RECURRING": "price_1SyeRXPhxDggg8ggbdIv2aMn",
+		"STRIPE_PRICE_MAX_RECURRING": "price_1SyeS3PhxDggg8gg7Zt3DgCY",
 		"CORS_ORIGIN": "https://sentry.is",
 		"ENVIRONMENT": "production"
 	}

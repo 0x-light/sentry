@@ -196,7 +196,10 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
             </Button>
 
             <p className="text-sm text-muted-foreground text-center">
-              By signing up, you agree to our Terms of Service.
+              By signing up, you agree to our{' '}
+              <a href="/tos" target="_blank" className="underline hover:text-foreground transition-colors">
+                Terms of Service
+              </a>.
             </p>
           </TabsContent>
         </Tabs>
