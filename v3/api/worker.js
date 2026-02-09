@@ -314,47 +314,70 @@ Return ONLY valid JSON array. No markdown, no explanation.`;
  * Check if a schedule is due to run right now.
  * Accounts for the schedule's timezone.
  */
-function isScheduleDue(schedule) {
-  const tz = schedule.timezone || 'UTC';
-  let now;
+/**
+ * Safely get current time in a given IANA timezone.
+ * Returns { hour: 0-23, minute: 0-59, weekday: 0-6 (Sun-Sat) }.
+ */
+function getNowInTimezone(tz) {
   try {
-    // Get current time in the schedule's timezone using hourCycle h23 (0-23)
-    // Note: hour12:false can return "24" for midnight on some runtimes
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
       hourCycle: 'h23',
       hour: 'numeric', minute: 'numeric', weekday: 'short',
     });
     const parts = formatter.formatToParts(new Date());
-    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
-    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-    const weekday = parts.find(p => p.type === 'weekday')?.value || '';
+    const rawHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const rawMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    const weekdayStr = parts.find(p => p.type === 'weekday')?.value || '';
     const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const today = dayMap[weekday] ?? new Date().getDay();
-    now = { hour, minute, today };
+    return {
+      hour: Math.max(0, Math.min(23, rawHour)),     // clamp to 0-23 (handles "24" edge)
+      minute: Math.max(0, Math.min(59, rawMinute)),
+      weekday: dayMap[weekdayStr] ?? new Date().getUTCDay(),
+    };
   } catch {
-    // Fallback to UTC
     const d = new Date();
-    now = { hour: d.getUTCHours(), minute: d.getUTCMinutes(), today: d.getUTCDay() };
+    return { hour: d.getUTCHours(), minute: d.getUTCMinutes(), weekday: d.getUTCDay() };
   }
+}
 
-  // Check day-of-week filter (empty = every day)
-  if (schedule.days?.length > 0 && !schedule.days.includes(now.today)) return false;
+/**
+ * Check if a schedule is due to run right now.
+ * - Validates schedule data before checking.
+ * - Uses timezone-aware time comparison.
+ * - 3-minute window to tolerate cron jitter.
+ * - Prevents double-runs within 55 minutes.
+ */
+function isScheduleDue(schedule) {
+  // Validate required fields
+  if (!schedule?.id || !schedule?.user_id || !schedule?.time) return false;
 
-  // Parse schedule time
-  const [schedH, schedM] = (schedule.time || '07:00').split(':').map(Number);
+  const tz = schedule.timezone || 'UTC';
+  const now = getNowInTimezone(tz);
+
+  // Check day-of-week filter (empty array or missing = every day)
+  const days = Array.isArray(schedule.days) ? schedule.days.filter(d => d >= 0 && d <= 6) : [];
+  if (days.length > 0 && !days.includes(now.weekday)) return false;
+
+  // Parse and validate schedule time
+  const match = (schedule.time || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return false;
+  const schedH = Math.max(0, Math.min(23, parseInt(match[1], 10)));
+  const schedM = Math.max(0, Math.min(59, parseInt(match[2], 10)));
+
   const scheduleMinutes = schedH * 60 + schedM;
   const currentMinutes = now.hour * 60 + now.minute;
 
-  // Must be within a 2-minute window of the scheduled time
-  // (cron runs every minute, so we need a small window to avoid misses)
-  if (currentMinutes < scheduleMinutes || currentMinutes > scheduleMinutes + 1) return false;
+  // Must be within a 3-minute window (cron runs every 1 min; allows for jitter/delay)
+  const diff = currentMinutes - scheduleMinutes;
+  // Handle midnight wrap: schedule at 23:59, current at 00:01 → diff = -1438, but should be 2
+  const wrappedDiff = diff < -720 ? diff + 1440 : diff > 720 ? diff - 1440 : diff;
+  if (wrappedDiff < 0 || wrappedDiff > 2) return false;
 
-  // Check if already ran recently (within last 50 minutes) to prevent double-runs
+  // Prevent double-runs: skip if last run was within 55 minutes
   if (schedule.last_run_at) {
-    const lastRun = new Date(schedule.last_run_at);
-    const msSinceLastRun = Date.now() - lastRun.getTime();
-    if (msSinceLastRun < 50 * 60 * 1000) return false;
+    const msSinceLastRun = Date.now() - new Date(schedule.last_run_at).getTime();
+    if (msSinceLastRun < 55 * 60_000) return false;
   }
 
   return true;
@@ -364,19 +387,28 @@ function isScheduleDue(schedule) {
  * Format a single tweet for Claude analysis (server-side version of client's formatTweetForAnalysis).
  */
 function formatTweetForAnalysisServer(tw, account) {
-  const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  if (!tw) return null;
+
+  // Safe date parsing
+  let date = 'unknown';
+  try {
+    if (tw.createdAt) date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  } catch { /* keep 'unknown' */ }
+
   const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
   const tweetId = tw.id || '';
-  const author = tw.author?.userName || account;
-  const url = `https://x.com/${author}/status/${tweetId}`;
+  const author = tw.author?.userName || account || 'unknown';
+  const url = tweetId ? `https://x.com/${author}/status/${tweetId}` : '';
 
-  let text = (tw.text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  // Remove control characters but preserve unicode
+  let text = (tw.text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   const externalLinks = [];
 
-  if (tw.entities?.urls) {
+  if (Array.isArray(tw.entities?.urls)) {
     for (const u of tw.entities.urls) {
       if (u.url && u.expanded_url) {
-        text = text.replace(u.url, u.expanded_url);
+        // Replace all occurrences of shortened URL
+        text = text.split(u.url).join(u.expanded_url);
         if (!u.expanded_url.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
           externalLinks.push(u.expanded_url);
         }
@@ -384,13 +416,14 @@ function formatTweetForAnalysisServer(tw, account) {
     }
   }
 
-  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
+  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`];
+  if (url) parts.push(`tweet_url: ${url}`);
   if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
   if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
-  if (tw.quoted_tweet) {
-    const quotedText = (tw.quoted_tweet.text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  if (tw.quoted_tweet?.text) {
+    const quotedText = tw.quoted_tweet.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 2000);
     const quotedAuthor = tw.quoted_tweet.author?.userName || 'unknown';
-    parts.push(`--- QUOTED TWEET from @${quotedAuthor} ---\n${quotedText}\n--- END QUOTED TWEET ---`);
+    parts.push(`--- QUOTED @${quotedAuthor} ---\n${quotedText}\n--- END QUOTE ---`);
   }
 
   return { text: parts.join('\n'), url };
@@ -400,26 +433,34 @@ function formatTweetForAnalysisServer(tw, account) {
  * Build analysis batches from account tweet data (server-side version).
  */
 function buildAnalysisBatches(accountData, promptLength) {
-  const MAX_BATCH_CHARS = 120000;
+  const MAX_BATCH_CHARS = 100000; // conservative limit (Anthropic context varies by model)
   const SEPARATOR = '\n\n';
+  const safePromptLen = Math.max(0, promptLength || 0);
 
-  const items = accountData.map(a => {
-    const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
-    const formatted = a.tweets.map(tw => formatTweetForAnalysisServer(tw, a.account));
-    const body = formatted.map(f => f.text).join('\n---\n');
-    const tweetUrls = formatted.map(f => f.url);
-    return {
-      account: a.account,
-      text: `${header}\n${body}`,
-      size: header.length + body.length,
-      tweetUrls,
-    };
-  });
+  // Filter out accounts with no tweets and format
+  const items = accountData
+    .filter(a => a.tweets?.length > 0)
+    .map(a => {
+      const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+      const formatted = a.tweets.map(tw => formatTweetForAnalysisServer(tw, a.account)).filter(Boolean);
+      const body = formatted.map(f => f.text).join('\n---\n');
+      const tweetUrls = formatted.map(f => f.url).filter(Boolean);
+      return {
+        account: a.account,
+        text: `${header}\n${body}`,
+        size: header.length + body.length,
+        tweetUrls,
+      };
+    })
+    .filter(item => item.size > 0);
 
+  if (!items.length) return [];
+
+  // Sort largest first for better bin-packing
   items.sort((a, b) => b.size - a.size);
 
   const batches = [];
-  items.forEach(item => {
+  for (const item of items) {
     let placed = false;
     for (const batch of batches) {
       const extra = (batch.items.length ? SEPARATOR.length : 0) + item.size;
@@ -432,9 +473,9 @@ function buildAnalysisBatches(accountData, promptLength) {
       }
     }
     if (!placed) {
-      batches.push({ items: [item], size: promptLength + item.size, tweetUrls: [...item.tweetUrls] });
+      batches.push({ items: [item], size: safePromptLen + item.size, tweetUrls: [...item.tweetUrls] });
     }
-  });
+  }
 
   return batches.map(b => ({
     text: b.items.map(i => i.text).join(SEPARATOR),
@@ -460,6 +501,7 @@ function djb2Hash(str) {
  */
 async function executeScheduledScan(env, ctx, schedule) {
   const userId = schedule.user_id;
+  const SCAN_TIMEOUT_MS = 4 * 60_000; // 4 minute hard timeout
 
   // Mark as running
   await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
@@ -467,280 +509,14 @@ async function executeScheduledScan(env, ctx, schedule) {
     body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
   });
 
+  // Wrap entire scan in a timeout so we always update status
+  const scanPromise = executeScheduledScanInner(env, ctx, schedule, userId);
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Scan timed out after 4 minutes')), SCAN_TIMEOUT_MS)
+  );
+
   try {
-    // 1. Resolve accounts from preset, explicit list, or user's presets
-    let accounts = schedule.accounts || [];
-    if (schedule.preset_id) {
-      const presetRows = await supabaseQuery(env,
-        `presets?id=eq.${schedule.preset_id}&user_id=eq.${userId}&select=accounts`
-      );
-      if (presetRows?.[0]?.accounts?.length) {
-        accounts = presetRows[0].accounts;
-      }
-    }
-
-    // Fallback: if no accounts on schedule, pull from user's presets
-    if (!accounts.length) {
-      try {
-        const userPresets = await supabaseQuery(env,
-          `presets?user_id=eq.${userId}&select=accounts&order=updated_at.desc&limit=5`
-        );
-        if (userPresets?.length) {
-          const all = new Set();
-          userPresets.forEach(p => (p.accounts || []).forEach(a => all.add(a)));
-          accounts = [...all];
-        }
-      } catch { /* best effort */ }
-    }
-
-    // Last resort: check user_settings for stored accounts
-    if (!accounts.length) {
-      try {
-        const settings = await supabaseQuery(env,
-          `user_settings?user_id=eq.${userId}&select=accounts`
-        );
-        if (settings?.[0]?.accounts?.length) {
-          accounts = settings[0].accounts;
-        }
-      } catch { /* best effort */ }
-    }
-
-    if (!accounts.length) {
-      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-        method: 'PATCH',
-        body: { last_run_status: 'error', last_run_message: 'No accounts configured — add accounts to your schedule or presets' },
-      });
-      return;
-    }
-
-    // 2. Get user's active analyst prompt
-    let prompt = DEFAULT_ANALYST_PROMPT;
-    try {
-      const analysts = await supabaseQuery(env,
-        `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`
-      );
-      if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
-    } catch { /* use default */ }
-
-    // 3. Get user's model preference
-    let model = 'claude-sonnet-4-20250514';
-    try {
-      const settings = await supabaseQuery(env,
-        `user_settings?user_id=eq.${userId}&select=model`
-      );
-      if (settings?.[0]?.model) model = settings[0].model;
-    } catch { /* use default */ }
-
-    // 4. Check credits
-    const profile = await getProfile(env, userId);
-    const days = schedule.range_days || 1;
-    const creditsNeeded = calculateScanCredits(accounts.length, days, model);
-
-    if (!profile || profile.credits_balance < creditsNeeded) {
-      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-        method: 'PATCH',
-        body: {
-          last_run_status: 'error',
-          last_run_message: `Insufficient credits (need ${creditsNeeded}, have ${profile?.credits_balance || 0})`,
-        },
-      });
-      return;
-    }
-
-    // 5. Check cross-user scan cache first
-    const promptHash = djb2Hash(`${model}\n${prompt}`);
-    const scanKey = hashScanKey(accounts, days, promptHash);
-    if (env.TWEET_CACHE) {
-      const cached = await env.TWEET_CACHE.get(scanKey, 'json');
-      if (cached?.signals?.length) {
-        // Save cached results as a new scan
-        await saveScanToDb(env, ctx, userId, {
-          accounts, days, model, promptHash, creditsNeeded,
-          signals: cached.signals,
-          totalTweets: cached.total_tweets || 0,
-          label: schedule.label,
-        });
-        await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-          method: 'PATCH',
-          body: { last_run_status: 'success', last_run_message: `${cached.signals.length} signals (cached)` },
-        });
-        return;
-      }
-    }
-
-    // 6. Fetch tweets for all accounts
-    const CONCURRENCY = 5;
-    const accountData = [];
-    for (let i = 0; i < accounts.length; i += CONCURRENCY) {
-      const chunk = accounts.slice(i, i + CONCURRENCY);
-      const chunkResults = await Promise.all(
-        chunk.map(async (account) => {
-          try {
-            const { tweets } = await fetchTweetsCoalesced(account, days, env, ctx);
-            return { account, tweets: tweets || [] };
-          } catch {
-            return { account, tweets: [] };
-          }
-        })
-      );
-      accountData.push(...chunkResults);
-    }
-
-    const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
-    if (totalTweets === 0) {
-      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-        method: 'PATCH',
-        body: { last_run_status: 'error', last_run_message: 'No tweets found' },
-      });
-      return;
-    }
-
-    // 7. Check per-tweet analysis cache
-    const allTweetUrls = [];
-    accountData.forEach(a => {
-      a.tweets.forEach(tw => {
-        const author = tw.author?.userName || a.account;
-        allTweetUrls.push(`https://x.com/${author}/status/${tw.id}`);
-      });
-    });
-
-    let cachedSignals = [];
-    let uncachedAccountData = accountData;
-    try {
-      const urlBatches = [];
-      for (let i = 0; i < allTweetUrls.length; i += 500) {
-        urlBatches.push(allTweetUrls.slice(i, i + 500));
-      }
-      const cachedUrlSet = new Set();
-      for (const batch of urlBatches) {
-        const urlList = batch.map(u => `"${u}"`).join(',');
-        const rows = await supabaseQuery(env,
-          `analysis_cache?prompt_hash=eq.${promptHash}&tweet_url=in.(${urlList})&select=tweet_url,signals`
-        );
-        if (rows?.length) {
-          rows.forEach(r => {
-            cachedUrlSet.add(r.tweet_url);
-            if (r.signals?.length) cachedSignals.push(...r.signals);
-          });
-        }
-      }
-
-      if (cachedUrlSet.size > 0) {
-        uncachedAccountData = accountData.map(a => ({
-          account: a.account,
-          tweets: a.tweets.filter(tw => {
-            const author = tw.author?.userName || a.account;
-            const url = `https://x.com/${author}/status/${tw.id}`;
-            return !cachedUrlSet.has(url);
-          }),
-        })).filter(a => a.tweets.length > 0);
-      }
-    } catch {
-      // Cache check failed — analyze everything
-    }
-
-    // 8. Call Claude for uncached tweets
-    let newSignals = [];
-    if (uncachedAccountData.length > 0) {
-      // Resolve model
-      let resolvedModel = model;
-      try {
-        const modelInfo = await resolveAnthropicModel(env, model);
-        if (modelInfo?.resolved) resolvedModel = modelInfo.resolved;
-      } catch { /* use original model */ }
-
-      const batches = buildAnalysisBatches(uncachedAccountData, prompt.length);
-
-      for (const batch of batches) {
-        try {
-          const anthropicBody = {
-            model: resolvedModel,
-            max_tokens: 16384,
-            system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
-            messages: [{ role: 'user', content: batch.text }],
-          };
-
-          let data = null;
-          for (let attempt = 0; attempt <= 3; attempt++) {
-            try {
-              const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-api-key': env.ANTHROPIC_API_KEY,
-                  'anthropic-version': '2023-06-01',
-                },
-                body: JSON.stringify(anthropicBody),
-              });
-              data = await res.json();
-              if (data.error) {
-                if (attempt < 3) {
-                  await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
-                  continue;
-                }
-                throw new Error(data.error.message || 'Anthropic API error');
-              }
-              break;
-            } catch (e) {
-              if (attempt >= 3) throw e;
-              await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
-            }
-          }
-
-          if (data?.content) {
-            const text = extractText(data.content);
-            const batchSignals = safeParseSignals(text);
-            newSignals.push(...batchSignals);
-
-            // Cache analysis results
-            if (promptHash && batch.tweetUrls?.length) {
-              ctx.waitUntil(cacheAnalysis(env, promptHash, batch.tweetUrls, text, resolvedModel));
-            }
-
-            // Track usage
-            const inputTokens = data.usage?.input_tokens || 0;
-            const outputTokens = data.usage?.output_tokens || 0;
-            ctx.waitUntil(logUsage(env, userId, 'scheduled_scan_analyze', {
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
-              cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
-              accounts_count: batch.accounts.length,
-            }));
-          }
-        } catch (e) {
-          console.error(`Scheduled scan batch failed for user ${userId}:`, e.message);
-        }
-      }
-    }
-
-    // 9. Combine and save
-    const allSignals = [...cachedSignals, ...newSignals];
-
-    // Deduplicate by tweet_url + title
-    const seen = new Set();
-    const dedupedSignals = allSignals.filter(s => {
-      const key = `${s.tweet_url}::${s.title}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    await saveScanToDb(env, ctx, userId, {
-      accounts, days, model, promptHash, creditsNeeded,
-      signals: dedupedSignals,
-      totalTweets,
-      label: schedule.label,
-    });
-
-    // 10. Update schedule status
-    await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-      method: 'PATCH',
-      body: {
-        last_run_status: 'success',
-        last_run_message: `${dedupedSignals.length} signals from ${totalTweets} tweets`,
-      },
-    });
-
+    await Promise.race([scanPromise, timeoutPromise]);
   } catch (e) {
     console.error(`Scheduled scan failed for schedule ${schedule.id}:`, e.message, e.stack);
     try {
@@ -752,23 +528,288 @@ async function executeScheduledScan(env, ctx, schedule) {
   }
 }
 
-/**
- * Save a completed scan to the scans table and deduct credits.
- */
-async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals, totalTweets, label }) {
-  // Deduct credits
-  const result = await supabaseRpc(env, 'deduct_credits', {
-    p_user_id: userId,
-    p_amount: creditsNeeded,
-    p_description: `Scheduled scan "${label}": ${accounts.length} accounts × ${days}d`,
-    p_metadata: { accounts_count: accounts.length, range_days: days, scheduled: true },
-  });
+async function executeScheduledScanInner(env, ctx, schedule, userId) {
+  const sid = schedule.id;
+  const log = (msg) => console.log(`[sched:${sid.slice(0, 8)}] ${msg}`);
+  const setStatus = (status, message) =>
+    supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+      method: 'PATCH',
+      body: { last_run_status: status, last_run_message: message?.slice(0, 250) },
+    }).catch(e => console.error(`[sched:${sid.slice(0, 8)}] Failed to set status:`, e.message));
 
-  if (result === -1) {
-    throw new Error('Insufficient credits');
+  // 1. Resolve accounts — schedule > preset > user's presets
+  let accounts = Array.isArray(schedule.accounts) ? [...schedule.accounts] : [];
+  let accountSource = 'schedule';
+
+  if (schedule.preset_id && !accounts.length) {
+    try {
+      const rows = await supabaseQuery(env, `presets?id=eq.${schedule.preset_id}&user_id=eq.${userId}&select=accounts`);
+      if (rows?.[0]?.accounts?.length) { accounts = rows[0].accounts; accountSource = 'preset'; }
+      else log('Preset not found or empty, trying fallbacks');
+    } catch (e) { log(`Preset lookup failed: ${e.message}`); }
   }
 
-  // Build range label
+  if (!accounts.length) {
+    try {
+      const userPresets = await supabaseQuery(env, `presets?user_id=eq.${userId}&select=accounts&order=updated_at.desc&limit=5`);
+      if (userPresets?.length) {
+        const all = new Set();
+        userPresets.forEach(p => (p.accounts || []).forEach(a => all.add(a)));
+        accounts = [...all];
+        accountSource = 'user_presets';
+      }
+    } catch (e) { log(`User presets lookup failed: ${e.message}`); }
+  }
+
+  if (!accounts.length) {
+    await setStatus('error', 'No accounts — add lists/accounts to this schedule');
+    return;
+  }
+
+  log(`${accounts.length} accounts (from ${accountSource})`);
+
+  // 2. Get analyst prompt
+  let prompt = DEFAULT_ANALYST_PROMPT;
+  try {
+    const analysts = await supabaseQuery(env, `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`);
+    if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
+  } catch { /* use default */ }
+
+  // 3. Get model preference
+  let model = 'claude-sonnet-4-20250514';
+  try {
+    const settings = await supabaseQuery(env, `user_settings?user_id=eq.${userId}&select=model`);
+    if (settings?.[0]?.model) model = settings[0].model;
+  } catch { /* use default */ }
+
+  // 4. Check credits
+  const days = Math.max(1, Math.min(30, schedule.range_days || 1));
+  const creditsNeeded = calculateScanCredits(accounts.length, days, model);
+  const profile = await getProfile(env, userId);
+
+  if (!profile || profile.credits_balance < creditsNeeded) {
+    await setStatus('error', `Insufficient credits (need ${creditsNeeded}, have ${profile?.credits_balance || 0})`);
+    return;
+  }
+
+  // 5. Check cross-user scan cache
+  const promptHash = djb2Hash(`${model}\n${prompt}`);
+  const scanKey = hashScanKey(accounts, days, promptHash);
+  if (env.TWEET_CACHE) {
+    try {
+      const cached = await env.TWEET_CACHE.get(scanKey, 'json');
+      if (cached?.signals?.length) {
+        await saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals: cached.signals, totalTweets: cached.total_tweets || 0, label: schedule.label });
+        await setStatus('success', `${cached.signals.length} signals (cached)`);
+        log('Served from scan cache');
+        return;
+      }
+    } catch (e) { log(`Scan cache check failed: ${e.message}`); }
+  }
+
+  // 6. Fetch tweets (concurrency-limited, with error tracking)
+  const CONCURRENCY = 3; // conservative to avoid rate limits
+  const accountData = [];
+  const failedAccounts = [];
+  for (let i = 0; i < accounts.length; i += CONCURRENCY) {
+    const chunk = accounts.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map(async (account) => {
+        const { tweets } = await fetchTweetsCoalesced(account, days, env, ctx);
+        return { account, tweets: tweets || [] };
+      })
+    );
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === 'fulfilled') {
+        accountData.push(results[j].value);
+      } else {
+        failedAccounts.push(chunk[j]);
+        accountData.push({ account: chunk[j], tweets: [] });
+      }
+    }
+  }
+
+  const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
+  if (failedAccounts.length) log(`Failed to fetch: ${failedAccounts.join(', ')}`);
+
+  if (totalTweets === 0) {
+    const detail = failedAccounts.length
+      ? `No tweets (${failedAccounts.length}/${accounts.length} accounts failed to fetch)`
+      : `No tweets found for ${accounts.length} accounts in the last ${days === 1 ? 'day' : days + ' days'}`;
+    await setStatus('error', detail);
+    return;
+  }
+
+  log(`${totalTweets} tweets from ${accountData.filter(a => a.tweets.length > 0).length}/${accounts.length} accounts`);
+
+  // 7. Check per-tweet analysis cache (with safe URL encoding)
+  let cachedSignals = [];
+  let uncachedAccountData = accountData;
+  try {
+    const allTweetUrls = [];
+    accountData.forEach(a => {
+      a.tweets.forEach(tw => {
+        if (!tw.id) return; // skip tweets without an ID
+        const author = tw.author?.userName || a.account;
+        allTweetUrls.push(`https://x.com/${author}/status/${tw.id}`);
+      });
+    });
+
+    if (allTweetUrls.length > 0) {
+      // Batch in groups of 100 (safe for URL length limits)
+      const CACHE_BATCH = 100;
+      const cachedUrlSet = new Set();
+      for (let i = 0; i < allTweetUrls.length; i += CACHE_BATCH) {
+        const batch = allTweetUrls.slice(i, i + CACHE_BATCH);
+        // Escape any double-quotes in URLs for PostgREST in() filter
+        const urlList = batch.map(u => `"${u.replace(/"/g, '\\"')}"`).join(',');
+        const rows = await supabaseQuery(env,
+          `analysis_cache?prompt_hash=eq.${encodeURIComponent(promptHash)}&tweet_url=in.(${urlList})&select=tweet_url,signals`
+        );
+        if (rows?.length) {
+          rows.forEach(r => {
+            cachedUrlSet.add(r.tweet_url);
+            if (r.signals?.length) cachedSignals.push(...r.signals);
+          });
+        }
+      }
+
+      if (cachedUrlSet.size > 0) {
+        log(`${cachedUrlSet.size}/${allTweetUrls.length} tweets cached`);
+        uncachedAccountData = accountData.map(a => ({
+          account: a.account,
+          tweets: a.tweets.filter(tw => {
+            if (!tw.id) return false;
+            const author = tw.author?.userName || a.account;
+            return !cachedUrlSet.has(`https://x.com/${author}/status/${tw.id}`);
+          }),
+        })).filter(a => a.tweets.length > 0);
+      }
+    }
+  } catch (e) {
+    log(`Cache check failed (will analyze all): ${e.message}`);
+    uncachedAccountData = accountData; // fall back to analyzing everything
+  }
+
+  // 8. Call Claude for uncached tweets
+  let newSignals = [];
+  let batchesFailed = 0;
+  let batchesTotal = 0;
+  if (uncachedAccountData.length > 0) {
+    let resolvedModel = model;
+    try {
+      const modelInfo = await resolveAnthropicModel(env, model);
+      if (modelInfo?.resolved) resolvedModel = modelInfo.resolved;
+    } catch { /* use original */ }
+
+    const batches = buildAnalysisBatches(uncachedAccountData, prompt.length || 0);
+    batchesTotal = batches.length;
+
+    if (!env.ANTHROPIC_API_KEY) {
+      throw new Error('Anthropic API key not configured');
+    }
+
+    for (const batch of batches) {
+      try {
+        const anthropicBody = {
+          model: resolvedModel,
+          max_tokens: 16384,
+          system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: batch.text }],
+        };
+
+        let data = null;
+        const MAX_RETRIES = 1;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify(anthropicBody),
+          });
+
+          // Handle rate limiting with longer backoff
+          if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
+            if (attempt < MAX_RETRIES) {
+              await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 15_000)));
+              continue;
+            }
+            throw new Error('Anthropic rate limited');
+          }
+
+          data = await res.json();
+          if (data.error) {
+            if (attempt < MAX_RETRIES && res.status >= 500) {
+              await new Promise(r => setTimeout(r, 2000));
+              continue;
+            }
+            throw new Error(data.error.message || `Anthropic error (${res.status})`);
+          }
+          break;
+        }
+
+        if (data?.content) {
+          const text = extractText(data.content);
+          const batchSignals = safeParseSignals(text);
+          newSignals.push(...batchSignals);
+
+          if (promptHash && batch.tweetUrls?.length) {
+            ctx.waitUntil(cacheAnalysis(env, promptHash, batch.tweetUrls, text, resolvedModel));
+          }
+
+          const inputTokens = data.usage?.input_tokens || 0;
+          const outputTokens = data.usage?.output_tokens || 0;
+          ctx.waitUntil(logUsage(env, userId, 'scheduled_scan_analyze', {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
+            accounts_count: batch.accounts.length,
+          }));
+        }
+      } catch (e) {
+        batchesFailed++;
+        console.error(`[sched:${sid.slice(0, 8)}] Batch failed:`, e.message);
+      }
+    }
+  }
+
+  // 9. Combine, dedup, save
+  const allSignals = [...cachedSignals, ...newSignals];
+  const seen = new Set();
+  const dedupedSignals = allSignals.filter(s => {
+    const key = `${s.tweet_url || ''}::${s.title || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // If ALL batches failed and we have no signals at all, report error
+  if (dedupedSignals.length === 0 && batchesFailed > 0) {
+    throw new Error(`Analysis failed (${batchesFailed}/${batchesTotal} batches failed)`);
+  }
+
+  await saveScanToDb(env, ctx, userId, {
+    accounts, days, model, promptHash, creditsNeeded,
+    signals: dedupedSignals, totalTweets, label: schedule.label,
+  });
+
+  // 10. Success
+  const parts = [`${dedupedSignals.length} signals from ${totalTweets} tweets`];
+  if (batchesFailed) parts.push(`(${batchesFailed} batch${batchesFailed > 1 ? 'es' : ''} failed)`);
+  if (failedAccounts.length) parts.push(`(${failedAccounts.length} account${failedAccounts.length > 1 ? 's' : ''} unreachable)`);
+  await setStatus('success', parts.join(' '));
+  log('Complete: ' + parts[0]);
+}
+
+/**
+ * Save a completed scan to the scans table and deduct credits.
+ * Order: save scan first (so results aren't lost), then deduct credits.
+ */
+async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals, totalTweets, label }) {
   const rangeLabel = days <= 1 ? 'Today' : days <= 7 ? 'Week' : 'Month';
 
   // Build tweet meta from signals
@@ -779,8 +820,8 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
     }
   });
 
-  // Save scan
-  const data = {
+  // Save scan FIRST (so results aren't lost if credit deduction fails)
+  const scanData = {
     user_id: userId,
     accounts: accounts,
     range_label: `${rangeLabel} (scheduled: ${label})`,
@@ -791,11 +832,27 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
     tweet_meta: tweetMeta,
     credits_used: creditsNeeded,
   };
+  await supabaseQuery(env, 'scans', { method: 'POST', body: scanData });
 
-  await supabaseQuery(env, 'scans', { method: 'POST', body: data });
+  // Then deduct credits (scan is already saved, user has results either way)
+  try {
+    const result = await supabaseRpc(env, 'deduct_credits', {
+      p_user_id: userId,
+      p_amount: creditsNeeded,
+      p_description: `Scheduled scan "${label}": ${accounts.length} accounts × ${days}d`,
+      p_metadata: { accounts_count: accounts.length, range_days: days, scheduled: true },
+    });
+    if (result === -1) {
+      console.warn(`[saveScanToDb] Credit deduction returned -1 for user ${userId} (scan already saved)`);
+    }
+  } catch (e) {
+    console.error(`[saveScanToDb] Credit deduction failed for user ${userId}: ${e.message} (scan already saved)`);
+  }
 
-  // Cache the whole scan result
-  cacheScanResult(env, ctx, accounts, days, promptHash, signals, totalTweets);
+  // Cache the whole scan result (best-effort)
+  try {
+    cacheScanResult(env, ctx, accounts, days, promptHash, signals, totalTweets);
+  } catch { /* non-critical */ }
 }
 
 /**
@@ -803,6 +860,29 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
  */
 async function runDueScheduledScans(env, ctx) {
   try {
+    // Reset stale "running" scans (stuck for > 5 min = worker timed out/crashed)
+    // Only reset if last_run_at is old — avoids race with scans that just completed
+    try {
+      const staleThreshold = new Date(Date.now() - 5 * 60_000).toISOString();
+      const stale = await supabaseQuery(env,
+        `scheduled_scans?last_run_status=eq.running&last_run_at=lt.${staleThreshold}&select=id,label`
+      );
+      if (stale?.length) {
+        console.log(`[cron] Resetting ${stale.length} stale running scan(s)`);
+        for (const s of stale) {
+          // Only update if status is STILL 'running' (another cron tick or the scan itself may have fixed it)
+          await supabaseQuery(env,
+            `scheduled_scans?id=eq.${s.id}&last_run_status=eq.running&last_run_at=lt.${staleThreshold}`, {
+              method: 'PATCH',
+              body: { last_run_status: 'error', last_run_message: 'Scan timed out — will retry at next scheduled time' },
+            }
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[cron] Failed to reset stale scans:', e.message);
+    }
+
     // Query all enabled schedules
     const schedules = await supabaseQuery(env,
       `scheduled_scans?enabled=eq.true&select=*`
@@ -1105,24 +1185,32 @@ async function fetchTweetsCoalesced(account, days, env, ctx) {
 
   // 3. Coalesce concurrent requests for the same key
   if (inflight.has(key)) {
-    const tweets = await inflight.get(key);
-    return { tweets, cached: false, coalesced: true };
+    try {
+      const tweets = await inflight.get(key);
+      return { tweets, cached: false, coalesced: true };
+    } catch (e) {
+      // The original fetch failed — the caller that initiated it handles cleanup
+      throw e;
+    }
   }
 
   const promise = fetchTwitterTweetsRaw(env, account, days);
   inflight.set(key, promise);
 
+  // Safety: auto-cleanup after 60s to prevent permanent leaks if something goes wrong
+  const safetyCleanup = setTimeout(() => inflight.delete(key), 60_000);
+
   try {
     const tweets = await promise;
     // Cache in KV (TTL: 4 hours — matches bucket size)
     if (env.TWEET_CACHE && tweets.length > 0) {
-      // Don't await KV write — fire and continue
       ctx.waitUntil(
         env.TWEET_CACHE.put(key, JSON.stringify(tweets), { expirationTtl: TWEET_CACHE_HOURS * 3600 })
       );
     }
     return { tweets, cached: false };
   } finally {
+    clearTimeout(safetyCleanup);
     inflight.delete(key);
   }
 }
@@ -1131,6 +1219,15 @@ async function handleFetchTweets(request, env, user, ctx) {
   const { account, days } = await request.json();
   if (!account || !days) {
     return corsJson({ error: 'Missing account or days' }, 400, env);
+  }
+  // Validate account: alphanumeric/underscores, 1-15 chars (Twitter username rules)
+  if (typeof account !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(account)) {
+    return corsJson({ error: 'Invalid account name' }, 400, env);
+  }
+  // Validate days: positive integer, max 30
+  const daysNum = parseInt(days);
+  if (!Number.isFinite(daysNum) || daysNum < 1 || daysNum > 30) {
+    return corsJson({ error: 'Days must be between 1 and 30' }, 400, env);
   }
 
   // Credits > 0 = managed keys; no credits = BYOK
@@ -1161,6 +1258,15 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
   const { accounts, days } = await request.json();
   if (!accounts?.length || !days) {
     return corsJson({ error: 'Missing accounts or days' }, 400, env);
+  }
+  // Validate days: positive integer, max 30
+  const daysNum = parseInt(days);
+  if (!Number.isFinite(daysNum) || daysNum < 1 || daysNum > 30) {
+    return corsJson({ error: 'Days must be between 1 and 30' }, 400, env);
+  }
+  // Validate all account names
+  if (!Array.isArray(accounts) || accounts.some(a => typeof a !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(a))) {
+    return corsJson({ error: 'Invalid account name(s)' }, 400, env);
   }
 
   // Credits > 0 = managed keys
@@ -1248,6 +1354,7 @@ async function fetchTwitterTweetsRaw(env, account, days) {
       }
     }
 
+    if (!data) break; // All retries exhausted without a response
     const apiData = data.data || data;
     if (data.status === 'error') break;
 
@@ -1291,9 +1398,11 @@ async function handleAnalyze(request, env, user) {
   }
   const resolvedModel = resolvedModelInfo?.resolved || normalizeModelId(model);
 
-  if (!messages) {
-    return corsJson({ error: 'Missing messages' }, 400, env);
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return corsJson({ error: 'Missing or invalid messages' }, 400, env);
   }
+  // Cap max_tokens to prevent abuse
+  const safeMaxTokens = Math.min(Math.max(parseInt(max_tokens) || 16384, 256), 32768);
 
   // Credits > 0 = managed keys; no credits = BYOK
   const profile = await getProfile(env, user.id);
@@ -1320,7 +1429,7 @@ async function handleAnalyze(request, env, user) {
   const systemPrompt = body.system;
   const anthropicBody = {
     model: resolvedModel || 'claude-sonnet-4-20250514',
-    max_tokens: max_tokens || 16384,
+    max_tokens: safeMaxTokens,
     messages,
     ...(systemPrompt ? {
       system: (Array.isArray(systemPrompt) ? systemPrompt : [{ type: 'text', text: systemPrompt }])
@@ -1341,7 +1450,12 @@ async function handleAnalyze(request, env, user) {
         body: JSON.stringify(anthropicBody),
       });
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Anthropic returned non-JSON response (status ${res.status})`);
+      }
       if (data.error) {
         const errType = data.error.type;
         // If the requested model was invalid/deprecated, refresh model list and retry once with the best match.
@@ -1439,18 +1553,31 @@ function estimateAnthropicCost(model, inputTokens, outputTokens) {
   return (inputTokens * inputRate / 1000000) + (outputTokens * outputRate / 1000000);
 }
 
+// Escape a string for use inside PostgREST in.() filter — prevents injection
+function escapeForPostgrestIn(s) {
+  // PostgREST expects quoted strings in in.("val1","val2")
+  // We need to escape backslashes and double-quotes within the value
+  return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
 async function checkAnalysisCache(env, promptHash, tweetUrls) {
   try {
-    const urlList = tweetUrls.map(u => `"${u}"`).join(',');
-    const rows = await supabaseQuery(env,
-      `analysis_cache?prompt_hash=eq.${promptHash}&tweet_url=in.(${urlList})&select=tweet_url,signals`
-    );
-    if (!rows || rows.length < tweetUrls.length) return null;
-    // All tweet URLs are cached
+    // Batch URLs to prevent excessively long query strings
+    const BATCH = 100;
     const allSignals = [];
-    rows.forEach(r => {
-      if (r.signals) allSignals.push(...r.signals);
-    });
+    let totalFound = 0;
+    for (let i = 0; i < tweetUrls.length; i += BATCH) {
+      const batch = tweetUrls.slice(i, i + BATCH);
+      const urlList = batch.map(escapeForPostgrestIn).join(',');
+      const rows = await supabaseQuery(env,
+        `analysis_cache?prompt_hash=eq.${encodeURIComponent(promptHash)}&tweet_url=in.(${urlList})&select=tweet_url,signals`
+      );
+      if (rows?.length) {
+        totalFound += rows.length;
+        rows.forEach(r => { if (r.signals) allSignals.push(...r.signals); });
+      }
+    }
+    if (totalFound < tweetUrls.length) return null;
     return allSignals;
   } catch {
     return null;
@@ -1472,10 +1599,17 @@ async function handleCheckAnalysisCache(request, env, user) {
   const urls = tweet_urls.slice(0, 500);
 
   try {
-    const urlList = urls.map(u => `"${u}"`).join(',');
-    const rows = await supabaseQuery(env,
-      `analysis_cache?prompt_hash=eq.${prompt_hash}&tweet_url=in.(${urlList})&select=tweet_url,signals`
-    );
+    // Batch to prevent URL length issues; escape for PostgREST
+    const BATCH = 100;
+    let rows = [];
+    for (let i = 0; i < urls.length; i += BATCH) {
+      const batch = urls.slice(i, i + BATCH);
+      const urlList = batch.map(escapeForPostgrestIn).join(',');
+      const batchRows = await supabaseQuery(env,
+        `analysis_cache?prompt_hash=eq.${encodeURIComponent(prompt_hash)}&tweet_url=in.(${urlList})&select=tweet_url,signals`
+      );
+      if (batchRows?.length) rows = rows.concat(batchRows);
+    }
 
     const cached = {};
     const foundUrls = new Set();
@@ -1584,9 +1718,31 @@ async function handleGetSettings(env, user) {
 async function handleUpdateSettings(request, env, user) {
   const body = await request.json();
   const allowed = ['theme', 'font', 'font_size', 'text_case', 'finance_provider', 'model', 'live_enabled'];
+
+  // Validate field types and values
+  const VALID_THEMES = ['light', 'dark', 'auto'];
+  const VALID_TEXT_CASES = ['normal', 'uppercase', 'lowercase'];
+  const validators = {
+    theme: v => typeof v === 'string' && VALID_THEMES.includes(v),
+    font: v => typeof v === 'string' && v.length <= 100,
+    font_size: v => typeof v === 'number' && v >= 8 && v <= 32,
+    text_case: v => typeof v === 'string' && VALID_TEXT_CASES.includes(v),
+    finance_provider: v => typeof v === 'string' && v.length <= 50,
+    model: v => typeof v === 'string' && v.length <= 100,
+    live_enabled: v => typeof v === 'boolean',
+  };
+
   const update = {};
   for (const key of allowed) {
-    if (body[key] !== undefined) update[key] = body[key];
+    if (body[key] !== undefined) {
+      if (validators[key] && !validators[key](body[key])) {
+        return corsJson({ error: `Invalid value for ${key}` }, 400, env);
+      }
+      update[key] = body[key];
+    }
+  }
+  if (Object.keys(update).length === 0) {
+    return corsJson({ error: 'No valid fields to update' }, 400, env);
   }
   update.updated_at = new Date().toISOString();
 
@@ -1613,6 +1769,12 @@ async function handleSavePreset(request, env, user) {
   const { id, name, accounts, is_public, sort_order } = body;
   if (!name || !accounts?.length) {
     return corsJson({ error: 'Name and accounts required' }, 400, env);
+  }
+  if (typeof name !== 'string' || name.length > 100) {
+    return corsJson({ error: 'Name must be a string under 100 characters' }, 400, env);
+  }
+  if (!Array.isArray(accounts) || accounts.length > 200) {
+    return corsJson({ error: 'Accounts must be an array with at most 200 entries' }, 400, env);
   }
 
   const data = {
@@ -1659,10 +1821,14 @@ async function handleGetAnalysts(env, user) {
 async function handleSaveAnalyst(request, env, user) {
   const body = await request.json();
   const { id, name, prompt, is_active } = body;
-  if (!name) return corsJson({ error: 'Name required' }, 400, env);
+  if (!name || typeof name !== 'string') return corsJson({ error: 'Name required' }, 400, env);
+  if (name.length > 100) return corsJson({ error: 'Name must be under 100 characters' }, 400, env);
+  if (prompt && typeof prompt === 'string' && prompt.length > 50_000) {
+    return corsJson({ error: 'Prompt must be under 50,000 characters' }, 400, env);
+  }
 
   const data = {
-    id: id || 'a_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: id || 'a_' + crypto.randomUUID(),
     user_id: user.id,
     name,
     prompt: prompt || '',
@@ -1702,10 +1868,15 @@ async function handleDeleteAnalyst(request, env, user) {
 // ============================================================================
 
 async function handleGetSchedules(env, user) {
-  const rows = await supabaseQuery(env,
-    `scheduled_scans?user_id=eq.${user.id}&select=*&order=time.asc`
-  );
-  return corsJson(rows || [], 200, env);
+  try {
+    const rows = await supabaseQuery(env,
+      `scheduled_scans?user_id=eq.${user.id}&select=*&order=time.asc`
+    );
+    return corsJson(rows || [], 200, env);
+  } catch (e) {
+    console.error('handleGetSchedules error:', e.message);
+    return corsJson([], 200, env); // graceful degradation — return empty, don't break UI
+  }
 }
 
 async function handleSaveSchedule(request, env, user) {
@@ -1716,33 +1887,74 @@ async function handleSaveSchedule(request, env, user) {
     return corsJson({ error: 'Time and label required' }, 400, env);
   }
 
-  // Validate time format
-  if (!/^\d{2}:\d{2}$/.test(time)) {
-    return corsJson({ error: 'Time must be in HH:MM format' }, 400, env);
+  // Validate time format and range
+  const timeMatch = (time || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!timeMatch) return corsJson({ error: 'Time must be HH:MM' }, 400, env);
+  const h = parseInt(timeMatch[1], 10), m = parseInt(timeMatch[2], 10);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return corsJson({ error: 'Invalid time value' }, 400, env);
+  const normalizedTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+  // Validate timezone — only accept valid IANA timezones
+  let validTz = 'UTC';
+  if (timezone) {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone }); // throws if invalid
+      validTz = timezone;
+    } catch {
+      // Invalid timezone — default to UTC silently
+    }
   }
+
+  // Validate and sanitize days array (0-6 only, deduplicated)
+  const validDays = Array.isArray(days)
+    ? [...new Set(days.filter(d => typeof d === 'number' && d >= 0 && d <= 6))].sort()
+    : [];
+  // 7 selected days = every day = empty array
+  const normalizedDays = validDays.length === 7 ? [] : validDays;
+
+  // Validate range_days
+  const validRangeDays = [1, 7, 30].includes(range_days) ? range_days : 1;
+
+  // Sanitize accounts (lowercase, trimmed, deduped)
+  const validAccounts = Array.isArray(accounts)
+    ? [...new Set(accounts.map(a => String(a).trim().toLowerCase().replace(/^@/, '')).filter(Boolean))]
+    : [];
+
+  // Sanitize label
+  const validLabel = String(label || 'Scan').trim().slice(0, 100);
 
   const data = {
     user_id: user.id,
-    label: label || 'Scan',
-    time,
-    timezone: timezone || 'UTC',
-    days: days || [],
-    range_days: range_days || 1,
+    label: validLabel,
+    time: normalizedTime,
+    timezone: validTz,
+    days: normalizedDays,
+    range_days: validRangeDays,
     preset_id: preset_id || null,
-    accounts: accounts || [],
-    enabled: enabled !== undefined ? enabled : true,
+    accounts: validAccounts,
+    enabled: enabled !== undefined ? Boolean(enabled) : true,
     updated_at: new Date().toISOString(),
   };
 
   if (id) {
-    // Update existing
+    // Update existing — ensure user owns it
+    const existing = await supabaseQuery(env,
+      `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}&select=id`
+    );
+    if (!existing?.length) return corsJson({ error: 'Schedule not found' }, 404, env);
+
     await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, {
       method: 'PATCH',
       body: data,
     });
     return corsJson({ ok: true, id }, 200, env);
   } else {
-    // Insert new
+    // Limit max schedules per user
+    const count = await supabaseQuery(env,
+      `scheduled_scans?user_id=eq.${user.id}&select=id`
+    );
+    if (count?.length >= 20) return corsJson({ error: 'Maximum 20 schedules allowed' }, 400, env);
+
     const rows = await supabaseQuery(env, 'scheduled_scans', {
       method: 'POST',
       body: data,
@@ -1773,11 +1985,40 @@ async function handleSaveScan(request, env, user, ctx) {
   const body = await request.json();
   const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok, reservation_id, model } = body;
 
+  // Validate inputs
+  if (signals && (!Array.isArray(signals) || signals.length > 5000)) {
+    return corsJson({ error: 'Invalid signals data' }, 400, env);
+  }
+  if (accounts && (!Array.isArray(accounts) || accounts.length > 200)) {
+    return corsJson({ error: 'Invalid accounts data' }, 400, env);
+  }
+
   const accountCount = accounts?.length || 0;
-  const days = range_days || 1;
+  const days = Math.max(1, Math.min(parseInt(range_days) || 1, 30));
   const creditsUsed = byok ? 0 : calculateScanCredits(accountCount, days, model);
 
-  // Deduct credits if user has them and scan used managed keys (not BYOK)
+  // Save the scan FIRST — user should always get their results
+  const data = {
+    user_id: user.id,
+    accounts: accounts || [],
+    range_label: typeof range_label === 'string' ? range_label.slice(0, 200) : '',
+    range_days: days,
+    total_tweets: Math.max(0, parseInt(total_tweets) || 0),
+    signal_count: signal_count || signals?.length || 0,
+    signals: signals || [],
+    tweet_meta: tweet_meta || {},
+    credits_used: creditsUsed,
+  };
+
+  let rows;
+  try {
+    rows = await supabaseQuery(env, 'scans', { method: 'POST', body: data });
+  } catch (e) {
+    console.error('Failed to save scan:', e.message);
+    return corsJson({ error: 'Failed to save scan results' }, 500, env);
+  }
+
+  // Deduct credits AFTER saving — user always gets results even if billing fails
   const profile = await getProfile(env, user.id);
   let newBalance = profile?.credits_balance || 0;
 
@@ -1786,44 +2027,30 @@ async function handleSaveScan(request, env, user, ctx) {
     if (reservation_id) {
       const reservation = creditReservations.get(reservation_id);
       if (!reservation || reservation.userId !== user.id) {
-        // Reservation expired or doesn't belong to this user — still try to deduct
         console.warn(`Reservation ${reservation_id} not found or mismatched, falling back to direct deduct`);
       } else {
-        // Valid reservation — remove it so it can't be reused
         creditReservations.delete(reservation_id);
       }
     }
 
-    const result = await supabaseRpc(env, 'deduct_credits', {
-      p_user_id: user.id,
-      p_amount: creditsUsed,
-      p_description: `Scan: ${accountCount} accounts × ${days}d`,
-      p_metadata: { accounts_count: accountCount, range_days: days, reservation_id: reservation_id || null },
-    });
-    if (result === -1) {
-      return corsJson({
-        error: 'Insufficient credits for this scan.',
-        code: 'INSUFFICIENT_CREDITS',
-        credits_needed: creditsUsed,
-        credits_balance: profile.credits_balance,
-      }, 403, env);
+    try {
+      const result = await supabaseRpc(env, 'deduct_credits', {
+        p_user_id: user.id,
+        p_amount: creditsUsed,
+        p_description: `Scan: ${accountCount} accounts × ${days}d`,
+        p_metadata: { accounts_count: accountCount, range_days: days, reservation_id: reservation_id || null },
+      });
+      if (result === -1) {
+        // Insufficient credits — scan already saved, just warn
+        console.warn(`Insufficient credits for user ${user.id} (needed ${creditsUsed}, has ${profile.credits_balance})`);
+      } else {
+        newBalance = result;
+      }
+    } catch (e) {
+      console.error(`[BILLING] Failed to deduct ${creditsUsed} credits for user ${user.id}:`, e.message);
+      // Don't fail the request — scan was already saved
     }
-    newBalance = result;
   }
-
-  const data = {
-    user_id: user.id,
-    accounts: accounts || [],
-    range_label: range_label || '',
-    range_days: days,
-    total_tweets: total_tweets || 0,
-    signal_count: signal_count || signals?.length || 0,
-    signals: signals || [],
-    tweet_meta: tweet_meta || {},
-    credits_used: creditsUsed,
-  };
-
-  const rows = await supabaseQuery(env, 'scans', { method: 'POST', body: data });
 
   // Also save to cross-user whole-scan cache
   if (prompt_hash && signals?.length) {
@@ -2047,6 +2274,17 @@ async function getOrCreateStripeCustomer(env, user) {
   return customer.id;
 }
 
+// Validate redirect URL belongs to our domain — prevents open redirect attacks
+function isAllowedRedirectUrl(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && (parsed.hostname === 'sentry.is' || parsed.hostname.endsWith('.sentry.is'));
+  } catch {
+    return false;
+  }
+}
+
 async function handleCheckout(request, env, user) {
   const { pack_id, recurring, success_url, cancel_url } = await request.json();
 
@@ -2064,14 +2302,18 @@ async function handleCheckout(request, env, user) {
 
   const mode = recurring ? 'subscription' : 'payment';
 
+  // Sanitize redirect URLs — only allow our own domain
+  const safeSuccessUrl = isAllowedRedirectUrl(success_url) ? success_url : 'https://sentry.is/?billing=success';
+  const safeCancelUrl = isAllowedRedirectUrl(cancel_url) ? cancel_url : 'https://sentry.is/?billing=cancel';
+
   const params = {
     'customer': customerId,
     'mode': mode,
     'payment_method_types[0]': 'card',
     'line_items[0][price]': priceId,
     'line_items[0][quantity]': '1',
-    'success_url': (success_url || 'https://sentry.is/?billing=success') + '&session_id={CHECKOUT_SESSION_ID}',
-    'cancel_url': cancel_url || 'https://sentry.is/?billing=cancel',
+    'success_url': safeSuccessUrl + (safeSuccessUrl.includes('?') ? '&' : '?') + 'session_id={CHECKOUT_SESSION_ID}',
+    'cancel_url': safeCancelUrl,
     'allow_promotion_codes': 'true',
     'metadata[pack_id]': pack.id,
     'metadata[credits]': pack.credits.toString(),
@@ -2104,9 +2346,12 @@ async function handleBillingPortal(request, env, user) {
   const customerId = await getOrCreateStripeCustomer(env, user);
   const { return_url } = await request.json();
 
+  // Sanitize return URL — only allow our own domain
+  const safeReturnUrl = isAllowedRedirectUrl(return_url) ? return_url : 'https://sentry.is/v3/';
+
   const session = await stripeRequest(env, '/billing_portal/sessions', {
     'customer': customerId,
-    'return_url': return_url || 'https://sentry.is/v3/',
+    'return_url': safeReturnUrl,
   });
 
   if (session.error) {
@@ -2265,28 +2510,39 @@ async function handleStripeWebhook(request, env) {
       const userId = metadata.user_id;
 
       if (credits > 0 && userId) {
-        // Add credits to user
-        const pack = CREDIT_PACKS[packId];
-        const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
-        const txType = obj.mode === 'subscription' ? 'recurring' : 'purchase';
-        await supabaseRpc(env, 'add_credits', {
-          p_user_id: userId,
-          p_amount: credits,
-          p_type: txType,
-          p_description: desc,
-          p_metadata: { stripe_session_id: obj.id, pack_id: packId },
-        });
+        try {
+          const pack = CREDIT_PACKS[packId];
+          const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
+          const txType = obj.mode === 'subscription' ? 'recurring' : 'purchase';
+          await supabaseRpc(env, 'add_credits', {
+            p_user_id: userId,
+            p_amount: credits,
+            p_type: txType,
+            p_description: desc,
+            p_metadata: { stripe_session_id: obj.id, pack_id: packId },
+          });
+        } catch (e) {
+          // Credit fulfillment failed — this is critical. Log prominently.
+          // The billing_events row already exists, so retries of this webhook will
+          // be caught as duplicates. We return 500 so Stripe retries the event.
+          console.error(`[BILLING CRITICAL] Failed to add ${credits} credits for user ${userId} (session ${obj.id}):`, e.message);
+          return corsJson({ error: 'Credit fulfillment failed, please retry' }, 500, env);
+        }
       }
 
       // If subscription, save the subscription ID
       if (obj.mode === 'subscription' && obj.subscription) {
-        await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
-          method: 'PATCH',
-          body: {
-            stripe_subscription_id: obj.subscription,
-            subscription_status: 'active',
-          },
-        });
+        try {
+          await supabaseQuery(env, `profiles?stripe_customer_id=eq.${customerId}`, {
+            method: 'PATCH',
+            body: {
+              stripe_subscription_id: obj.subscription,
+              subscription_status: 'active',
+            },
+          });
+        } catch (e) {
+          console.error(`[BILLING] Failed to save subscription ID for customer ${customerId}:`, e.message);
+        }
       }
       break;
     }
@@ -2297,22 +2553,27 @@ async function handleStripeWebhook(request, env) {
       if (obj.billing_reason === 'subscription_cycle') {
         const subscriptionId = obj.subscription;
         if (subscriptionId) {
-          const sub = await stripeGet(env, `/subscriptions/${subscriptionId}`);
-          const metadata = sub.metadata || {};
-          const credits = parseInt(metadata.credits) || 0;
-          const packId = metadata.pack_id || 'unknown';
-          const userId = metadata.user_id;
+          try {
+            const sub = await stripeGet(env, `/subscriptions/${subscriptionId}`);
+            const metadata = sub?.metadata || {};
+            const credits = parseInt(metadata.credits) || 0;
+            const packId = metadata.pack_id || 'unknown';
+            const userId = metadata.user_id;
 
-          if (credits > 0 && userId) {
-            const pack = CREDIT_PACKS[packId];
-            const desc = pack ? `${pack.name} pack renewal (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits (renewal)`;
-            await supabaseRpc(env, 'add_credits', {
-              p_user_id: userId,
-              p_amount: credits,
-              p_type: 'recurring',
-              p_description: desc,
-              p_metadata: { stripe_invoice_id: obj.id, pack_id: packId },
-            });
+            if (credits > 0 && userId) {
+              const pack = CREDIT_PACKS[packId];
+              const desc = pack ? `${pack.name} pack renewal (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits (renewal)`;
+              await supabaseRpc(env, 'add_credits', {
+                p_user_id: userId,
+                p_amount: credits,
+                p_type: 'recurring',
+                p_description: desc,
+                p_metadata: { stripe_invoice_id: obj.id, pack_id: packId },
+              });
+            }
+          } catch (e) {
+            console.error(`[BILLING CRITICAL] Failed to fulfill invoice.paid renewal (invoice ${obj.id}):`, e.message);
+            return corsJson({ error: 'Renewal fulfillment failed, please retry' }, 500, env);
           }
         }
       }
@@ -2368,9 +2629,9 @@ async function verifyStripeSignature(payload, header, secret) {
     const signature = parts.v1;
     if (!timestamp || !signature) return false;
 
-    // Check timestamp is within 5 minutes
+    // Check timestamp is within 5 minutes (reject both stale and future-dated)
     const age = Math.floor(Date.now() / 1000) - parseInt(timestamp);
-    if (age > 300) return false;
+    if (Math.abs(age) > 300) return false;
 
     const signedPayload = `${timestamp}.${payload}`;
     const key = await crypto.subtle.importKey(
@@ -2643,38 +2904,52 @@ async function handleProxy(request, env, ctx) {
 
   let targetUrl;
   try {
-    targetUrl = new URL(decodeURIComponent(target));
+    targetUrl = new URL(target); // Don't double-decode — URL constructor handles encoding
   } catch {
     return corsJson({ error: 'Invalid URL' }, 400, env);
   }
 
-  // Only allow specific hosts
-  const allowed = ['query1.finance.yahoo.com', 'api.coingecko.com'];
-  if (!allowed.some(h => targetUrl.hostname.endsWith(h))) {
+  // Enforce HTTPS only
+  if (targetUrl.protocol !== 'https:') {
+    return corsJson({ error: 'Only HTTPS URLs allowed' }, 403, env);
+  }
+
+  // Strict hostname allowlist — exact match only (prevents subdomain bypass like evil.query1.finance.yahoo.com)
+  const ALLOWED_HOSTS = new Set(['query1.finance.yahoo.com', 'api.coingecko.com']);
+  if (!ALLOWED_HOSTS.has(targetUrl.hostname)) {
     return corsJson({ error: 'Host not allowed' }, 403, env);
   }
 
+  // Strip credentials/fragments
+  targetUrl.username = '';
+  targetUrl.password = '';
+  targetUrl.hash = '';
+
   try {
-    // Use CF cache for proxy responses (prices don't change every second)
     const cacheUrl = new URL(request.url);
     const cache = caches.default;
     const cachedResponse = await cache.match(cacheUrl);
     if (cachedResponse) return cachedResponse;
 
-    const response = await fetch(targetUrl.toString());
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000); // 10s timeout
+    const response = await fetch(targetUrl.toString(), { signal: controller.signal });
+    clearTimeout(timeout);
+
+    // Limit response size to 1MB
+    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+    if (contentLength > 1_000_000) {
+      return corsJson({ error: 'Response too large' }, 502, env);
+    }
+
     const headers = new Headers(response.headers);
     Object.entries(corsHeaders(env)).forEach(([k, v]) => headers.set(k, v));
-    // Cache price data for 60s at the edge
     headers.set('Cache-Control', 'public, max-age=60, s-maxage=60');
-    const proxied = new Response(response.body, {
-      status: response.status,
-      headers,
-    });
+    const proxied = new Response(response.body, { status: response.status, headers });
 
-    // Store in CF cache (non-blocking)
     ctx.waitUntil(cache.put(cacheUrl, proxied.clone()));
     return proxied;
   } catch (e) {
-    return corsJson({ error: e.message }, 502, env);
+    return corsJson({ error: 'Upstream request failed' }, 502, env); // Don't leak internal error details
   }
 }

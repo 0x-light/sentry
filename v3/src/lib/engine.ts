@@ -60,6 +60,32 @@ export function normCat(c: string) { return CAT_MIGRATE[c] || c; }
 // STORAGE HELPERS
 // ============================================================================
 
+/**
+ * Safe localStorage.setItem — handles QuotaExceededError and unavailability.
+ * Returns true if successful, false otherwise.
+ */
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    // QuotaExceededError in most browsers, SecurityError in some private browsing modes
+    console.warn(`localStorage.setItem('${key}') failed:`, e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+/**
+ * Safe localStorage.getItem — returns fallback on any error.
+ */
+function safeGetItem(key: string, fallback = ''): string {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function getTwKey(): string { return localStorage.getItem(LS_TW) || ''; }
 export function getAnKey(): string { return localStorage.getItem(LS_AN) || ''; }
 export function getModel(): string { return localStorage.getItem(LS_MODEL) || DEFAULT_MODEL; }
@@ -359,16 +385,25 @@ export function getTweetImageUrl(tw: Tweet): string | null {
 }
 
 export function formatTweetForAnalysis(tw: Tweet): string {
-  const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  // Safe date parsing — don't crash on invalid dates
+  let date = 'unknown';
+  try {
+    if (tw.createdAt) {
+      const d = new Date(tw.createdAt);
+      if (!isNaN(d.getTime())) date = d.toISOString().slice(0, 16).replace('T', ' ');
+    }
+  } catch { /* keep 'unknown' */ }
+
   const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
   const url = getTweetUrl(tw);
   let text = sanitizeText(tw.text || '');
   const externalLinks: string[] = [];
-  if (tw.entities?.urls) {
+  if (Array.isArray(tw.entities?.urls)) {
     for (const u of tw.entities.urls) {
       if (u.url && u.expanded_url) {
         const expandedUrl = sanitizeText(u.expanded_url);
-        text = text.replace(u.url, expandedUrl);
+        // Use split/join for global replacement (text.replace only replaces first occurrence)
+        text = text.split(u.url).join(expandedUrl);
         if (!expandedUrl.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
           externalLinks.push(expandedUrl);
         }
@@ -377,10 +412,10 @@ export function formatTweetForAnalysis(tw: Tweet): string {
   }
   const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
   if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
-  if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
+  if (tw.isReply) parts.push(`(reply to @${sanitizeText(tw.inReplyToUsername || 'unknown')})`);
   if (tw.quoted_tweet) {
-    const quotedText = sanitizeText(tw.quoted_tweet.text || '');
-    const quotedAuthor = tw.quoted_tweet.author?.userName || 'unknown';
+    const quotedText = sanitizeText(tw.quoted_tweet.text || '').slice(0, 2000);
+    const quotedAuthor = sanitizeText(tw.quoted_tweet.author?.userName || 'unknown');
     parts.push(`--- QUOTED TWEET from @${quotedAuthor} ---\n${quotedText}\n--- END QUOTED TWEET ---`);
   }
   return parts.join('\n');
@@ -1462,7 +1497,7 @@ export function deleteHistoryScan(index: number) {
   const history = getScanHistory();
   if (index < 0 || index >= history.length) return;
   history.splice(index, 1);
-  localStorage.setItem(LS_SCANS, JSON.stringify(history));
+  safeSetItem(LS_SCANS, JSON.stringify(history));
 }
 
 // Pending scan
@@ -1472,10 +1507,10 @@ export function savePendingScan(accounts: string[], days: number, accountTweets:
       date: new Date().toISOString(), accounts: [...accounts], days,
       accountTweets: accountTweets.map(a => ({ account: a.account, tweets: a.tweets, error: a.error || null })),
     };
-    localStorage.setItem(LS_PENDING_SCAN, JSON.stringify(pending));
+    safeSetItem(LS_PENDING_SCAN, JSON.stringify(pending));
   } catch { }
 }
-export function clearPendingScan() { localStorage.removeItem(LS_PENDING_SCAN); }
+export function clearPendingScan() { try { localStorage.removeItem(LS_PENDING_SCAN); } catch { } }
 
 interface PendingScan {
   date: string;
@@ -1503,12 +1538,26 @@ export function exportData(customAccounts: string[], loadedPresets: string[], an
     presets: getPresets(), analysts, activeAnalyst: getActiveAnalystId(),
     accounts: customAccounts, loadedPresets, recents: getRecents(),
   };
-  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  } catch {
+    // Fallback for environments where btoa fails
+    throw new Error('Failed to encode backup data');
+  }
 }
 
 export function importData(encoded: string): any {
-  const json = decodeURIComponent(escape(atob(encoded.trim())));
-  return JSON.parse(json);
+  if (!encoded || typeof encoded !== 'string') {
+    throw new Error('Invalid import data');
+  }
+  try {
+    const json = decodeURIComponent(escape(atob(encoded.trim())));
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== 'object') throw new Error('Not an object');
+    return parsed;
+  } catch (e) {
+    throw new Error('Failed to decode backup — data may be corrupted or in wrong format');
+  }
 }
 
 // ============================================================================
@@ -1547,6 +1596,13 @@ export function formatChange(change: number): string {
   return sign + change.toFixed(2) + '%';
 }
 
+// Helper: fetch with timeout
+function fetchWithTimeout(url: string, timeoutMs = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
+
 export async function fetchCryptoPrices(symbols: string[]) {
   const now = Date.now();
   const needed = symbols.filter(s => { const c = priceCache[s]; return !c || (now - c.ts > PRICE_CACHE_TTL); });
@@ -1555,7 +1611,7 @@ export async function fetchCryptoPrices(symbols: string[]) {
   if (!ids.length) return;
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`;
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url);
     if (!resp.ok) return;
     const data = await resp.json();
     needed.forEach(sym => {
@@ -1573,7 +1629,7 @@ export async function fetchStockPrice(sym: string, originalSym?: string) {
     const yahooSym = normalizeSymbol(sym);
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=2d`;
     const url = `https://proxy.sentry.is/?url=${encodeURIComponent(yahooUrl)}`;
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url);
     if (!resp.ok) return;
     const data = await resp.json();
     const result = data?.chart?.result?.[0];
@@ -1649,32 +1705,49 @@ export function decodeSignal(encoded: string): Signal | null {
 // ============================================================================
 
 /**
+ * Parse and validate a "HH:MM" time string. Returns { h, m } or null.
+ */
+function parseTime(time: string): { h: number; m: number } | null {
+  if (!time) return null;
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const h = parseInt(match[1], 10), m = parseInt(match[2], 10);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return { h, m };
+}
+
+/**
  * Format a time string for display (converts 24h "HH:MM" to locale-friendly format).
  */
 export function formatScheduleTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
+  const parsed = parseTime(time);
+  if (!parsed) return time || '--:--'; // return as-is if invalid
   const d = new Date();
-  d.setHours(h, m, 0, 0);
+  d.setHours(parsed.h, parsed.m, 0, 0);
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 /**
  * Get the next upcoming scheduled scan time for display purposes.
- * Uses the server-provided schedule data.
+ * The schedule stores time in the USER's timezone — the server runs the cron in that tz.
+ * For the "next scan" label, we assume the browser is in the same timezone (the user's device).
+ * This is correct in the vast majority of cases.
  */
 export function getNextScheduleTime(schedules: ScheduledScan[]): { schedule: ScheduledScan; date: Date } | null {
   const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const today = now.getDay();
-
   const activeSchedules = schedules.filter(s => s.enabled);
   if (!activeSchedules.length) return null;
 
   let best: { schedule: ScheduledScan; date: Date } | null = null;
 
   for (const schedule of activeSchedules) {
-    const [h, m] = schedule.time.split(':').map(Number);
+    const parsed = parseTime(schedule.time);
+    if (!parsed) continue; // skip invalid times
+    const { h, m } = parsed;
+
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const scheduleMinutes = h * 60 + m;
+    const days = Array.isArray(schedule.days) ? schedule.days : [];
 
     // Check each of the next 7 days
     for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
@@ -1683,22 +1756,18 @@ export function getNextScheduleTime(schedules: ScheduledScan[]): { schedule: Sch
       targetDate.setHours(h, m, 0, 0);
       const targetDay = targetDate.getDay();
 
-      // Skip if day filter doesn't match
-      if (schedule.days.length > 0 && !schedule.days.includes(targetDay)) continue;
+      // Skip if day filter doesn't match (empty = every day)
+      if (days.length > 0 && !days.includes(targetDay)) continue;
 
-      // Skip if it's today but the time has passed and already ran
-      if (dayOffset === 0) {
-        if (currentMinutes >= scheduleMinutes) {
-          if (schedule.last_run_at) {
-            const lastRun = new Date(schedule.last_run_at);
-            if (lastRun.toDateString() === now.toDateString()) {
-              const lastRunMinutes = lastRun.getHours() * 60 + lastRun.getMinutes();
-              if (lastRunMinutes >= scheduleMinutes) continue;
-            }
-          }
-          // Time passed but hasn't run yet — it's due now, not "next"
-          continue;
+      // Skip if it's today and the time has passed
+      if (dayOffset === 0 && currentMinutes >= scheduleMinutes) {
+        // Check if already ran today at or after this time
+        if (schedule.last_run_at) {
+          const lastRun = new Date(schedule.last_run_at);
+          if (lastRun.toDateString() === now.toDateString()) continue;
         }
+        // Time passed — it's either running or overdue, skip to next occurrence
+        continue;
       }
 
       if (!best || targetDate < best.date) {

@@ -401,17 +401,17 @@ export function SettingsDialog() {
                           {isExpanded && (
                             <div className="px-3 pb-3 space-y-3">
                               <Separator />
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1">
+                              <div className="flex flex-wrap gap-2">
+                                <div className="space-y-1 flex-1 min-w-[120px]">
                                   <Label className="text-xs text-muted-foreground">Time</Label>
                                   <Input
                                     type="time"
                                     value={schedule.time}
                                     onChange={e => updateScheduleAction(schedule.id, { time: e.target.value })}
-                                    className="h-8 text-sm"
+                                    className="h-8 text-sm min-w-0 [&::-webkit-datetime-edit]:text-sm"
                                   />
                                 </div>
-                                <div className="space-y-1">
+                                <div className="space-y-1 flex-1 min-w-[120px]">
                                   <Label className="text-xs text-muted-foreground">Range</Label>
                                   <Select
                                     value={String(schedule.range_days)}

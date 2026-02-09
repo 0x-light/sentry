@@ -100,13 +100,16 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
     const cleanUrl = window.location.pathname + window.location.hash
     window.history.replaceState({}, '', cleanUrl)
 
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+    let cancelled = false
+
     const verify = async () => {
       // Try direct verification first (doesn't depend on webhook)
       if (sessionId) {
         try {
           const result = await api.verifyCheckout(sessionId)
           if (result.status === 'fulfilled') {
-            await refreshProfile()
+            if (!cancelled) await refreshProfile()
             return
           }
         } catch (e) {
@@ -114,27 +117,35 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
         }
       }
 
+      if (cancelled) return
+
       // Fallback: poll profile until credits appear (webhook may be slow)
       let attempts = 0
       const maxAttempts = 10
-      const interval = setInterval(async () => {
+      pollInterval = setInterval(async () => {
+        if (cancelled) { if (pollInterval) clearInterval(pollInterval); return; }
         attempts++
         try {
           const p = await api.getProfile()
           if (p && (p.credits_balance > 0 || p.subscription_status === 'active')) {
-            setProfile(p)
-            clearInterval(interval)
+            if (!cancelled) setProfile(p)
+            if (pollInterval) clearInterval(pollInterval)
           } else if (attempts >= maxAttempts) {
-            clearInterval(interval)
+            if (pollInterval) clearInterval(pollInterval)
           }
         } catch {
-          if (attempts >= maxAttempts) clearInterval(interval)
+          if (attempts >= maxAttempts && pollInterval) clearInterval(pollInterval)
         }
       }, 2000)
     }
 
     verify()
-  }, [user, mockMode])
+
+    return () => {
+      cancelled = true
+      if (pollInterval) clearInterval(pollInterval)
+    }
+  }, [user, mockMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignUp = useCallback(async (email: string, password: string) => {
     if (mockMode) {

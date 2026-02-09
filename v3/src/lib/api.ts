@@ -12,29 +12,69 @@ async function getToken(): Promise<string | null> {
   return session?.access_token ?? null
 }
 
-async function fetchApi<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+const DEFAULT_TIMEOUT_MS = 30_000 // 30 second default timeout
+
+async function fetchApi<T = any>(
+  endpoint: string,
+  options: RequestInit & { timeoutMs?: number } = {},
+): Promise<T> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options
   const token = await getToken()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
+    ...(fetchOptions.headers as Record<string, string> || {}),
   }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  })
+  // Create abort controller for timeout (merge with any existing signal)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-    throw new Error(errorData.error || 'API request failed')
+  // If the caller provided a signal, forward its abort
+  if (fetchOptions.signal) {
+    fetchOptions.signal.addEventListener('abort', () => controller.abort())
   }
 
-  return res.json()
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    clearTimeout(timeout)
+    if (e.name === 'AbortError') {
+      throw new Error('Request timed out — the server took too long to respond')
+    }
+    throw new Error('Network error — please check your connection')
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  if (!res.ok) {
+    let errorMessage = `HTTP ${res.status}`
+    try {
+      const errorData = await res.json()
+      errorMessage = errorData.error || errorData.message || errorMessage
+    } catch {
+      // Response body isn't JSON — use status text
+      errorMessage = res.statusText || errorMessage
+    }
+    const err = new Error(errorMessage) as Error & { status: number; code?: string }
+    err.status = res.status
+    throw err
+  }
+
+  try {
+    return await res.json()
+  } catch {
+    throw new Error('Invalid response from server')
+  }
 }
 
 // ============================================================================
@@ -185,6 +225,7 @@ export async function fetchTweetsBatch(accounts: string[], days: number): Promis
   return fetchApi('/api/tweets/fetch-batch', {
     method: 'POST',
     body: JSON.stringify({ accounts, days }),
+    timeoutMs: 60_000, // Batch tweet fetching can be slow for many accounts
   })
 }
 
@@ -203,6 +244,7 @@ export async function analyze(params: {
   return fetchApi('/api/analyze', {
     method: 'POST',
     body: JSON.stringify(params),
+    timeoutMs: 120_000, // Analysis can take up to 2 minutes
   })
 }
 
