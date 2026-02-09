@@ -19,7 +19,7 @@ const CREDIT_PACKS: CreditPack[] = [
     price: 900,
     perCredit: 0.009,
     estimates: [
-      { label: 'Scan 200 accounts ~5 times', count: 5 },
+      { label: 'Scan 200 accounts ~20× with Haiku', count: 20 },
     ],
   },
   {
@@ -31,7 +31,7 @@ const CREDIT_PACKS: CreditPack[] = [
     savings: '13% off',
     recommended: true,
     estimates: [
-      { label: 'Scan 200 accounts ~25 times', count: 25 },
+      { label: 'Scan 200 accounts ~90× with Haiku', count: 90 },
     ],
   },
   {
@@ -42,7 +42,7 @@ const CREDIT_PACKS: CreditPack[] = [
     perCredit: 0.0066,
     savings: '27% off',
     estimates: [
-      { label: 'Scan 200 accounts ~75 times', count: 75 },
+      { label: 'Scan 200 accounts ~280× with Haiku', count: 280 },
     ],
   },
   {
@@ -53,7 +53,7 @@ const CREDIT_PACKS: CreditPack[] = [
     perCredit: 0.005,
     savings: '45% off',
     estimates: [
-      { label: 'Scan 200 accounts ~200 times', count: 200 },
+      { label: 'Scan 200 accounts ~750× with Haiku', count: 750 },
     ],
   },
 ]
