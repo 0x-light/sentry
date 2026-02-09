@@ -560,91 +560,76 @@ export function renderScheduleTab(schedules, schedulesLoading) {
   }
 
   if (schedulesLoading) {
-    container.innerHTML = '<p style="color:var(--text-muted)">Loading schedules…</p>';
+    container.innerHTML = '<p style="color:var(--text-muted)">Loading…</p>';
     return;
   }
 
+  // Resolve current account summary
+  const presets = engine.getPresets();
+  const currentPresets = appState.loadedPresets || [];
+  const accountSet = new Set();
+  currentPresets.forEach(name => {
+    const p = presets.find(x => x.name === name);
+    if (p) p.accounts.forEach(a => accountSet.add(a));
+  });
+  (appState.customAccounts || []).forEach(a => accountSet.add(a));
+
   let h = '';
+  const presetNames = currentPresets.length ? currentPresets.join(', ') : 'none';
+  const customCount = (appState.customAccounts || []).length;
+  const presetSummary = presetNames + (customCount ? ` + ${customCount} custom` : '');
+  h += `<p style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:16px;line-height:1.5">Scans run daily using your current selected presets: <span style="color:var(--text-strong)">${esc(presetSummary)}</span></p>`;
 
   // Existing schedules
   if (schedules && schedules.length) {
     schedules.forEach(s => {
       const timeStr = engine.formatScheduleTime(s.time);
-      const daysLabel = (!s.days || !s.days.length) ? 'Every day'
-        : s.days.length === 5 && !s.days.includes(0) && !s.days.includes(6) ? 'Weekdays'
-        : s.days.map(d => DAY_LABELS[d]).join(' ');
-      const statusIcon = s.last_run_status === 'running' ? '…'
-        : s.last_run_status === 'success' ? '✓'
-        : s.last_run_status === 'error' ? '✕' : '';
+      const statusText = s.last_run_status === 'running' ? 'running'
+        : s.last_run_status === 'success' ? 'done'
+        : s.last_run_status === 'error' ? 'failed' : '';
       const statusColor = s.last_run_status === 'success' ? 'var(--green)'
-        : s.last_run_status === 'error' ? 'var(--red)' : 'var(--text-muted)';
+        : s.last_run_status === 'error' ? 'var(--red)'
+        : s.last_run_status === 'running' ? 'var(--text-muted)' : '';
 
-      h += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-light)">`;
-      h += `<div style="display:flex;align-items:center;gap:10px">`;
-      h += `<input type="checkbox" ${s.enabled ? 'checked' : ''} data-toggle-schedule="${s.id}" style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">`;
-      h += `<div>`;
-      h += `<span style="color:${s.enabled ? 'var(--text-strong)' : 'var(--text-muted)'}">${esc(timeStr)}</span>`;
-      h += `<span style="color:var(--text-muted);font-size:var(--fs-sm);margin-left:8px">${daysLabel}</span>`;
-      h += `</div>`;
-      h += `</div>`;
+      h += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light)">`;
       h += `<div style="display:flex;align-items:center;gap:8px">`;
-      if (statusIcon) h += `<span style="color:${statusColor}">${statusIcon}</span>`;
+      h += `<input type="checkbox" ${s.enabled ? 'checked' : ''} data-toggle-schedule="${s.id}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">`;
+      h += `<span style="color:${s.enabled ? 'var(--text-strong)' : 'var(--text-muted)'}">${esc(timeStr)}</span>`;
+      if (statusText) h += `<span style="color:${statusColor};font-size:var(--fs-sm)">${statusText}</span>`;
+      h += `</div>`;
       h += `<button data-delete-schedule="${s.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:var(--fs-sm)">delete</button>`;
       h += `</div>`;
-      h += `</div>`;
     });
-    // Next schedule status
+
     const nextLabel = engine.getNextScheduleLabel(schedules);
     const anyRunning = schedules.some(s => s.last_run_status === 'running');
     if (anyRunning) {
-      h += `<div style="padding:8px 0;color:var(--green);font-size:var(--fs-sm)">Scan running…</div>`;
+      h += `<p style="color:var(--green);font-size:var(--fs-sm);padding:6px 0">Scan running…</p>`;
     } else if (nextLabel) {
-      h += `<div style="padding:8px 0;color:var(--text-muted);font-size:var(--fs-sm)">Next scan ${nextLabel}</div>`;
+      h += `<p style="color:var(--text-muted);font-size:var(--fs-sm);padding:6px 0">Next: ${nextLabel}</p>`;
     }
+
+    h += `<div style="margin-top:12px">`;
   } else {
-    h += `<p style="color:var(--text-muted);margin-bottom:16px">No scheduled scans yet.</p>`;
+    h += `<div>`;
   }
 
-  // Add schedule form
-  h += `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">`;
+  // Hour grid — active hours are highlighted, tap to toggle
+  const activeHours = new Set((schedules || []).filter(s => s.enabled).map(s => {
+    const [hh] = (s.time || '').split(':');
+    return parseInt(hh);
+  }).filter(n => !isNaN(n)));
 
-  // Time
-  h += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">`;
-  h += `<input type="text" id="scheduleHourInput" value="08" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
-  h += `<span style="color:var(--text-muted)">:</span>`;
-  h += `<input type="text" id="scheduleMinInput" value="00" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
-  h += `</div>`;
-  h += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">`;
-  ['07:00', '08:00', '09:00', '12:00', '18:00', '21:00'].forEach(t => {
-    h += `<button class="modal-sm-btn" data-set-schedule-time="${t}" style="font-size:var(--fs-sm)">${engine.formatScheduleTime(t)}</button>`;
-  });
-  h += `</div>`;
-
-  // Presets to include
-  const presets = engine.getPresets();
-  const currentPresets = appState.loadedPresets || [];
-  h += `<div style="margin-bottom:12px">`;
-  h += `<label style="display:block;margin-bottom:6px;font-size:var(--fs-sm);color:var(--text-muted);text-transform:uppercase">Accounts</label>`;
-  h += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
-  presets.filter(p => !p.hidden).forEach(p => {
-    const active = (appState._schedulePresets || currentPresets).includes(p.name);
-    h += `<button class="preset-chip${active ? ' selected' : ''}" data-schedule-preset="${esc(p.name)}">${esc(p.name)} <span class="count">(${p.accounts.length})</span></button>`;
-  });
-  h += `</div>`;
-  const selectedPresets = appState._schedulePresets || currentPresets;
-  const totalAccounts = new Set();
-  selectedPresets.forEach(name => {
-    const p = presets.find(x => x.name === name);
-    if (p) p.accounts.forEach(a => totalAccounts.add(a));
-  });
-  if (totalAccounts.size > 0) {
-    h += `<span style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:4px;display:block">${totalAccounts.size} accounts</span>`;
+  h += `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">`;
+  for (let hr = 0; hr <= 23; hr++) {
+    const isActive = activeHours.has(hr);
+    const label = `${String(hr).padStart(2, '0')}h`;
+    const padded = `${String(hr).padStart(2, '0')}:00`;
+    h += `<button data-quick-schedule="${padded}" style="padding:6px 0;font-size:var(--fs-sm);font-family:inherit;cursor:pointer;border:none;background:${isActive ? 'var(--text-strong)' : 'var(--bg-alt)'};color:${isActive ? 'var(--bg)' : 'var(--text-muted)'}">${label}</button>`;
   }
   h += `</div>`;
-
-  h += `<button class="scan-btn" id="addScheduleBtn" style="font-size:var(--fs)">Add schedule</button>`;
   h += `</div>`;
-  h += `<p style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:12px">Runs automatically on the server every day.</p>`;
+
   container.innerHTML = h;
 }
 
@@ -694,7 +679,6 @@ export function renderAccountTab() {
       }
     } else {
       // ── BYOK MODE ──
-      h += `<div style="border:1px solid var(--border);padding:14px;margin-bottom:16px">`;
       h += `<div style="font-size:var(--fs-sm);color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">API keys (bring your own)</div>`;
 
       h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)">`;
@@ -702,15 +686,14 @@ export function renderAccountTab() {
       h += hasTwKey ? `<span style="color:var(--green);font-size:var(--fs-sm)">✓ configured</span>` : `<span style="color:var(--red);font-size:var(--fs-sm)">missing</span>`;
       h += `</div>`;
 
-      h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">`;
+      h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)">`;
       h += `<span style="color:var(--text)">Anthropic</span>`;
       h += hasAnKey ? `<span style="color:var(--green);font-size:var(--fs-sm)">✓ configured</span>` : `<span style="color:var(--red);font-size:var(--fs-sm)">missing</span>`;
       h += `</div>`;
 
       if (!hasBothKeys) {
-        h += `<button class="modal-sm-btn" style="margin-top:10px" data-open-settings="api">Configure keys →</button>`;
+        h += `<button class="modal-sm-btn" style="margin-top:10px;margin-bottom:16px" data-open-settings="api">Configure keys →</button>`;
       }
-      h += `</div>`;
 
       if (profile) {
         h += `<div style="padding:12px;background:var(--bg-alt);margin-bottom:16px;font-size:var(--fs-sm);line-height:1.6">`;

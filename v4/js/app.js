@@ -505,21 +505,8 @@ function startSchedulePolling() {
 
 async function addSchedule(time) {
   if (!auth.isAuthenticated()) return;
-
-  // Resolve accounts from selected schedule presets
-  const selectedPresets = state._schedulePresets || state.loadedPresets || [];
-  const presets = engine.getPresets();
-  const accountSet = new Set();
-  selectedPresets.forEach(name => {
-    const p = presets.find(x => x.name === name);
-    if (p) p.accounts.forEach(a => accountSet.add(a));
-  });
-  const accounts = [...accountSet];
-
-  if (!accounts.length) {
-    console.warn('No accounts selected for schedule');
-    return;
-  }
+  const accounts = state.getAllAccounts();
+  if (!accounts.length) return;
   try {
     await api.saveSchedule({
       label: `Scan at ${engine.formatScheduleTime(time)}`,
@@ -530,7 +517,6 @@ async function addSchedule(time) {
       days: [],
       enabled: true,
     });
-    state._schedulePresets = null; // Reset selection after adding
     await loadSchedules();
     updateNextScheduleLabel();
     ui.renderScheduleTab(state.schedules, state.schedulesLoading);
@@ -844,27 +830,17 @@ function initEventDelegation() {
     const openSettings = e.target.closest('[data-open-settings]');
     if (openSettings) { closeModal('userMenuModal'); openSettingsModal(openSettings.dataset.openSettings); return; }
 
-    // Schedule actions — quick-pick sets the time inputs
-    const setTime = e.target.closest('[data-set-schedule-time]');
-    if (setTime) {
-      const [h, m] = setTime.dataset.setScheduleTime.split(':');
-      const hInput = $('scheduleHourInput');
-      const mInput = $('scheduleMinInput');
-      if (hInput) hInput.value = h;
-      if (mInput) mInput.value = m;
-      return;
-    }
-    // Schedule preset toggle
-    const schedPreset = e.target.closest('[data-schedule-preset]');
-    if (schedPreset) {
-      const name = schedPreset.dataset.schedulePreset;
-      if (!state._schedulePresets) state._schedulePresets = [...(state.loadedPresets || [])];
-      if (state._schedulePresets.includes(name)) {
-        state._schedulePresets = state._schedulePresets.filter(n => n !== name);
+    // Schedule — tap hour to toggle (add or remove)
+    const quickSchedule = e.target.closest('[data-quick-schedule]');
+    if (quickSchedule) {
+      const time = quickSchedule.dataset.quickSchedule;
+      // Check if a schedule already exists at this hour
+      const existing = (state.schedules || []).find(s => s.time === time && s.enabled);
+      if (existing) {
+        deleteScheduleById(existing.id);
       } else {
-        state._schedulePresets.push(name);
+        addSchedule(time);
       }
-      ui.renderScheduleTab(state.schedules, state.schedulesLoading);
       return;
     }
     const toggleSchedule = e.target.closest('[data-toggle-schedule]');
@@ -918,14 +894,7 @@ function initEventDelegation() {
       case 'acctSignOutBtn': auth.signOut().then(() => { state.schedules = []; ui.renderAccountTab(); ui.renderTopbar(); }); break;
       case 'acctBuyCreditsBtn': case 'acctBuyCreditsBtn2': closeModal('modal'); openPricingModal(); break;
 
-      // Schedule add
-      case 'addScheduleBtn': {
-        const h = ($('scheduleHourInput')?.value || '').padStart(2, '0');
-        const m = ($('scheduleMinInput')?.value || '').padStart(2, '0');
-        const time = `${h}:${m}`;
-        if (/^\d{2}:\d{2}$/.test(time)) addSchedule(time);
-        break;
-      }
+      // (custom schedule time handled via initInputListeners)
 
       // Analyst
       case 'newAnalystBtn': ui.saveAnalystsFromUI(); {
