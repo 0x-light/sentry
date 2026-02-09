@@ -599,17 +599,42 @@ export function renderScheduleTab(schedules, schedulesLoading) {
 
   // Add schedule form
   h += `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">`;
+
+  // Time
   h += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">`;
   h += `<input type="text" id="scheduleHourInput" value="08" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
   h += `<span style="color:var(--text-muted)">:</span>`;
   h += `<input type="text" id="scheduleMinInput" value="00" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
-  h += `<button class="scan-btn" id="addScheduleBtn" style="font-size:var(--fs)">Add</button>`;
   h += `</div>`;
-  h += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+  h += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">`;
   ['07:00', '08:00', '09:00', '12:00', '18:00', '21:00'].forEach(t => {
     h += `<button class="modal-sm-btn" data-set-schedule-time="${t}" style="font-size:var(--fs-sm)">${engine.formatScheduleTime(t)}</button>`;
   });
   h += `</div>`;
+
+  // Presets to include
+  const presets = engine.getPresets();
+  const currentPresets = appState.loadedPresets || [];
+  h += `<div style="margin-bottom:12px">`;
+  h += `<label style="display:block;margin-bottom:6px;font-size:var(--fs-sm);color:var(--text-muted);text-transform:uppercase">Accounts</label>`;
+  h += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+  presets.filter(p => !p.hidden).forEach(p => {
+    const active = (appState._schedulePresets || currentPresets).includes(p.name);
+    h += `<button class="preset-chip${active ? ' selected' : ''}" data-schedule-preset="${esc(p.name)}">${esc(p.name)} <span class="count">(${p.accounts.length})</span></button>`;
+  });
+  h += `</div>`;
+  const selectedPresets = appState._schedulePresets || currentPresets;
+  const totalAccounts = new Set();
+  selectedPresets.forEach(name => {
+    const p = presets.find(x => x.name === name);
+    if (p) p.accounts.forEach(a => totalAccounts.add(a));
+  });
+  if (totalAccounts.size > 0) {
+    h += `<span style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:4px;display:block">${totalAccounts.size} accounts</span>`;
+  }
+  h += `</div>`;
+
+  h += `<button class="scan-btn" id="addScheduleBtn" style="font-size:var(--fs)">Add schedule</button>`;
   h += `</div>`;
   h += `<p style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:12px">Runs automatically on the server every day.</p>`;
   container.innerHTML = h;

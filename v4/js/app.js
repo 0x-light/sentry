@@ -496,7 +496,17 @@ function startSchedulePolling() {
 
 async function addSchedule(time) {
   if (!auth.isAuthenticated()) return;
-  const accounts = state.getAllAccounts();
+
+  // Resolve accounts from selected schedule presets
+  const selectedPresets = state._schedulePresets || state.loadedPresets || [];
+  const presets = engine.getPresets();
+  const accountSet = new Set();
+  selectedPresets.forEach(name => {
+    const p = presets.find(x => x.name === name);
+    if (p) p.accounts.forEach(a => accountSet.add(a));
+  });
+  const accounts = [...accountSet];
+
   if (!accounts.length) {
     console.warn('No accounts selected for schedule');
     return;
@@ -511,6 +521,7 @@ async function addSchedule(time) {
       days: [],
       enabled: true,
     });
+    state._schedulePresets = null; // Reset selection after adding
     await loadSchedules();
     updateNextScheduleLabel();
     ui.renderScheduleTab(state.schedules, state.schedulesLoading);
@@ -832,6 +843,19 @@ function initEventDelegation() {
       const mInput = $('scheduleMinInput');
       if (hInput) hInput.value = h;
       if (mInput) mInput.value = m;
+      return;
+    }
+    // Schedule preset toggle
+    const schedPreset = e.target.closest('[data-schedule-preset]');
+    if (schedPreset) {
+      const name = schedPreset.dataset.schedulePreset;
+      if (!state._schedulePresets) state._schedulePresets = [...(state.loadedPresets || [])];
+      if (state._schedulePresets.includes(name)) {
+        state._schedulePresets = state._schedulePresets.filter(n => n !== name);
+      } else {
+        state._schedulePresets.push(name);
+      }
+      ui.renderScheduleTab(state.schedules, state.schedulesLoading);
       return;
     }
     const toggleSchedule = e.target.closest('[data-toggle-schedule]');
@@ -1388,9 +1412,7 @@ async function init() {
   engine.setFontSize(engine.getFontSize());
   engine.setCase(engine.getCase());
 
-  // Initialize auth
-  await auth.init();
-
+  // Register auth change callback BEFORE init (so we don't miss the initial event)
   auth.onAuthChange(async ({ authenticated }) => {
     if (authenticated) {
       await api.init();
@@ -1407,6 +1429,10 @@ async function init() {
     if (IS_DEV) ui.renderDevToolbar();
   });
 
+  // Initialize auth (may fire onAuthChange synchronously if session exists)
+  await auth.init();
+
+  // If already authenticated after init (session was restored), ensure API is ready
   if (auth.isAuthenticated()) {
     await api.init();
   }
@@ -1473,15 +1499,6 @@ async function init() {
 
   if (engine.isLiveEnabled() && localStorage.getItem(LS_LIVE_MODE) === 'true' && savedScan) {
     setTimeout(toggleLive, 1000);
-  }
-
-  if (auth.isAuthenticated()) {
-    loadServerHistory();
-    loadSchedules().then(() => {
-      updateNextScheduleLabel();
-      startSchedulePolling();
-      ui.renderTopbar();
-    });
   }
 
   console.log('Sentry initialized' + (IS_DEV ? ' (dev mode)' : ''));
