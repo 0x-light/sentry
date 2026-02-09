@@ -852,7 +852,7 @@ function initEventDelegation() {
       case 'keyBtn': openSettingsModal(); break;
       case 'liveBtn': toggleLive(); break;
       case 'signInBtn': openAuthModal(); break;
-      case 'userMenuBtn': openUserMenuModal(); break;
+      case 'userMenuBtn': openSettingsModal('account'); break;
       case 'dlBtn': if (state.lastScanResult) engine.downloadScanAsMarkdown(state.lastScanResult); break;
       case 'scheduleIndicatorBtn': openSettingsModal('schedule'); break;
 
@@ -877,8 +877,8 @@ function initEventDelegation() {
 
       // User menu
       case 'closeUserMenuBtn': closeModal('userMenuModal'); break;
-      case 'buyCreditsBtn': closeModal('userMenuModal'); openPricingModal(); break;
-      case 'signOutBtn': auth.signOut().then(() => { closeModal('userMenuModal'); state.schedules = []; ui.renderTopbar(); }); break;
+      case 'buyCreditsBtn': closeModal('userMenuModal'); closeModal('modal'); openPricingModal(); break;
+      case 'signOutBtn': auth.signOut().then(() => { closeModal('userMenuModal'); closeModal('modal'); state.schedules = []; ui.renderTopbar(); }); break;
 
       // Account tab actions
       case 'acctSignInBtn': case 'scheduleSignInBtn': closeModal('modal'); openAuthModal(); break;

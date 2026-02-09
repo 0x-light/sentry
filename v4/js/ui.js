@@ -869,10 +869,7 @@ export function renderUserMenuModal() {
     h += `</div>`;
   }
 
-  if (hasSub) h += `<button class="modal-sm-btn" style="margin-bottom:8px" id="manageBillingBtn2">Manage subscription</button><br>`;
-  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="api">API keys</button> `;
-  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="analyst">Analysts</button> `;
-  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="display">Display settings</button>`;
+  if (hasSub) h += `<button class="modal-sm-btn" style="margin-bottom:8px" id="manageBillingBtn2">Manage subscription</button>`;
 
   h += `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">`;
   h += `<button style="background:none;border:none;color:var(--red);font-size:var(--fs);cursor:pointer;width:100%" id="signOutBtn">Sign out</button>`;
