@@ -410,7 +410,7 @@ async function loadServerHistory() {
 
       if (serverDate > localDate) {
         const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
-        const isScheduled = !!latest.scheduled;
+        const isScheduled = !!latest.scheduled || (latest.range_label || '').includes('scheduled');
         state.lastScanResult = {
           date: latest.created_at || new Date().toISOString(),
           range: latest.range_label || '',
@@ -1159,11 +1159,13 @@ function loadMockSignals() {
     { title: 'TSLA earnings beat expectations, robotaxi timeline moved up', summary: 'Tesla Q4 earnings above consensus with improved margins. Musk confirmed robotaxi launch in Austin by Q2.', category: 'Trade', source: 'gaborGurbacs', tickers: [{ symbol: '$TSLA', action: 'buy' }, { symbol: '$UBER', action: 'sell' }], tweet_url: 'https://x.com/gaborGurbacs/status/1234567897', links: [], tweet_time: new Date(now.getTime() - 30 * 60000).toISOString() },
   ];
   state.lastScanResult = {
-    date: now.toISOString(), range: 'Today', days: 1,
+    date: now.toISOString(), range: 'Today (scheduled)', days: 1,
     accounts: ['CryptoCapo_', 'unusual_whales', 'zaborowskigz', 'DefiIgnas', 'gaborGurbacs', 'lookonchain'],
     totalTweets: 42, signals: mockSignals, tweetMeta: {},
+    scheduled: true,
   };
-  ui.setStatus(`Mock data · 6 accounts · 42 tweets · ${mockSignals.length} signals`, false, true);
+  const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  ui.setStatus(`${now.toLocaleDateString()} ${timeStr} · 6 accounts · 42 tweets · ${mockSignals.length} signals (scheduled)`, false, true);
   ui.renderTickers(mockSignals);
   ui.renderSignals(mockSignals);
 }
