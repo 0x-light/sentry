@@ -370,18 +370,22 @@ body.modal-open { overflow: hidden; }
   .rng:hover { color: inherit; background: inherit; border-color: inherit; }
 }
 
-/* Disable hover states on touch devices */
+/* Disable hover/active/focus states on touch devices */
 @media (hover: none) {
+  * { -webkit-tap-highlight-color: transparent; }
   .top-btn:hover, .live-btn:hover, .modal-close:hover, .modal-tab:hover, .reset-prompt:hover, .modal-actions button:hover,
-  .modal-sm-btn:hover, .analyst-actions button:hover, .analyst-add:hover, .preset-list-item button:hover, .preset-chip:hover, .preset-manage:hover,
+  .modal-sm-btn:hover, .analyst-actions button:hover, .analyst-add:hover, .preset-list-item button:hover, .preset-manage:hover,
   .sug:hover, .rng:hover, .clear-btn:hover, .scan-btn:hover:not(:disabled), .cancel-btn:hover,
   .ticker-item:hover, .sig-top a:hover, .ticker-tag:hover, .ext-link:hover, .see-post:hover,
   .share-btn:hover, .tweet-expand-btn:hover, .shared-banner a:hover, .hist-toggle:hover,
   .hist-actions button:hover, .dl-btn:hover, .footer a:hover, .resume-btn:hover, .dismiss-btn:hover {
     color: inherit; opacity: inherit; background: inherit; border-color: inherit;
   }
+  .preset-chip:hover { color: var(--text-muted); background: var(--text-10); }
+  .preset-chip.selected:hover { color: var(--bg-alt); background: var(--text-strong); }
   .modal-actions button:last-child:hover { opacity: 1; }
   .ext-link:hover { background: var(--text-10); }
+  .rng.on:hover { color: var(--bg); background: var(--text-strong); }
 }
 
 /* ============================================================================
