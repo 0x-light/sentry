@@ -841,8 +841,11 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const addScheduleHandler = useCallback(async (data: { time: string; label: string; range_days: number; preset_id?: string | null; accounts: string[] }) => {
     if (!isAuthenticated) return
     try {
+      // Auto-populate accounts from user's current active accounts if none specified
+      const accounts = data.accounts?.length ? data.accounts : getAllAccounts()
       await api.saveSchedule({
         ...data,
+        accounts,
         timezone: engine.getBrowserTimezone(),
         days: [],
         enabled: true,
@@ -851,7 +854,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     } catch (e: any) {
       console.warn('Failed to add schedule:', e.message)
     }
-  }, [isAuthenticated, loadSchedules])
+  }, [isAuthenticated, loadSchedules, getAllAccounts])
 
   const updateScheduleHandler = useCallback(async (id: string, updates: Partial<ScheduledScan>) => {
     if (!isAuthenticated) return
@@ -910,12 +913,24 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
   }, [schedules])
 
-  // ── Timer: update "next schedule" label every 30 seconds ─────────────────
+  // ── Timer: update "next schedule" label + poll for running scans ─────────
   // Scans run server-side via cron — no browser execution needed.
-  // Also refresh schedules from server when tab becomes visible (to get latest run status).
+  // When a scheduled scan is running, poll every 5s to pick up completion.
+  // Otherwise, update the label every 30s and refresh on tab visibility.
+  const hasRunningSchedule = schedules.some(s => s.last_run_status === 'running')
+
   useEffect(() => {
     updateNextScheduleLabel()
-    const interval = setInterval(updateNextScheduleLabel, 30_000)
+
+    // Fast poll while a schedule is running, normal interval otherwise
+    const pollMs = hasRunningSchedule ? 5_000 : 30_000
+    const interval = setInterval(() => {
+      updateNextScheduleLabel()
+      if (hasRunningSchedule) {
+        loadSchedules()
+        loadServerHistory()
+      }
+    }, pollMs)
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -930,7 +945,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [updateNextScheduleLabel, loadSchedules, loadServerHistory])
+  }, [updateNextScheduleLabel, loadSchedules, loadServerHistory, hasRunningSchedule])
 
   const value: SentryStore = {
     theme, toggleTheme,

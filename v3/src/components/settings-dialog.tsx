@@ -34,6 +34,7 @@ export function SettingsDialog() {
     addSchedule: addScheduleAction,
     updateSchedule: updateScheduleAction,
     deleteSchedule: deleteScheduleAction,
+    presets, customAccounts,
   } = useSentry()
 
   const { isAuthenticated, user, profile, signOut } = useAuth()
@@ -42,6 +43,7 @@ export function SettingsDialog() {
   const [anKey, setAnKey] = useState('')
   const [model, setModel] = useState(() => engine.getModel())
   const [expandedAnalyst, setExpandedAnalyst] = useState<string | null>(null)
+  const [expandedSchedule, setExpandedSchedule] = useState<string | null>(null)
   const [localFinance, setLocalFinance] = useState(financeProvider)
   const [localFont, setLocalFont] = useState(font)
   const [localFontSize, setLocalFontSize] = useState(fontSize)
@@ -249,7 +251,7 @@ export function SettingsDialog() {
               </div>
             )}
             <p className="text-sm text-muted-foreground">
-              API keys are stored locally in your browser — never sent to our servers.
+              API keys are stored securely on your device — they're never shared.
             </p>
 
             <div className="space-y-2">
@@ -296,7 +298,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Schedule Tab */}
-          <TabsContent value="schedule" className="space-y-4 pb-4">
+          <TabsContent value="schedule" className="space-y-3 pb-4">
             {!isAuthenticated ? (
               <div className="p-4 rounded-lg border border-dashed text-center space-y-3">
                 <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/50" />
@@ -307,187 +309,245 @@ export function SettingsDialog() {
               </div>
             ) : (
               <>
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Set recurring scans so results are ready when you need them.
-                  </p>
-                </div>
-
-                {schedules.length === 0 && (
+                {schedules.length === 0 ? (
                   <div className="p-4 rounded-lg border border-dashed text-center space-y-3">
                     <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">No scheduled scans yet</p>
-                    <div className="flex flex-wrap gap-2 justify-center">
+                    <p className="text-sm text-muted-foreground">
+                      Schedule scans and results will be ready when you open the app.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 justify-center">
                       <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '07:00', label: 'Morning', range_days: 1, accounts: [] })}>
-                        + Morning (7am)
+                        + 7 am
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '12:00', label: 'Midday', range_days: 1, accounts: [] })}>
-                        + Midday (12pm)
+                        + 12 pm
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '18:00', label: 'Evening', range_days: 1, accounts: [] })}>
-                        + Evening (6pm)
+                        + 6 pm
                       </Button>
                     </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {schedules.map(schedule => {
+                      const isExpanded = expandedSchedule === schedule.id
+                      const lastRunDate = schedule.last_run_at ? new Date(schedule.last_run_at) : null
+                      const lastRunStr = lastRunDate
+                        ? lastRunDate.toLocaleDateString() + ' ' + lastRunDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                        : null
+                      const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+                      const DAY_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                      const daysLabel = schedule.days.length === 0
+                        ? 'Every day'
+                        : schedule.days.length === 5 && !schedule.days.includes(0) && !schedule.days.includes(6)
+                          ? 'Weekdays'
+                          : schedule.days.map(d => DAY_FULL[d]).join(', ')
 
-                {schedules.map(schedule => {
-                  const lastRunDate = schedule.last_run_at ? new Date(schedule.last_run_at) : null
-                  const lastRunStr = lastRunDate
-                    ? lastRunDate.toLocaleDateString() + ' ' + lastRunDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                    : null
-                  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                      // Derive which presets are "selected" based on the schedule's accounts
+                      const schedAccounts = new Set(schedule.accounts || [])
+                      const visiblePresets = presets.filter(p => !p.hidden && p.accounts.length > 0)
+                      const selectedPresets = visiblePresets.filter(p => p.accounts.every(a => schedAccounts.has(a)))
+                      const accountCount = schedule.accounts?.length || 0
+                      const listsLabel = selectedPresets.length
+                        ? selectedPresets.map(p => p.name).join(', ')
+                        : accountCount > 0 ? `${accountCount} accounts` : 'No accounts'
 
-                  return (
-                    <div key={schedule.id} className="border rounded-lg">
-                      {/* Header row */}
-                      <div className="flex items-center gap-3 p-3">
-                        <Switch
-                          checked={schedule.enabled}
-                          onCheckedChange={(checked) => updateScheduleAction(schedule.id, { enabled: checked })}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-sm font-medium", !schedule.enabled && "text-muted-foreground")}>
-                              {schedule.label}
-                            </span>
-                            <span className={cn("text-sm", !schedule.enabled ? "text-muted-foreground/60" : "text-muted-foreground")}>
-                              {engine.formatScheduleTime(schedule.time)}
-                            </span>
-                            {schedule.last_run_status === 'running' && (
-                              <Loader2 className="h-3 w-3 animate-spin text-signal-blue" />
-                            )}
+                      return (
+                        <div key={schedule.id} className="border rounded-lg">
+                          {/* Collapsed header — always visible */}
+                          <div
+                            className="flex items-center gap-2.5 p-3 cursor-pointer"
+                            onClick={() => setExpandedSchedule(isExpanded ? null : schedule.id)}
+                          >
+                            <Switch
+                              checked={schedule.enabled}
+                              onCheckedChange={(checked) => { updateScheduleAction(schedule.id, { enabled: checked }) }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn("text-sm font-medium truncate", !schedule.enabled && "text-muted-foreground")}>
+                                  {schedule.label}
+                                </span>
+                                <span className={cn("text-sm tabular-nums shrink-0", !schedule.enabled ? "text-muted-foreground/50" : "text-muted-foreground")}>
+                                  {engine.formatScheduleTime(schedule.time)}
+                                </span>
+                                {schedule.last_run_status === 'running' && (
+                                  <Loader2 className="h-3 w-3 animate-spin text-signal-blue shrink-0" />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                <span className="text-xs text-muted-foreground/60 truncate shrink-0">{daysLabel}</span>
+                                <span className="text-xs text-muted-foreground/40">·</span>
+                                <span className="text-xs text-muted-foreground/60 truncate">{listsLabel}</span>
+                                {lastRunStr && (
+                                  <>
+                                    <span className="text-xs text-muted-foreground/40">·</span>
+                                    <span className="text-xs text-muted-foreground/60">
+                                      {lastRunStr}
+                                      {schedule.last_run_status === 'error' && (
+                                        <span className="text-destructive ml-0.5" title={schedule.last_run_message || ''}>✕</span>
+                                      )}
+                                      {schedule.last_run_status === 'success' && <span className="text-signal-green ml-0.5">✓</span>}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                           </div>
-                          {lastRunStr && (
-                            <p className="text-xs text-muted-foreground/70 mt-0.5">
-                              Last: {lastRunStr}
-                              {schedule.last_run_status === 'error' && (
-                                <span className="text-destructive ml-1" title={schedule.last_run_message || ''}>· failed</span>
-                              )}
-                              {schedule.last_run_status === 'success' && <span className="text-signal-green ml-1">· ok</span>}
-                            </p>
+
+                          {/* Expanded settings */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 space-y-3">
+                              <Separator />
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-muted-foreground">Time</Label>
+                                  <Input
+                                    type="time"
+                                    value={schedule.time}
+                                    onChange={e => updateScheduleAction(schedule.id, { time: e.target.value })}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-muted-foreground">Range</Label>
+                                  <Select
+                                    value={String(schedule.range_days)}
+                                    onValueChange={v => updateScheduleAction(schedule.id, { range_days: Number(v) })}
+                                  >
+                                    <SelectTrigger className="h-8 text-sm">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {RANGES.map(r => (
+                                        <SelectItem key={r.days} value={String(r.days)}>{r.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Days</Label>
+                                <div className="flex gap-0.5">
+                                  {DAY_LABELS.map((day, i) => {
+                                    const isActive = schedule.days.length === 0 || schedule.days.includes(i)
+                                    const isAllDays = schedule.days.length === 0
+                                    return (
+                                      <button
+                                        key={i}
+                                        className={cn(
+                                          "flex-1 py-1.5 text-xs rounded-md transition-all font-medium",
+                                          isActive
+                                            ? isAllDays
+                                              ? "bg-primary/10 text-primary"
+                                              : "bg-primary text-primary-foreground"
+                                            : "bg-muted text-muted-foreground/40 hover:text-muted-foreground"
+                                        )}
+                                        onClick={() => {
+                                          let newDays: number[]
+                                          if (schedule.days.length === 0) {
+                                            newDays = [0, 1, 2, 3, 4, 5, 6].filter(d => d !== i)
+                                          } else if (schedule.days.includes(i)) {
+                                            newDays = schedule.days.filter(d => d !== i)
+                                            if (newDays.length === 0) newDays = []
+                                          } else {
+                                            newDays = [...schedule.days, i].sort()
+                                            if (newDays.length === 7) newDays = []
+                                          }
+                                          updateScheduleAction(schedule.id, { days: newDays })
+                                        }}
+                                      >
+                                        {day}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Lists</Label>
+                                {visiblePresets.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground/60">No lists yet — create one from the main screen.</p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {visiblePresets.map(preset => {
+                                      const isSelected = preset.accounts.every(a => schedAccounts.has(a))
+                                      return (
+                                        <button
+                                          key={preset.name}
+                                          className={cn(
+                                            "px-2.5 py-1 text-xs rounded-md transition-all font-medium",
+                                            isSelected
+                                              ? "bg-primary text-primary-foreground"
+                                              : "bg-muted text-muted-foreground/60 hover:text-muted-foreground"
+                                          )}
+                                          onClick={() => {
+                                            let next: string[]
+                                            if (isSelected) {
+                                              // Remove this preset's accounts (keep accounts that belong to other selected presets)
+                                              const otherAccounts = new Set<string>()
+                                              visiblePresets.forEach(p => {
+                                                if (p.name !== preset.name && p.accounts.every(a => schedAccounts.has(a))) {
+                                                  p.accounts.forEach(a => otherAccounts.add(a))
+                                                }
+                                              })
+                                              next = schedule.accounts.filter(a => otherAccounts.has(a))
+                                            } else {
+                                              // Add this preset's accounts
+                                              next = [...new Set([...schedule.accounts, ...preset.accounts])]
+                                            }
+                                            updateScheduleAction(schedule.id, { accounts: next })
+                                          }}
+                                        >
+                                          {preset.name}
+                                          <span className="ml-1 opacity-50">{preset.accounts.length}</span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                                {accountCount > 0 && (
+                                  <p className="text-xs text-muted-foreground/50">{accountCount} account{accountCount !== 1 ? 's' : ''} total</p>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Label</Label>
+                                <Input
+                                  value={schedule.label}
+                                  onChange={e => updateScheduleAction(schedule.id, { label: e.target.value })}
+                                  placeholder="Schedule name"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive w-full"
+                                onClick={() => deleteScheduleAction(schedule.id)}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1.5" />Delete
+                              </Button>
+                            </div>
                           )}
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteScheduleAction(schedule.id)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      )
+                    })}
 
-                      {/* Settings row */}
-                      <div className="px-3 pb-3 space-y-3">
-                        <Separator />
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Time</Label>
-                            <Input
-                              type="time"
-                              value={schedule.time}
-                              onChange={e => updateScheduleAction(schedule.id, { time: e.target.value })}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Range</Label>
-                            <Select
-                              value={String(schedule.range_days)}
-                              onValueChange={v => updateScheduleAction(schedule.id, { range_days: Number(v) })}
-                            >
-                              <SelectTrigger className="h-8 text-sm">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {RANGES.map(r => (
-                                  <SelectItem key={r.days} value={String(r.days)}>{r.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Days</Label>
-                          <div className="flex gap-1">
-                            {DAY_LABELS.map((day, i) => {
-                              const isActive = schedule.days.length === 0 || schedule.days.includes(i)
-                              const isAllDays = schedule.days.length === 0
-                              return (
-                                <button
-                                  key={day}
-                                  className={cn(
-                                    "flex-1 py-1 text-xs rounded-md transition-all font-medium",
-                                    isActive
-                                      ? isAllDays
-                                        ? "bg-primary/10 text-primary"
-                                        : "bg-primary text-primary-foreground"
-                                      : "bg-muted text-muted-foreground/50 hover:text-muted-foreground"
-                                  )}
-                                  onClick={() => {
-                                    let newDays: number[]
-                                    if (schedule.days.length === 0) {
-                                      newDays = [0, 1, 2, 3, 4, 5, 6].filter(d => d !== i)
-                                    } else if (schedule.days.includes(i)) {
-                                      newDays = schedule.days.filter(d => d !== i)
-                                      if (newDays.length === 0) newDays = []
-                                    } else {
-                                      newDays = [...schedule.days, i].sort()
-                                      if (newDays.length === 7) newDays = []
-                                    }
-                                    updateScheduleAction(schedule.id, { days: newDays })
-                                  }}
-                                >
-                                  {day}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          <p className="text-xs text-muted-foreground/70">
-                            {schedule.days.length === 0 ? 'Every day' : schedule.days.map(d => DAY_LABELS[d]).join(', ')}
-                          </p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Label</Label>
-                          <Input
-                            value={schedule.label}
-                            onChange={e => updateScheduleAction(schedule.id, { label: e.target.value })}
-                            placeholder="Schedule name"
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {schedules.length > 0 && (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '07:00', label: 'Morning', range_days: 1, accounts: [] })}>
-                        <Plus className="h-3 w-3 mr-1" />Morning
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '12:00', label: 'Midday', range_days: 1, accounts: [] })}>
-                        <Plus className="h-3 w-3 mr-1" />Midday
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '18:00', label: 'Evening', range_days: 1, accounts: [] })}>
-                        <Plus className="h-3 w-3 mr-1" />Evening
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '09:00', label: 'Custom', range_days: 1, accounts: [] })}>
-                        <Plus className="h-3 w-3 mr-1" />Custom
-                      </Button>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-accent/50 border">
-                      <p className="text-xs text-muted-foreground">
-                        <strong className="font-medium text-foreground/80">How it works:</strong>{' '}
-                        Scans run automatically on our servers at scheduled times — no need to keep your browser open.
-                        Results will be waiting when you open Sentry. Uses your currently active accounts and presets.
-                      </p>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => addScheduleAction({ time: '09:00', label: 'New scan', range_days: 1, accounts: [] })}
+                    >
+                      <Plus className="h-3 w-3 mr-1.5" />Add schedule
+                    </Button>
                   </>
                 )}
+
+                <p className="text-xs text-muted-foreground/60 text-center">
+                  Runs in the background — no need to keep the app open.
+                </p>
               </>
             )}
           </TabsContent>

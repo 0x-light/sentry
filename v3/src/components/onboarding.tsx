@@ -527,7 +527,7 @@ export function Onboarding() {
                   <div className="text-center space-y-2">
                     <h2 className="text-lg tracking-tight">API keys</h2>
                     <p className="text-sm text-muted-foreground">
-                      Your keys are stored locally in your browser. Nothing is sent to our servers.
+                      Your keys are stored securely on your device and never shared.
                     </p>
                   </div>
 

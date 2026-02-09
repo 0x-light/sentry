@@ -165,8 +165,8 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                 rel="noopener"
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
-                <ExternalLink className="h-3 w-3" />
-                Link
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                {(() => { try { return new URL(link).hostname.replace(/^www\./, '') } catch { return link } })()}
               </a>
             ))}
           </div>

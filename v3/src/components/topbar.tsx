@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Settings, Sun, Moon, Radio, Clock } from '@/components/icons'
+import { Settings, Sun, Moon, Radio, Clock, Loader2 } from '@/components/icons'
 
 export function Topbar() {
   const {
@@ -27,7 +27,7 @@ export function Topbar() {
         <span className="font-normal text-sm tracking-tight">sentry</span>
       </div>
       <div className="flex items-center gap-1">
-        {hasActiveSchedules && (
+        {(hasActiveSchedules || isScheduleRunning) && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -39,9 +39,18 @@ export function Topbar() {
                   isScheduleRunning && "text-signal-blue"
                 )}
               >
-                <Clock className={cn("h-3.5 w-3.5", isScheduleRunning && "animate-spin")} />
-                {nextScheduleLabel && (
-                  <span className="text-sm font-normal hidden sm:inline">{nextScheduleLabel}</span>
+                {isScheduleRunning ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span className="text-sm font-normal">Scanning…</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-3.5 w-3.5" />
+                    {nextScheduleLabel && (
+                      <span className="text-sm font-normal hidden sm:inline">{nextScheduleLabel}</span>
+                    )}
+                  </>
                 )}
               </Button>
             </TooltipTrigger>

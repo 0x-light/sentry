@@ -318,11 +318,12 @@ function isScheduleDue(schedule) {
   const tz = schedule.timezone || 'UTC';
   let now;
   try {
-    // Get current time in the schedule's timezone
+    // Get current time in the schedule's timezone using hourCycle h23 (0-23)
+    // Note: hour12:false can return "24" for midnight on some runtimes
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
+      hourCycle: 'h23',
       hour: 'numeric', minute: 'numeric', weekday: 'short',
-      hour12: false,
     });
     const parts = formatter.formatToParts(new Date());
     const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
@@ -349,11 +350,11 @@ function isScheduleDue(schedule) {
   // (cron runs every minute, so we need a small window to avoid misses)
   if (currentMinutes < scheduleMinutes || currentMinutes > scheduleMinutes + 1) return false;
 
-  // Check if already ran recently (within last 30 minutes)
+  // Check if already ran recently (within last 50 minutes) to prevent double-runs
   if (schedule.last_run_at) {
     const lastRun = new Date(schedule.last_run_at);
     const msSinceLastRun = Date.now() - lastRun.getTime();
-    if (msSinceLastRun < 30 * 60 * 1000) return false; // Ran within 30 min
+    if (msSinceLastRun < 50 * 60 * 1000) return false;
   }
 
   return true;
@@ -467,7 +468,7 @@ async function executeScheduledScan(env, ctx, schedule) {
   });
 
   try {
-    // 1. Resolve accounts from preset or explicit list
+    // 1. Resolve accounts from preset, explicit list, or user's presets
     let accounts = schedule.accounts || [];
     if (schedule.preset_id) {
       const presetRows = await supabaseQuery(env,
@@ -478,10 +479,36 @@ async function executeScheduledScan(env, ctx, schedule) {
       }
     }
 
+    // Fallback: if no accounts on schedule, pull from user's presets
+    if (!accounts.length) {
+      try {
+        const userPresets = await supabaseQuery(env,
+          `presets?user_id=eq.${userId}&select=accounts&order=updated_at.desc&limit=5`
+        );
+        if (userPresets?.length) {
+          const all = new Set();
+          userPresets.forEach(p => (p.accounts || []).forEach(a => all.add(a)));
+          accounts = [...all];
+        }
+      } catch { /* best effort */ }
+    }
+
+    // Last resort: check user_settings for stored accounts
+    if (!accounts.length) {
+      try {
+        const settings = await supabaseQuery(env,
+          `user_settings?user_id=eq.${userId}&select=accounts`
+        );
+        if (settings?.[0]?.accounts?.length) {
+          accounts = settings[0].accounts;
+        }
+      } catch { /* best effort */ }
+    }
+
     if (!accounts.length) {
       await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
         method: 'PATCH',
-        body: { last_run_status: 'error', last_run_message: 'No accounts configured' },
+        body: { last_run_status: 'error', last_run_message: 'No accounts configured — add accounts to your schedule or presets' },
       });
       return;
     }
@@ -781,13 +808,20 @@ async function runDueScheduledScans(env, ctx) {
       `scheduled_scans?enabled=eq.true&select=*`
     );
 
-    if (!schedules?.length) return;
+    if (!schedules?.length) {
+      return;
+    }
+
+    console.log(`[cron] Checking ${schedules.length} enabled schedules`);
 
     // Filter to due schedules
     const dueSchedules = schedules.filter(isScheduleDue);
-    if (!dueSchedules.length) return;
+    if (!dueSchedules.length) {
+      return;
+    }
 
-    console.log(`Found ${dueSchedules.length} due scheduled scans`);
+    console.log(`[cron] Found ${dueSchedules.length} due scheduled scans:`,
+      dueSchedules.map(s => `${s.label}@${s.time} (tz=${s.timezone}, accounts=${(s.accounts||[]).length})`).join(', '));
 
     // Execute up to 5 concurrent scheduled scans
     const MAX_CONCURRENT = 5;
