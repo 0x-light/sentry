@@ -16,17 +16,17 @@ export function Topbar() {
   const isScheduleRunning = schedules.some(s => s.last_run_status === 'running')
 
   return (
-    <div className="flex items-center justify-between px-4 h-14 border-b">
-      <div className="flex items-center gap-2.5">
+    <div className="topbar flex items-center justify-between px-4 h-14 border-b">
+      <div className="topbar-logo flex items-center gap-2.5">
         <div
           className={cn(
-            "w-2 h-3 bg-foreground rounded-[2px] transition-opacity",
+            "topbar-indicator w-2 h-3 bg-foreground rounded-[2px] transition-opacity",
             busy && "animate-blink"
           )}
         />
         <span className="font-normal text-sm tracking-tight">sentry</span>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="topbar-actions flex items-center gap-1">
         {(hasActiveSchedules || isScheduleRunning) && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -35,7 +35,7 @@ export function Topbar() {
                 size="sm"
                 onClick={() => openSettings('schedule')}
                 className={cn(
-                  "gap-1.5",
+                  "topbar-schedule gap-1.5",
                   isScheduleRunning && "text-signal-blue"
                 )}
               >
@@ -65,7 +65,7 @@ export function Topbar() {
             size="sm"
             onClick={toggleLive}
             className={cn(
-              "gap-1.5",
+              "topbar-live gap-1.5",
               isLiveMode && "text-signal-green"
             )}
           >
@@ -77,11 +77,11 @@ export function Topbar() {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5"
+            className="topbar-user gap-1.5"
             onClick={() => openSettings('account')}
           >
             <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+              <div className="topbar-avatar w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
                 <span className="text-xs text-primary font-medium">
                   {(user?.email?.[0] || '?').toUpperCase()}
                 </span>
@@ -98,14 +98,15 @@ export function Topbar() {
             variant="ghost"
             size="sm"
             onClick={() => openSettings('auth')}
+            className="topbar-signin"
           >
             <span className="text-sm font-normal">Sign in</span>
           </Button>
         )}
-        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+        <Button variant="ghost" size="icon" onClick={toggleTheme} className="topbar-theme">
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => openSettings()}>
+        <Button variant="ghost" size="icon" onClick={() => openSettings()} className="topbar-settings">
           <Settings className="h-4 w-4" />
         </Button>
       </div>

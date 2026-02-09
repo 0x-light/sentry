@@ -48,7 +48,7 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-8">
           <Card className="max-w-md w-full p-6 space-y-4 text-center">
-            <h2 className="text-lg font-semibold">Something went wrong</h2>
+            <h2 className="text-base font-semibold">Something went wrong</h2>
             <p className="text-sm text-muted-foreground">
               {this.state.error?.message || 'An unexpected error occurred.'}
             </p>

@@ -122,6 +122,9 @@ interface SentryStore {
   // Settings apply (no page reload)
   applySettings: () => void;
 
+  // Dev: load mock signals
+  loadMockSignals?: () => void;
+
   // Scheduled scans (server-side)
   schedules: ScheduledScan[];
   schedulesLoading: boolean;
@@ -1017,6 +1020,175 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     }
   }, [updateNextScheduleLabel, loadSchedules, loadServerHistory, hasRunningSchedule, hasActiveSchedules, schedules])
 
+  // ── Dev: load mock signals ─────────────────────────────────────────────────
+  const loadMockSignals = useCallback(() => {
+    const now = new Date()
+    const mockSignals: Signal[] = [
+      {
+        title: 'BTC breaks above $100k resistance with strong volume',
+        summary: 'Bitcoin surged past the $100,000 level for the first time, driven by institutional inflows and ETF demand. Multiple analysts are raising their year-end targets.',
+        category: 'Trade',
+        source: 'CryptoCapo_',
+        tickers: [
+          { symbol: '$BTC', action: 'buy' },
+          { symbol: '$ETH', action: 'watch' },
+        ],
+        tweet_url: 'https://x.com/CryptoCapo_/status/1234567890',
+        links: ['https://coindesk.com/bitcoin-100k-breakout'],
+        tweet_time: new Date(now.getTime() - 15 * 60000).toISOString(),
+      },
+      {
+        title: 'NVIDIA announces next-gen AI chip, stock gaps up 8%',
+        summary: 'NVIDIA unveiled Blackwell Ultra at GTC with 3x inference throughput vs H100. Supply constraints expected through Q3. AMD and custom silicon plays may benefit from overflow demand.',
+        category: 'Trade',
+        source: 'unusual_whales',
+        tickers: [
+          { symbol: '$NVDA', action: 'buy' },
+          { symbol: '$AMD', action: 'buy' },
+          { symbol: '$INTC', action: 'sell' },
+        ],
+        tweet_url: 'https://x.com/unusual_whales/status/1234567891',
+        links: ['https://nvidia.com/gtc', 'https://reuters.com/nvidia-blackwell'],
+        tweet_time: new Date(now.getTime() - 45 * 60000).toISOString(),
+      },
+      {
+        title: 'Fed signals potential rate cut in March meeting minutes',
+        summary: 'FOMC minutes reveal growing consensus for easing. Bond yields falling, growth stocks rally. Markets pricing in 85% probability of 25bp cut.',
+        category: 'Insight',
+        source: 'zaborowskigz',
+        tickers: [
+          { symbol: '$SPY', action: 'watch' },
+          { symbol: '$TLT', action: 'buy' },
+          { symbol: '$QQQ', action: 'buy' },
+        ],
+        tweet_url: 'https://x.com/zaborowskigz/status/1234567892',
+        links: ['https://federalreserve.gov/minutes'],
+        tweet_time: new Date(now.getTime() - 2 * 3600000).toISOString(),
+      },
+      {
+        title: 'Solana DeFi TVL hits new ATH as memecoin season heats up',
+        summary: 'Total value locked in Solana DeFi protocols surpassed $20B. Raydium and Jupiter seeing record volumes. New token launches driving network fees to all-time highs.',
+        category: 'Insight',
+        source: 'DefiIgnas',
+        tickers: [
+          { symbol: '$SOL', action: 'buy' },
+          { symbol: '$RAY', action: 'watch' },
+          { symbol: '$JUP', action: 'hold' },
+        ],
+        tweet_url: 'https://x.com/DefiIgnas/status/1234567893',
+        links: ['https://defillama.com/chain/Solana'],
+        tweet_time: new Date(now.getTime() - 5 * 3600000).toISOString(),
+      },
+      {
+        title: 'Apple reportedly in talks to acquire AI startup for $6B',
+        summary: 'Sources say Apple is negotiating to buy an enterprise AI company to bolster its on-device ML capabilities. Deal could close within weeks.',
+        category: 'Trade',
+        source: 'gaborGurbacs',
+        tickers: [
+          { symbol: '$AAPL', action: 'buy' },
+          { symbol: '$MSFT', action: 'hold' },
+        ],
+        tweet_url: 'https://x.com/gaborGurbacs/status/1234567894',
+        links: ['https://bloomberg.com/apple-ai-acquisition', 'https://theverge.com/apple-ai-deal'],
+        tweet_time: new Date(now.getTime() - 8 * 3600000).toISOString(),
+      },
+      {
+        title: 'New on-chain analytics tool for tracking whale wallets',
+        summary: 'Arkham Intelligence launched a new dashboard for real-time whale tracking with alert capabilities. Free tier available with premium features for power users.',
+        category: 'Tool',
+        source: 'lookonchain',
+        tickers: [
+          { symbol: '$BTC', action: 'watch' },
+          { symbol: '$ETH', action: 'watch' },
+        ],
+        tweet_url: 'https://x.com/lookonchain/status/1234567895',
+        links: ['https://arkham.com/whale-tracker'],
+        tweet_time: new Date(now.getTime() - 12 * 3600000).toISOString(),
+      },
+      {
+        title: 'Comprehensive guide to reading order flow in crypto markets',
+        summary: 'Detailed thread covering bid/ask imbalances, liquidation clusters, and open interest divergences. Includes examples from recent BTC and ETH price action.',
+        category: 'Resource',
+        source: 'EmperorBTC',
+        tickers: [
+          { symbol: '$BTC', action: 'watch' },
+        ],
+        tweet_url: 'https://x.com/EmperorBTC/status/1234567896',
+        links: ['https://medium.com/order-flow-guide'],
+        tweet_time: new Date(now.getTime() - 24 * 3600000).toISOString(),
+      },
+      {
+        title: 'TSLA earnings beat expectations, robotaxi timeline moved up',
+        summary: 'Tesla reported Q4 earnings above consensus with improved margins. Musk confirmed robotaxi launch in Austin by Q2. Short interest declining rapidly.',
+        category: 'Trade',
+        source: 'gaborGurbacs',
+        tickers: [
+          { symbol: '$TSLA', action: 'buy' },
+          { symbol: '$UBER', action: 'sell' },
+          { symbol: '$LYFT', action: 'sell' },
+        ],
+        tweet_url: 'https://x.com/gaborGurbacs/status/1234567897',
+        links: [],
+        tweet_time: new Date(now.getTime() - 30 * 60000).toISOString(),
+      },
+    ]
+
+    const tweetMeta: Record<string, import('@/lib/types').TweetMeta> = {
+      'https://x.com/CryptoCapo_/status/1234567890': {
+        text: '🚀 $BTC just broke $100k! This is the moment we\'ve been waiting for. Institutional demand is insane right now.\n\nETF inflows hit $2.4B this week alone. $ETH looking ready to follow.\n\nTargets: $120k by EOY is very realistic.',
+        author: 'CryptoCapo_',
+        time: new Date(now.getTime() - 15 * 60000).toISOString(),
+      },
+      'https://x.com/unusual_whales/status/1234567891': {
+        text: 'BREAKING: $NVDA announces Blackwell Ultra at GTC\n\n- 3x inference throughput vs H100\n- 2x training performance\n- Available Q2 2025\n\n$AMD also moving on the news. $INTC looking like it\'s falling further behind.\n\nhttps://nvidia.com/gtc',
+        author: 'unusual_whales',
+        time: new Date(now.getTime() - 45 * 60000).toISOString(),
+      },
+      'https://x.com/zaborowskigz/status/1234567892': {
+        text: 'Just read through the full FOMC minutes.\n\nKey takeaway: "Several participants noted that a reduction in the target range could be appropriate if inflation continued to move down."\n\nThis is as dovish as we\'ve seen in a while. $SPY $QQQ $TLT all responding.\n\nhttps://federalreserve.gov/minutes',
+        author: 'zaborowskigz',
+        time: new Date(now.getTime() - 2 * 3600000).toISOString(),
+      },
+      'https://x.com/DefiIgnas/status/1234567893': {
+        text: 'Solana DeFi is absolutely cooking 🔥\n\nTVL: $20B+ (new ATH)\nRaydium: $8.2B daily volume\nJupiter: $5.1B daily volume\n\n$SOL ecosystem is pulling ahead. $RAY and $JUP are the picks.\n\nhttps://defillama.com/chain/Solana',
+        author: 'DefiIgnas',
+        time: new Date(now.getTime() - 5 * 3600000).toISOString(),
+      },
+      'https://x.com/gaborGurbacs/status/1234567894': {
+        text: 'SCOOP: Apple ($AAPL) in advanced talks to acquire an enterprise AI startup for ~$6B.\n\nThis would be Apple\'s largest AI acquisition ever. On-device ML is clearly the priority.\n\n$MSFT has been leading in cloud AI, but Apple is betting on edge computing.\n\nhttps://bloomberg.com/apple-ai-acquisition',
+        author: 'gaborGurbacs',
+        time: new Date(now.getTime() - 8 * 3600000).toISOString(),
+      },
+      'https://x.com/lookonchain/status/1234567895': {
+        text: 'New tool alert 🛠️\n\nArkham Intelligence just launched a whale tracking dashboard with real-time alerts.\n\nFeatures:\n- Track top 1000 wallets\n- Liquidation alerts\n- Portfolio mirroring\n- Free tier available\n\nhttps://arkham.com/whale-tracker',
+        author: 'lookonchain',
+        time: new Date(now.getTime() - 12 * 3600000).toISOString(),
+      },
+      'https://x.com/EmperorBTC/status/1234567896': {
+        text: '🧵 Thread: How to read order flow in crypto markets\n\n1/ Order flow is the study of buy/sell pressure in real-time. Here\'s everything you need to know...\n\nCovering: bid/ask imbalances, liquidation clusters, OI divergences, and practical examples from $BTC.\n\nhttps://medium.com/order-flow-guide',
+        author: 'EmperorBTC',
+        time: new Date(now.getTime() - 24 * 3600000).toISOString(),
+      },
+      'https://x.com/gaborGurbacs/status/1234567897': {
+        text: '$TSLA Q4 Earnings:\n\n✅ EPS: $1.12 vs $0.95 expected\n✅ Revenue: $28.4B vs $27.1B expected\n✅ Margins improved 200bps QoQ\n\nMusk on the call: "Robotaxi launching in Austin by end of Q2"\n\n$UBER and $LYFT selling off hard on the news.',
+        author: 'gaborGurbacs',
+        time: new Date(now.getTime() - 30 * 60000).toISOString(),
+      },
+    }
+
+    const mockScanResult: ScanResult = {
+      date: now.toISOString(),
+      range: '24h',
+      days: 1,
+      accounts: ['CryptoCapo_', 'unusual_whales', 'zaborowskigz', 'DefiIgnas', 'gaborGurbacs', 'lookonchain', 'EmperorBTC'],
+      totalTweets: 42,
+      signals: mockSignals,
+      tweetMeta,
+    }
+
+    setScanResult(mockScanResult)
+  }, [])
+
   const value: SentryStore = {
     theme, toggleTheme,
     customAccounts, loadedPresets, presets,
@@ -1054,6 +1226,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     deleteSchedule: deleteScheduleHandler,
     refreshSchedules: loadSchedules,
     nextScheduleLabel,
+    loadMockSignals,
   }
 
   return <SentryContext.Provider value={value}>{children}</SentryContext.Provider>

@@ -96,7 +96,7 @@ export function PresetDialog() {
 
   return (
     <Dialog open={presetDialogOpen} onOpenChange={(open) => { if (!open) { handleCancelImport(); closePresetDialog() } }}>
-      <DialogContent className="sm:max-w-md w-full">
+      <DialogContent className="preset-dialog sm:max-w-md w-full">
         <div className="px-6 pt-6 pb-4">
           <DialogHeader>
             <DialogTitle>{editingPreset ? 'Edit preset' : 'Manage presets'}</DialogTitle>
@@ -108,7 +108,7 @@ export function PresetDialog() {
           {/* Import from Twitter following */}
           {!editingPreset && (
             <>
-              <div className="space-y-2">
+              <div className="preset-import space-y-2">
                 <Label>Import from Twitter</Label>
                 <p className="text-xs text-muted-foreground">
                   Enter a Twitter username to import the accounts they follow as a preset.
@@ -155,7 +155,7 @@ export function PresetDialog() {
             </>
           )}
 
-          <div className="space-y-2">
+          <div className="preset-form space-y-2">
             <Label>Preset name</Label>
             <Input
               value={name}
@@ -184,10 +184,10 @@ export function PresetDialog() {
           {presets.length > 0 && (
             <>
               <Separator className="my-4" />
-              <div className="space-y-2">
+              <div className="preset-list space-y-2">
                 <Label>Existing presets</Label>
                 {presets.map(p => (
-                  <div key={p.name} className="flex items-center gap-2 p-2 rounded-md border text-sm">
+                  <div key={p.name} className="preset-item flex items-center gap-2 p-2 rounded-md border text-sm">
                     <span className={`flex-1 font-normal ${p.hidden ? 'text-muted-foreground' : ''}`}>{p.name}</span>
                     <span className="text-muted-foreground">{p.accounts.length}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePresetVisibility(p.name)}>

@@ -276,10 +276,10 @@ export function Onboarding() {
   const hasTwKey = isAuthenticated || twKey.trim().length >= 20
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="onboarding min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="onboarding-container w-full max-w-md">
         {/* Progress dots */}
-        <div className="flex items-center justify-center gap-1.5 mb-8">
+        <div className="onboarding-progress flex items-center justify-center gap-1.5 mb-8">
           {STEPS.map((_, i) => (
             <div
               key={i}
@@ -292,14 +292,14 @@ export function Onboarding() {
         </div>
 
         {/* Step content */}
-        <div className="space-y-6">
+        <div className="onboarding-steps space-y-6">
 
           {/* ── Step 0: Welcome ─────────────────────────────────── */}
           {currentStep === 'Welcome' && (
-            <div className="text-center space-y-6">
+            <div className="onboarding-welcome text-center space-y-6">
               <div className="flex items-center justify-center gap-3">
                 <div className="w-3 h-4 bg-foreground rounded-[3px]" />
-                <span className="text-lg tracking-tight">sentry</span>
+                <span className="text-base tracking-tight">sentry</span>
               </div>
 
               <div className="space-y-3">
@@ -339,7 +339,7 @@ export function Onboarding() {
 
           {/* ── Step 1: Setup (Sign in or BYOK) ─────────────────── */}
           {currentStep === 'Setup' && (
-            <div className="space-y-6">
+            <div className="onboarding-setup space-y-6">
               {/* Already signed in during this step */}
               {isAuthenticated ? (
                 <div className="text-center space-y-4 py-4">
@@ -347,7 +347,7 @@ export function Onboarding() {
                     <Check className="h-5 w-5 text-signal-green" />
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-lg tracking-tight">You're signed in</h2>
+                    <h2 className="text-base tracking-tight">You're signed in</h2>
                     <p className="text-sm text-muted-foreground">
                         Signed in! Buy credits for managed API keys, or use your own keys for free.
                     </p>
@@ -367,7 +367,7 @@ export function Onboarding() {
                 /* Choose path */
                 <div className="space-y-6">
                   <div className="text-center space-y-2">
-                    <h2 className="text-lg tracking-tight">How do you want to use Sentry?</h2>
+                    <h2 className="text-base tracking-tight">How do you want to use Sentry?</h2>
                     <p className="text-sm text-muted-foreground">
                       Sign in for the easiest experience, or bring your own API keys.
                     </p>
@@ -408,7 +408,7 @@ export function Onboarding() {
                 /* Sign in path */
                 <div className="space-y-6">
                   <div className="text-center space-y-2">
-                    <h2 className="text-lg tracking-tight">Sign in</h2>
+                    <h2 className="text-base tracking-tight">Sign in</h2>
                     <p className="text-sm text-muted-foreground">
                       Create an account to get started with managed API keys.
                     </p>
@@ -525,7 +525,7 @@ export function Onboarding() {
                 /* BYOK path */
                 <div className="space-y-6">
                   <div className="text-center space-y-2">
-                    <h2 className="text-lg tracking-tight">API keys</h2>
+                    <h2 className="text-base tracking-tight">API keys</h2>
                     <p className="text-sm text-muted-foreground">
                       Your keys are stored securely on your device and never shared.
                     </p>
@@ -601,9 +601,9 @@ export function Onboarding() {
 
           {/* ── Step 2: Accounts ─────────────────────────────────── */}
           {currentStep === 'Accounts' && (
-            <div className="space-y-6">
+            <div className="onboarding-accounts space-y-6">
               <div className="text-center space-y-2">
-                <h2 className="text-lg tracking-tight">Accounts to scan</h2>
+                <h2 className="text-base tracking-tight">Accounts to scan</h2>
                 <p className="text-sm text-muted-foreground">
                   Pick a preset or add individual X/Twitter accounts to monitor.
                 </p>
@@ -749,9 +749,9 @@ export function Onboarding() {
 
           {/* ── Step 3: Analysts ─────────────────────────────────── */}
           {currentStep === 'Analysts' && (
-            <div className="space-y-6">
+            <div className="onboarding-analysts space-y-6">
               <div className="text-center space-y-2">
-                <h2 className="text-lg tracking-tight">Analysts</h2>
+                <h2 className="text-base tracking-tight">Analysts</h2>
                 <p className="text-sm text-muted-foreground">
                   Analysts are AI prompts that tell Sentry what to look for. The default one covers trading signals. You can add more for other areas.
                 </p>
@@ -823,13 +823,13 @@ export function Onboarding() {
 
           {/* ── Step 4: Ready ─────────────────────────────────── */}
           {currentStep === 'Ready' && (
-            <div className="text-center space-y-6">
+            <div className="onboarding-ready text-center space-y-6">
               <div className="w-10 h-10 rounded-full bg-signal-green-bg flex items-center justify-center mx-auto">
                 <Check className="h-5 w-5 text-signal-green" />
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-lg tracking-tight">You're all set</h2>
+                <h2 className="text-base tracking-tight">You're all set</h2>
                 <p className="text-sm text-muted-foreground">
                   You can always change your settings later from the gear icon in the top right.
                 </p>

@@ -105,6 +105,19 @@ export function DevToolbar() {
 
         <div className="w-px h-4 bg-zinc-700" />
 
+        {/* Mock data */}
+        <div className="flex items-center gap-1">
+          <span className="text-zinc-500">Data:</span>
+          <button
+            onClick={() => sentry.loadMockSignals?.()}
+            className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-400 transition-colors"
+          >
+            Mock signals
+          </button>
+        </div>
+
+        <div className="w-px h-4 bg-zinc-700" />
+
         {/* Open dialogs */}
         <div className="flex items-center gap-1">
           <span className="text-zinc-500">Open:</span>

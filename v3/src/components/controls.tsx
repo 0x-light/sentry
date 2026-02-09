@@ -53,9 +53,9 @@ export function Controls() {
   }, [hasCredits, totalAccounts, range, model])
 
   return (
-    <div className="border-b">
+    <div className="controls border-b">
       {/* Input row */}
-      <div className="flex items-center gap-2 px-4 py-3">
+      <div className="controls-input flex items-center gap-2 px-4 py-3">
         <div className="flex items-center flex-1">
           {inputValue && <span className="text-sm text-muted-foreground select-none">@</span>}
           <input
@@ -74,12 +74,12 @@ export function Controls() {
       </div>
 
       {/* Presets + custom accounts */}
-      <div className="flex flex-wrap items-center gap-1.5 px-4">
+      <div className="controls-presets flex flex-wrap items-center gap-1.5 px-4">
         {presets.filter(p => !p.hidden).map(p => (
           <Badge
             key={p.name}
             variant={loadedPresets.includes(p.name) ? "default" : "outline"}
-            className="cursor-pointer select-none"
+            className="preset-badge cursor-pointer select-none"
             onClick={() => togglePreset(p.name)}
           >
             {p.name}
@@ -91,26 +91,20 @@ export function Controls() {
           <Badge
             key={a}
             variant="secondary"
-            className="cursor-pointer select-none gap-1"
+            className="account-badge cursor-pointer select-none gap-1"
           >
             @{a}
             <X className="h-3 w-3 opacity-50 hover:opacity-100 transition-opacity" onClick={(e: React.MouseEvent) => { e.stopPropagation(); removeAccount(a) }} />
           </Badge>
         ))}
 
-        <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => openPresetDialog()}>
-          <Plus className="h-3 w-3" />
+        <Button variant="ghost" size="icon" className="controls-edit-presets h-6 w-6 rounded-md" onClick={() => openPresetDialog()}>
+          <Pencil className="h-3 w-3" />
         </Button>
 
-        {presets.length > 0 && (
-          <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={() => openPresetDialog()}>
-            <Pencil className="h-3 w-3" />
-          </Button>
-        )}
-
         {hasAccounts && (
-          <Button variant="ghost" size="sm" className="h-6 text-sm text-muted-foreground" onClick={clearAllAccounts}>
-            Clear
+          <Button variant="ghost" size="icon" className="controls-clear h-6 w-6 rounded-md" onClick={clearAllAccounts}>
+            <X className="h-3 w-3" />
           </Button>
         )}
       </div>
@@ -119,13 +113,13 @@ export function Controls() {
       {recents.length > 0 && !hasAccounts && (
         <>
           <Separator />
-          <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+          <div className="controls-recents flex flex-wrap items-center gap-1.5 px-4 py-3">
             <span className="text-sm text-muted-foreground font-normal mr-1">Recent</span>
             {recents.map(s => (
               <Badge
                 key={s}
                 variant="outline"
-                className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                className="recent-badge cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => addFromRecents(s)}
               >
                 @{s}
@@ -139,13 +133,13 @@ export function Controls() {
       )}
 
       {/* Range + Scan */}
-      <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-[3px]">
+      <div className="controls-actions flex items-center gap-2 px-4 py-4">
+        <div className="range-picker flex items-center gap-0.5 bg-muted rounded-lg p-[3px]">
           {RANGES.map((r, i) => (
             <button
               key={r.label}
               className={cn(
-                "px-3 py-1 text-sm rounded-md transition-all font-normal",
+                "range-option px-3 py-1 text-sm rounded-md transition-all font-normal",
                 range === i
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -157,7 +151,7 @@ export function Controls() {
           ))}
         </div>
 
-        <div className="ml-auto flex gap-2">
+        <div className="controls-scan ml-auto flex gap-2">
           {busy && (
             <Button variant="outline" size="sm" onClick={cancelScan} className="hidden sm:inline-flex">
               Cancel
@@ -179,7 +173,7 @@ export function Controls() {
           ) : (
             <div className="flex items-center gap-2">
               {estimatedCredits > 0 && (
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                <span className="credit-estimate text-xs text-muted-foreground whitespace-nowrap">
                   ~{estimatedCredits.toLocaleString()} cr
                 </span>
               )}
@@ -193,7 +187,7 @@ export function Controls() {
                   Free scan used
                 </span>
               )}
-              <Button size="sm" onClick={scan} disabled={!hasAccounts}>
+              <Button size="sm" onClick={scan} disabled={!hasAccounts} className="button-scan">
                 <Search className="h-3.5 w-3.5" />
                 Scan
               </Button>

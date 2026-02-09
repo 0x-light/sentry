@@ -42,7 +42,7 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm w-full">
+      <DialogContent className="user-menu sm:max-w-sm w-full">
         <div className="px-6 pt-6 pb-4">
           <DialogHeader>
             <DialogTitle>Account</DialogTitle>
@@ -52,7 +52,7 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
 
         <div className="px-6 pb-6 space-y-4">
           {/* Credit Balance */}
-          <div className="p-4 rounded-lg border space-y-3">
+          <div className="user-credits p-4 rounded-lg border space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Credits</span>
               <span className="text-sm font-medium">
@@ -61,9 +61,9 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
             </div>
 
             {/* Progress bar */}
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
+            <div className="credit-bar h-2 rounded-full bg-muted overflow-hidden">
               <div
-                className={cn("h-full rounded-full transition-all duration-500", barColor)}
+                className={cn("credit-bar-fill h-full rounded-full transition-all duration-500", barColor)}
                 style={{ width: `${barPercent}%` }}
               />
             </div>

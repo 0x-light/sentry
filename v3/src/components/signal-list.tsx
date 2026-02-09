@@ -45,30 +45,30 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
   }
 
   return (
-    <div className="border-b last:border-b-0 animate-slide-in">
+    <div className="signal-card border-b last:border-b-0 animate-slide-in">
       <div className="px-4 py-3">
         {/* Header: Category + Source + Post link */}
-        <div className="flex items-center gap-2 mb-1">
-          <span className={cn("text-sm font-normal", catColors.text)}>{cat}</span>
+        <div className="signal-header flex items-center gap-2 mb-1">
+          <span className={cn("signal-category text-sm font-normal", catColors.text)}>{cat}</span>
           <span className="text-sm text-muted-foreground">·</span>
           <a
             href={`https://x.com/${signal.source}`}
             target="_blank"
             rel="noopener"
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="signal-source text-sm text-muted-foreground hover:text-foreground"
           >
             @{signal.source}
           </a>
           {timeStr && (
             <>
               <span className="text-sm text-muted-foreground">·</span>
-              <span className="text-sm text-muted-foreground">{timeStr}</span>
+              <span className="signal-time text-sm text-muted-foreground">{timeStr}</span>
             </>
           )}
           <span className="ml-auto flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              className="signal-share inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               {copied ? 'Copied' : 'Share'}
@@ -78,7 +78,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                 href={signal.tweet_url}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                className="signal-post-link inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ExternalLink className="h-3 w-3" />
                 Post
@@ -88,14 +88,14 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
         </div>
 
         {/* Title */}
-        <h3 className="text-sm font-normal leading-snug mb-1">{signal.title}</h3>
+        <h3 className="signal-title text-sm font-normal leading-snug mb-1">{signal.title}</h3>
 
         {/* Summary */}
-        <p className="text-sm text-muted-foreground leading-relaxed mb-2">{signal.summary}</p>
+        <p className="signal-summary text-sm text-muted-foreground leading-relaxed mb-2">{signal.summary}</p>
 
         {/* Tickers */}
         {signal.tickers?.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <div className="signal-tickers flex flex-wrap items-center gap-1.5 mb-2">
             {signal.tickers.map((t, i) => {
               const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase()
               const price = priceCache[sym]
@@ -112,7 +112,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                   onMouseMove={moveChart}
                   onMouseLeave={hideChart}
                   className={cn(
-                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm",
+                    "ticker inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm",
                     colors.bg, colors.text,
                     "hover:opacity-80 transition-opacity"
                   )}
@@ -138,16 +138,16 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
 
         {/* Post text (expandable) */}
         {tweetMeta && (
-          <div className="mt-2">
+          <div className="post-preview mt-2">
             <button
               onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              className="post-preview-toggle flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               Original post
             </button>
             {expanded && (
-              <p className="mt-1 text-sm text-muted-foreground p-2 bg-muted rounded-md whitespace-pre-wrap">
+              <p className="post-preview-text mt-1 text-sm text-muted-foreground p-2 bg-muted rounded-md whitespace-pre-wrap">
                 {tweetMeta.text}
               </p>
             )}
@@ -156,7 +156,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
 
         {/* Links */}
         {signal.links?.length > 0 && (
-          <div className="flex items-center gap-2 mt-2">
+          <div className="signal-links flex items-center gap-2 mt-2">
             {signal.links.map((link, i) => (
               <a
                 key={i}
@@ -216,10 +216,10 @@ export function SignalList() {
   }
 
   return (
-    <div>
+    <div className="signal-list">
       {/* Signal count */}
       {scanResult && (
-        <div className="px-4 py-2 text-sm text-muted-foreground border-b">
+        <div className="signal-count px-4 py-2 text-sm text-muted-foreground border-b">
           {filters.category || filters.ticker
             ? `${signals.length} of ${scanResult.signals.length} signals`
             : `${signals.length} signals`}

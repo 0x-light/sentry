@@ -925,6 +925,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://sentry.is',
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://localhost:8888',
 ]);
 
 function corsHeaders(env, originOverride) {

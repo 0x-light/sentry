@@ -64,7 +64,7 @@ export function ChartPreview({ symbol, x, y }: PreviewState) {
 
   return createPortal(
     <div
-      className="fixed z-[100] pointer-events-none rounded-lg border bg-card shadow-xl overflow-hidden hidden sm:block"
+      className="chart-preview fixed z-[100] pointer-events-none rounded-lg border bg-card shadow-xl overflow-hidden hidden sm:block"
       style={{ left, top, width: WIDTH, height: HEIGHT }}
     >
       <iframe

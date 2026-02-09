@@ -44,10 +44,10 @@ export function TickerBar() {
   if (!tickers.length && !categories.length) return null
 
   return (
-    <div className="border-b">
+    <div className="ticker-bar border-b">
       {/* Ticker bar */}
       {tickers.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+        <div className="ticker-list flex flex-wrap items-center gap-2 px-4 py-2.5">
           {tickers.map(t => {
             const sym = t.symbol.replace(/^\$/, '').toUpperCase()
             const price = priceCache[sym]
@@ -62,10 +62,10 @@ export function TickerBar() {
                 onMouseMove={moveChart}
                 onMouseLeave={hideChart}
                 className={cn(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm whitespace-nowrap cursor-pointer transition-all",
+                  "ticker inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm whitespace-nowrap cursor-pointer transition-all",
                   colors.bg, colors.text,
                   isActive
-                    ? "ring-1 ring-current ring-opacity-50 opacity-100"
+                    ? "active ring-1 ring-current ring-opacity-50 opacity-100"
                     : "hover:opacity-80"
                 )}
               >
@@ -92,7 +92,7 @@ export function TickerBar() {
           {filters.ticker && (
             <button
               onClick={() => setTickerFilter(null)}
-              className="text-sm text-muted-foreground hover:text-foreground ml-1"
+              className="ticker-clear text-sm text-muted-foreground hover:text-foreground ml-1"
             >
               ✕
             </button>
@@ -102,7 +102,7 @@ export function TickerBar() {
 
       {/* Filter bar */}
       {categories.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t">
+        <div className="filter-bar flex items-center gap-2 px-4 py-2 border-t">
           <span className="text-sm text-muted-foreground mr-1">Filter</span>
           {categories.map(([cat, count]) => {
             const isActive = filters.category === cat
@@ -112,9 +112,9 @@ export function TickerBar() {
                 key={cat}
                 onClick={() => setFilter(cat)}
                 className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-normal transition-all",
+                  "filter-option inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-normal transition-all",
                   isActive
-                    ? `${colors.text} ${colors.bg} ring-1 ring-current ring-opacity-30`
+                    ? `active ${colors.text} ${colors.bg} ring-1 ring-current ring-opacity-30`
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -126,7 +126,7 @@ export function TickerBar() {
           {filters.category && (
             <button
               onClick={() => setFilter(null)}
-              className="text-sm text-muted-foreground hover:text-foreground ml-1"
+              className="filter-clear text-sm text-muted-foreground hover:text-foreground ml-1"
             >
               ✕
             </button>

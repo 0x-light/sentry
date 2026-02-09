@@ -95,7 +95,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md w-full">
+      <DialogContent className="auth-dialog sm:max-w-md w-full">
         <div className="px-6 pt-6 pb-4">
           <DialogHeader>
             <DialogTitle>Welcome to Sentry</DialogTitle>
@@ -111,7 +111,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
             </TabsList>
 
             {/* Login Tab */}
-            <TabsContent value="login" className="space-y-4 mt-4">
+            <TabsContent value="login" className="auth-login space-y-4 mt-4">
             {error && <p className="text-sm text-destructive">{error}</p>}
             {message && <p className="text-sm text-signal-green">{message}</p>}
 
@@ -160,7 +160,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
           </TabsContent>
 
           {/* Sign Up Tab */}
-          <TabsContent value="signup" className="space-y-4 mt-4">
+          <TabsContent value="signup" className="auth-signup space-y-4 mt-4">
             {error && <p className="text-sm text-destructive">{error}</p>}
             {message && <p className="text-sm text-signal-green">{message}</p>}
 

@@ -28,10 +28,10 @@ export function HistorySection() {
   }
 
   return (
-    <div className="border-t">
+    <div className="history-section border-t">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="history-toggle flex items-center gap-2 w-full px-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         History
@@ -46,9 +46,9 @@ export function HistorySection() {
             const isExpanded = expandedScan === i
 
             return (
-              <div key={entry.date} className="border-t">
+              <div key={entry.date} className="history-entry border-t">
                 <div
-                  className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                  className="history-entry-header flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => setExpandedScan(isExpanded ? null : i)}
                 >
                   {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -75,7 +75,7 @@ export function HistorySection() {
                 </div>
 
                 {isExpanded && entry.signals && (
-                  <div className="px-4 pb-3">
+                  <div className="history-entry-signals px-4 pb-3">
                     {entry.signals.map((s, j) => (
                       <div key={j} className="py-2 border-t first:border-t-0">
                         <div className="flex items-center gap-2 mb-0.5">

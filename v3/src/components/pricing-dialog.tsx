@@ -3,14 +3,13 @@ import { useAuth } from '@/hooks/use-auth'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { Check, Loader2 } from '@/components/icons'
+import { Loader2, ChevronDown } from '@/components/icons'
 import * as api from '@/lib/api'
 import type { CreditPack } from '@/lib/types'
 
 // Credit packs — matches backend CREDIT_PACKS
-// Estimates all use the same "200 accounts, daily scan" baseline for easy comparison
 const CREDIT_PACKS: CreditPack[] = [
   {
     id: 'starter',
@@ -19,7 +18,7 @@ const CREDIT_PACKS: CreditPack[] = [
     price: 900,
     perCredit: 0.009,
     estimates: [
-      { label: 'Scan 200 accounts ~20× with Haiku', count: 20 },
+      { label: '~20 daily scans', count: 20 },
     ],
   },
   {
@@ -28,10 +27,10 @@ const CREDIT_PACKS: CreditPack[] = [
     credits: 5000,
     price: 3900,
     perCredit: 0.0078,
-    savings: '13% off',
+    savings: '13%',
     recommended: true,
     estimates: [
-      { label: 'Scan 200 accounts ~100× with Haiku', count: 100 },
+      { label: '~100 daily scans', count: 100 },
     ],
   },
   {
@@ -40,9 +39,9 @@ const CREDIT_PACKS: CreditPack[] = [
     credits: 15000,
     price: 9900,
     perCredit: 0.0066,
-    savings: '27% off',
+    savings: '27%',
     estimates: [
-      { label: 'Scan 200 accounts ~300× with Haiku', count: 300 },
+      { label: '~300 daily scans', count: 300 },
     ],
   },
   {
@@ -51,9 +50,9 @@ const CREDIT_PACKS: CreditPack[] = [
     credits: 40000,
     price: 19900,
     perCredit: 0.005,
-    savings: '45% off',
+    savings: '45%',
     estimates: [
-      { label: 'Scan 200 accounts ~800× with Haiku', count: 800 },
+      { label: '~800 daily scans', count: 800 },
     ],
   },
 ]
@@ -68,6 +67,7 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
   const [loadingPack, setLoadingPack] = useState<string | null>(null)
   const [recurring, setRecurring] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showFormula, setShowFormula] = useState(false)
 
   const handleBuyCredits = async (packId: string) => {
     if (!isAuthenticated) return
@@ -121,152 +121,121 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl w-full">
-        <div className="px-6 pt-6 pb-4">
+      <DialogContent className="pricing-dialog sm:max-w-lg w-full">
+        <div className="px-6 pt-6 pb-6 space-y-5 overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Buy Credits</DialogTitle>
+            <DialogTitle>Credits</DialogTitle>
             <DialogDescription>
-              Credits are used for scans with managed API keys. 1 credit = 1 account per day.
+              {isAuthenticated && profile
+                ? <>{(profile.credits_balance || 0).toLocaleString()} credits remaining</>
+                : <>1 credit = 1 account scanned</>
+              }
             </DialogDescription>
           </DialogHeader>
-        </div>
 
-        <div className="px-6 pb-6 space-y-3 overflow-y-auto">
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
 
-          {/* Current balance */}
-          {isAuthenticated && profile && (
-            <div className="p-3 rounded-lg border bg-muted/30 flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Current balance</span>
-              <span className="text-sm font-medium">
-                {(profile.credits_balance || 0).toLocaleString()} credits
-              </span>
-            </div>
-          )}
-
-          {/* Recurring toggle */}
-          <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:border-foreground/20 transition-colors">
-            <input
-              type="checkbox"
-              checked={recurring}
-              onChange={e => setRecurring(e.target.checked)}
-              className="rounded border-border"
-            />
-            <div className="flex-1">
-              <span className="text-sm">Auto-refill monthly</span>
-              <p className="text-xs text-muted-foreground">Credits are added at the start of each billing cycle</p>
-            </div>
-          </label>
-
-          {/* Credit packs */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Credit packs — compact rows */}
+          <div className="pricing-packs space-y-2">
             {CREDIT_PACKS.map(pack => (
-              <div
+              <button
                 key={pack.id}
                 className={cn(
-                  "p-4 rounded-lg border space-y-3 flex flex-col",
-                  pack.recommended && "border-primary ring-1 ring-primary"
+                  "credit-pack w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors",
+                  "hover:border-foreground/20",
+                  pack.recommended && "recommended border-primary/60 bg-primary/[0.03]"
                 )}
+                onClick={() => handleBuyCredits(pack.id)}
+                disabled={!!loadingPack}
               >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm font-medium">{pack.name}</h4>
-                  {pack.savings && (
-                    <Badge variant="secondary" className="text-xs">{pack.savings}</Badge>
-                  )}
-                  {pack.recommended && (
-                    <Badge variant="default" className="text-xs">Popular</Badge>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-2xl font-semibold">{formatPrice(pack.price)}</span>
-                  <span className="text-sm text-muted-foreground ml-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{pack.name}</span>
+                    {pack.savings && (
+                      <span className="text-[10px] text-muted-foreground/70">-{pack.savings}</span>
+                    )}
+                    {pack.recommended && (
+                      <Badge variant="default" className="text-[10px] px-1.5 py-0">Popular</Badge>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
                     {pack.credits.toLocaleString()} credits
+                    <span className="mx-1 opacity-40">·</span>
+                    {pack.estimates[0]?.label}
                   </span>
-                  {recurring && <span className="text-xs text-muted-foreground">/mo</span>}
                 </div>
-
-                {/* Estimates */}
-                <div className="space-y-1 flex-1">
-                  {pack.estimates.map((est, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Check className="h-3 w-3 text-signal-green shrink-0" />
-                      <span>{est.label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  className="w-full"
-                  variant={pack.recommended ? 'default' : 'outline'}
-                  onClick={() => handleBuyCredits(pack.id)}
-                  disabled={!!loadingPack || !isAuthenticated}
-                >
+                <div className="shrink-0 text-right">
                   {loadingPack === pack.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    recurring ? `Subscribe — ${formatPrice(pack.price)}/mo` : `Buy — ${formatPrice(pack.price)}`
+                    <span className="text-sm font-semibold tabular-nums">
+                      {formatPrice(pack.price)}
+                      {recurring && <span className="text-xs font-normal text-muted-foreground">/mo</span>}
+                    </span>
                   )}
-                </Button>
-              </div>
+                </div>
+              </button>
             ))}
           </div>
 
-          {/* Free tier info */}
-          <div className="p-4 rounded-lg border space-y-2">
-            <h4 className="text-sm font-medium">Free (BYOK)</h4>
-            <p className="text-sm text-muted-foreground">
-              Use your own API keys for unlimited scans. 1 free scan/day with up to 10 accounts.
-            </p>
+          {/* Auto-refill — subtle inline toggle */}
+          <label className="flex items-center justify-between cursor-pointer py-1">
+            <span className="text-sm text-muted-foreground">Auto-refill monthly</span>
+            <Switch checked={recurring} onCheckedChange={setRecurring} />
+          </label>
+
+          {/* How credits work — collapsible */}
+          <div className="space-y-2">
+            <button
+              className="flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              onClick={() => setShowFormula(v => !v)}
+            >
+              <ChevronDown className={cn("h-3 w-3 transition-transform", !showFormula && "-rotate-90")} />
+              How credits work
+            </button>
+            {showFormula && (
+              <div className="text-xs text-muted-foreground/70 space-y-0.5 pl-4.5">
+                <p>Credits = accounts × range × model</p>
+                <p>Range: today ×1 · 3d ×2 · week ×3 · 2w ×5 · month ×8</p>
+                <p>Model: Haiku ×0.25 · Sonnet ×1 · Opus ×5</p>
+                <p className="pt-1 text-muted-foreground/50">Example: 200 accounts × today × Haiku = 50 credits</p>
+              </div>
+            )}
           </div>
 
-          {/* Credit formula */}
-          <div className="p-3 rounded-lg bg-muted/30 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">How credits work</p>
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>Credits = accounts × range × model</p>
-              <p>Range: today ×1 · 3d ×2 · week ×3 · 2w ×5 · month ×8</p>
-              <p>Model: Haiku ×0.25 · Sonnet ×1 · Opus ×5</p>
-              <p className="pt-1">Example: 200 accounts × today × Haiku = 50 credits</p>
-              <p>Example: 200 accounts × today × Sonnet = 200 credits</p>
-            </div>
-          </div>
+          {/* Free tier — single line */}
+          <p className="text-xs text-muted-foreground/50 text-center">
+            Free tier: bring your own API keys for unlimited scans.
+          </p>
 
           {/* Manage subscription */}
           {profile?.subscription_status === 'active' && (
-            <>
-              <Separator />
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleManageBilling}
-                disabled={!!loadingPack}
-              >
-                {loadingPack === 'portal' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Manage subscription'
-                )}
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={handleManageBilling}
+              disabled={!!loadingPack}
+            >
+              {loadingPack === 'portal' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Manage subscription'
+              )}
+            </Button>
           )}
 
           {!isAuthenticated && (
-            <>
-              <Separator />
-              <p className="text-sm text-muted-foreground text-center">
-                Sign in to purchase credits.
-              </p>
-            </>
+            <p className="text-sm text-muted-foreground text-center">
+              Sign in to purchase credits.
+            </p>
           )}
 
-          <div className="text-center pt-2">
-            <p className="text-xs text-muted-foreground">
-              Payments processed securely by Stripe. Apple Pay & Google Pay supported.
-            </p>
-          </div>
+          <p className="text-[10px] text-muted-foreground/40 text-center">
+            Payments by Stripe. Apple Pay & Google Pay supported.
+          </p>
         </div>
       </DialogContent>
     </Dialog>

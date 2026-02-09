@@ -140,8 +140,8 @@ export function SettingsDialog() {
 
   return (
     <Sheet open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
-      <SheetContent side="right" className="sm:max-w-[29rem] w-full">
-        <div className="px-6 pt-6 pb-4 shrink-0">
+      <SheetContent side="right" className="settings-dialog sm:max-w-[29rem] w-full">
+        <div className="settings-header px-6 pt-6 pb-4 shrink-0">
           <SheetHeader>
             <SheetTitle>Settings</SheetTitle>
             <SheetDescription>
@@ -164,7 +164,7 @@ export function SettingsDialog() {
             </div>
 
           {/* Account Tab */}
-          <TabsContent value="account" className="space-y-4 pb-4">
+          <TabsContent value="account" className="settings-account space-y-4 pb-4">
             {isAuthenticated ? (
               <>
                 {/* Credits & Status */}
@@ -238,7 +238,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* API Tab */}
-          <TabsContent value="api" className="space-y-4 pb-4">
+          <TabsContent value="api" className="settings-api space-y-4 pb-4">
             {hasCredits && (
               <div className="p-3 rounded-lg bg-accent/50 border space-y-2">
                 <div className="flex items-center gap-2">
@@ -298,7 +298,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Schedule Tab */}
-          <TabsContent value="schedule" className="space-y-3 pb-4">
+          <TabsContent value="schedule" className="settings-schedule space-y-3 pb-4">
             {!isAuthenticated ? (
               <div className="p-4 rounded-lg border border-dashed text-center space-y-3">
                 <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/50" />
@@ -353,10 +353,10 @@ export function SettingsDialog() {
                         : accountCount > 0 ? `${accountCount} accounts` : 'No accounts'
 
                       return (
-                        <div key={schedule.id} className="border rounded-lg">
+                        <div key={schedule.id} className="schedule-item border rounded-lg">
                           {/* Collapsed header — always visible */}
                           <div
-                            className="flex items-center gap-2.5 p-3 cursor-pointer"
+                            className="schedule-header flex items-center gap-2.5 p-3 cursor-pointer"
                             onClick={() => setExpandedSchedule(isExpanded ? null : schedule.id)}
                           >
                             <Switch
@@ -553,11 +553,11 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Analyst Tab */}
-          <TabsContent value="analyst" className="space-y-4 pb-4">
+          <TabsContent value="analyst" className="settings-analyst space-y-4 pb-4">
             {analysts.map(a => (
-              <div key={a.id} className="border rounded-lg">
+              <div key={a.id} className="analyst-item border rounded-lg">
                 <div
-                  className="flex items-center gap-2 p-3 cursor-pointer"
+                  className="analyst-header flex items-center gap-2 p-3 cursor-pointer"
                   onClick={() => setExpandedAnalyst(expandedAnalyst === a.id ? null : a.id)}
                 >
                   {expandedAnalyst === a.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -611,7 +611,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Display Tab */}
-          <TabsContent value="display" className="space-y-4 pb-4">
+          <TabsContent value="display" className="settings-display space-y-4 pb-4">
             <div className="space-y-2">
               <Label>Charts</Label>
               <Select value={localFinance} onValueChange={setLocalFinance}>
@@ -669,17 +669,17 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Data Tab */}
-          <TabsContent value="data" className="space-y-4 pb-4">
+          <TabsContent value="data" className="settings-data space-y-4 pb-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Live feed</Label>
-                <Badge variant="outline" className="text-sm">beta</Badge>
+                <Badge variant="outline" className="text-xs">beta</Badge>
               </div>
-              <div className="flex items-center gap-3">
-                <Switch checked={localLiveEnabled} onCheckedChange={setLocalLiveEnabled} />
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">
                   Passively monitor accounts for new posts. Uses ~3× more API credits.
                 </span>
+                <Switch checked={localLiveEnabled} onCheckedChange={setLocalLiveEnabled} className="shrink-0" />
               </div>
             </div>
             <Separator />
@@ -706,24 +706,22 @@ export function SettingsDialog() {
               </div>
             </div>
             <Separator />
-            <div className="space-y-2">
-              <Label>Cache</Label>
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={() => { if (confirm('Clear all cached analysis results?')) clearCache() }}>Clear cache</Button>
-                <span className="text-sm text-muted-foreground">{cacheSize} entries</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label>Cache</Label>
+                <p className="text-sm text-muted-foreground">{cacheSize} entries</p>
               </div>
+              <Button variant="outline" size="sm" onClick={() => { if (confirm('Clear all cached analysis results?')) clearCache() }}>Clear cache</Button>
             </div>
             <Separator />
-            <div className="space-y-2">
-              <Label>Onboarding</Label>
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={() => { resetOnboarding(); closeSettings(); }}>
-                  Restart onboarding
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Show the welcome wizard again.
-                </span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label>Onboarding</Label>
+                <p className="text-sm text-muted-foreground">Show the welcome wizard again.</p>
               </div>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => { resetOnboarding(); closeSettings(); }}>
+                Restart
+              </Button>
             </div>
           </TabsContent>
           </Tabs>
@@ -731,7 +729,7 @@ export function SettingsDialog() {
 
         {/* Save/Cancel — only show for tabs that need explicit save */}
         {settingsTab !== 'account' && settingsTab !== 'schedule' && (
-          <div className="px-6 pb-6 pt-4 shrink-0 border-t">
+          <div className="settings-footer px-6 py-4 shrink-0 border-t">
             <div className="flex flex-wrap gap-2 justify-end">
               {settingsTab === 'api' && (
                 <Button variant="destructive" size="sm" onClick={handleClearKeys} className="mr-auto">
