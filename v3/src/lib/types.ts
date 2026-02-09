@@ -138,15 +138,48 @@ export const CREDIT_MULTIPLIERS: Record<number, number> = {
   30: 8,
 };
 
-export function calculateScanCredits(accounts: number, rangeDays: number): number {
-  let multiplier = 1;
-  if (rangeDays <= 1) multiplier = 1;
-  else if (rangeDays <= 3) multiplier = 2;
-  else if (rangeDays <= 7) multiplier = 3;
-  else if (rangeDays <= 14) multiplier = 5;
-  else if (rangeDays <= 30) multiplier = 8;
-  else multiplier = 10;
-  return accounts * multiplier;
+// Model credit multipliers (relative to Sonnet = 1.0)
+const MODEL_CREDIT_MULTIPLIER: Record<string, number> = { haiku: 0.25, sonnet: 1, opus: 5 };
+
+function getModelCreditMultiplier(model?: string): number {
+  const id = (model || '').toLowerCase();
+  for (const [tier, mult] of Object.entries(MODEL_CREDIT_MULTIPLIER)) {
+    if (id.includes(tier)) return mult;
+  }
+  return 1;
+}
+
+export function calculateScanCredits(accounts: number, rangeDays: number, model?: string): number {
+  let rangeMultiplier = 1;
+  if (rangeDays <= 1) rangeMultiplier = 1;
+  else if (rangeDays <= 3) rangeMultiplier = 2;
+  else if (rangeDays <= 7) rangeMultiplier = 3;
+  else if (rangeDays <= 14) rangeMultiplier = 5;
+  else if (rangeDays <= 30) rangeMultiplier = 8;
+  else rangeMultiplier = 10;
+  return Math.ceil(accounts * rangeMultiplier * getModelCreditMultiplier(model));
+}
+
+// ============================================================================
+// SCHEDULED SCANS
+// ============================================================================
+
+export interface ScheduledScan {
+  id: string;
+  user_id?: string;
+  enabled: boolean;
+  time: string;           // "HH:MM" 24-hour format
+  timezone: string;       // IANA timezone (e.g. "America/New_York")
+  label: string;          // "Morning", "Midday", "Evening", or custom
+  days: number[];         // 0-6 (Sun-Sat), empty = every day
+  range_days: number;     // 1, 7, or 30
+  preset_id?: string | null;   // reference to a preset for accounts
+  accounts: string[];     // explicit account list (fallback if no preset)
+  last_run_at?: string | null;
+  last_run_status?: 'success' | 'error' | 'running' | null;
+  last_run_message?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type AuthState = {

@@ -16,7 +16,7 @@ export function Controls() {
     addAccount, removeAccount, togglePreset, clearAllAccounts,
     recents, addFromRecents, clearRecents,
     range, setRange, busy, scan, cancelScan,
-    openPresetDialog,
+    openPresetDialog, model,
   } = useSentry()
   const { isAuthenticated, profile } = useAuth()
 
@@ -45,10 +45,12 @@ export function Controls() {
 
   // Show estimated credit cost for managed-key users
   const hasCredits = isAuthenticated && profile?.has_credits
+  const freeScanAvailable = isAuthenticated && !hasCredits && profile?.free_scan_available
+  const freeScanUsed = isAuthenticated && !hasCredits && profile?.free_scan_available === false
   const estimatedCredits = useMemo(() => {
     if (!hasCredits || !totalAccounts) return 0
-    return calculateScanCredits(totalAccounts, RANGES[range].days)
-  }, [hasCredits, totalAccounts, range])
+    return calculateScanCredits(totalAccounts, RANGES[range].days, model)
+  }, [hasCredits, totalAccounts, range, model])
 
   return (
     <div className="border-b">
@@ -179,6 +181,16 @@ export function Controls() {
               {estimatedCredits > 0 && (
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
                   ~{estimatedCredits.toLocaleString()} cr
+                </span>
+              )}
+              {freeScanAvailable && (
+                <span className="text-xs text-signal-green whitespace-nowrap">
+                  1 free scan today
+                </span>
+              )}
+              {freeScanUsed && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  Free scan used
                 </span>
               )}
               <Button size="sm" onClick={scan} disabled={!hasAccounts}>

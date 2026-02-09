@@ -8,6 +8,7 @@ import {
   Pencil as LPencil, Trash2 as LTrash2,
   Settings as LSettings, Sun as LSun, Moon as LMoon, Radio as LRadio,
   Loader2 as LLoader2, Eye as LEye, EyeOff as LEyeOff,
+  Clock as LClock, Bell as LBell, CalendarClock as LCalendarClock,
 } from 'lucide-react'
 
 // ── Context ─────────────────────────────────────────────────────────────────
@@ -62,3 +63,6 @@ export const Radio = dual(sf.Radio, LRadio, 'Radio')
 export const Loader2 = dual(sf.Loader2, LLoader2, 'Loader2')
 export const Eye = dual(sf.Eye, LEye, 'Eye')
 export const EyeOff = dual(sf.EyeOff, LEyeOff, 'EyeOff')
+export const Clock = dual(sf.Clock, LClock, 'Clock')
+export const Bell = dual(sf.Bell, LBell, 'Bell')
+export const CalendarClock = dual(sf.CalendarClock, LCalendarClock, 'CalendarClock')

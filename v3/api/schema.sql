@@ -347,3 +347,36 @@ begin
   delete from analysis_cache where created_at < now() - interval '7 days';
 end;
 $$ language plpgsql security definer;
+
+-- ============================================================================
+-- SCHEDULED SCANS
+-- ============================================================================
+
+create table scheduled_scans (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  label text not null default 'Morning',
+  time text not null default '07:00',         -- "HH:MM" 24-hour format
+  timezone text not null default 'UTC',       -- IANA timezone (e.g. "America/New_York")
+  days int[] not null default '{}',           -- 0-6 (Sun-Sat), empty = every day
+  range_days int not null default 1,          -- 1, 7, or 30
+  preset_id uuid references presets(id) on delete set null,  -- which preset to scan
+  accounts text[] not null default '{}',      -- explicit accounts (fallback if no preset)
+  enabled boolean not null default true,
+  last_run_at timestamptz,
+  last_run_status text,                       -- 'success', 'error', 'running'
+  last_run_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_scheduled_scans_user on scheduled_scans(user_id);
+create index idx_scheduled_scans_enabled on scheduled_scans(enabled) where enabled = true;
+
+-- RLS
+alter table scheduled_scans enable row level security;
+
+create policy "Users can view own schedules"   on scheduled_scans for select using (auth.uid() = user_id);
+create policy "Users can insert own schedules" on scheduled_scans for insert with check (auth.uid() = user_id);
+create policy "Users can update own schedules" on scheduled_scans for update using (auth.uid() = user_id);
+create policy "Users can delete own schedules" on scheduled_scans for delete using (auth.uid() = user_id);

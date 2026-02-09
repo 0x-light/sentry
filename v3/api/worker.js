@@ -35,6 +35,15 @@
 const inflight = new Map();
 
 // ---------------------------------------------------------------------------
+// ANTHROPIC MODELS CACHE (per isolate)
+// ---------------------------------------------------------------------------
+// We occasionally see model IDs change/deprecate. Use the Models API to
+// resolve requested models to an actually-available model ID for our key.
+// Docs: https://platform.claude.com/docs/en/api/overview (Models API: GET /v1/models)
+const ANTHROPIC_MODELS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+let anthropicModelsCache = { ts: 0, models: null };
+
+// ---------------------------------------------------------------------------
 // CREDIT SYSTEM CONSTANTS
 // ---------------------------------------------------------------------------
 const CREDIT_PACKS = {
@@ -51,15 +60,27 @@ const FREE_TIER = {
 
 const MAX_ACCOUNTS_PER_SCAN = 1000; // hard server-side cap
 
-function calculateScanCredits(accountsCount, rangeDays) {
-  let multiplier;
-  if (rangeDays <= 1) multiplier = 1;
-  else if (rangeDays <= 3) multiplier = 2;
-  else if (rangeDays <= 7) multiplier = 3;
-  else if (rangeDays <= 14) multiplier = 5;
-  else if (rangeDays <= 30) multiplier = 8;
-  else multiplier = 10;
-  return accountsCount * multiplier;
+// Model credit multipliers (relative to Sonnet = 1.0)
+// Haiku is ~4× cheaper, Opus is ~5× more expensive
+const MODEL_CREDIT_MULTIPLIER = { haiku: 0.25, sonnet: 1, opus: 5 };
+
+function getModelCreditMultiplier(model) {
+  const id = (model || '').toLowerCase();
+  for (const [tier, mult] of Object.entries(MODEL_CREDIT_MULTIPLIER)) {
+    if (id.includes(tier)) return mult;
+  }
+  return 1; // default to Sonnet baseline
+}
+
+function calculateScanCredits(accountsCount, rangeDays, model) {
+  let rangeMultiplier;
+  if (rangeDays <= 1) rangeMultiplier = 1;
+  else if (rangeDays <= 3) rangeMultiplier = 2;
+  else if (rangeDays <= 7) rangeMultiplier = 3;
+  else if (rangeDays <= 14) rangeMultiplier = 5;
+  else if (rangeDays <= 30) rangeMultiplier = 8;
+  else rangeMultiplier = 10;
+  return Math.ceil(accountsCount * rangeMultiplier * getModelCreditMultiplier(model));
 }
 
 function getStripePriceId(env, packId, recurring) {
@@ -78,14 +99,34 @@ function packFromPriceId(env, priceId) {
 }
 
 export default {
+  // ── Cron trigger: runs scheduled scans server-side ─────────────────────
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runDueScheduledScans(env, ctx));
+  },
+
   async fetch(request, env, ctx) {
+    // Resolve CORS origin: reflect request origin if it's in our allow-list
+    const reqOrigin = request.headers.get('Origin') || '';
+    if (ALLOWED_ORIGINS.has(reqOrigin)) {
+      env._cors_origin = reqOrigin;
+    }
+
     // CORS preflight
     if (request.method === 'OPTIONS') {
+      // Admin endpoints allow any origin (protected by secret, not CORS)
+      const prefUrl = new URL(request.url);
+      const prefPath = prefUrl.pathname.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+      if (prefPath.startsWith('/api/admin/')) {
+        return corsResponse(null, 204, env, '*');
+      }
       return corsResponse(null, 204, env);
     }
 
     const url = new URL(request.url);
-    const path = url.pathname;
+    // Normalize path so route matching isn't sensitive to accidental `//` or trailing `/`.
+    // (Some clients may send `//api/...` if their base URL ends with `/`.)
+    const rawPath = url.pathname;
+    const path = rawPath.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
     const method = request.method;
 
     try {
@@ -98,6 +139,9 @@ export default {
       }
       if (path === '/api/health') {
         return corsJson({ status: 'ok', version: 'v3' }, 200, env);
+      }
+      if (path === '/api/admin/monitoring' && method === 'GET') {
+        return handleAdminMonitoring(request, env);
       }
 
       // --- Auth required routes ---
@@ -174,6 +218,17 @@ export default {
         return handleReserveCredits(request, env, user);
       }
 
+      // Scheduled scans
+      if (path === '/api/user/schedules' && method === 'GET') {
+        return handleGetSchedules(env, user);
+      }
+      if (path === '/api/user/schedules' && method === 'POST') {
+        return handleSaveSchedule(request, env, user);
+      }
+      if (path === '/api/user/schedules' && method === 'DELETE') {
+        return handleDeleteSchedule(request, env, user);
+      }
+
       // Billing
       if (path === '/api/billing/checkout' && method === 'POST') {
         return handleCheckout(request, env, user);
@@ -198,28 +253,698 @@ export default {
 };
 
 // ============================================================================
+// SCHEDULED SCAN EXECUTION (Cron Trigger)
+// ============================================================================
+
+// Default analyst prompt (same as frontend DEFAULT_PROMPT)
+const DEFAULT_ANALYST_PROMPT = `You are an elite financial intelligence analyst. Extract actionable trading signals from these tweets with the precision of a portfolio manager deploying real capital.
+
+CORE DIRECTIVE: Be ruthlessly selective. Most tweets are noise. Only extract signals where there is a genuine directional opinion, thesis, or actionable insight.
+
+INCLUDE:
+- Directional views on specific assets (bullish/bearish with reasoning)
+- Macro theses that imply positioning (e.g. "inflation returning" → bonds, gold, dollar implications)
+- Catalysts: earnings, protocol upgrades, regulatory events, product launches
+- Technical analysis with specific levels, targets, or pattern recognition
+- On-chain/flow data indicating smart money movement or unusual activity
+- Contrarian takes that challenge prevailing consensus (particularly valuable)
+- Fund/whale positioning changes or portfolio shifts
+
+SKIP:
+- Pure memes without an underlying market thesis (but note: alpha can hide in humor — if there's a real opinion beneath the joke, extract it)
+- Vague hype, engagement bait, motivational trading quotes
+- Personal updates unrelated to markets
+- Restated common knowledge with no new angle or timing element
+- Promotional content without substantive analysis
+
+ACCURACY:
+- Ground every claim in the specific tweet at the given tweet_url. Never mix facts across tweets.
+- Inference is allowed but flag it: "implies", "suggests", "appears to".
+- Vague tweet → vague signal. Never fabricate specifics (products, events, metrics, partnerships).
+- Quote tweets/replies: the author's opinion is the signal; clearly distinguish from quoted content.
+- Threads (sequential tweets, same author, short timeframe): synthesize into one coherent signal.
+
+IMAGES: Analyze charts for key levels, patterns, and annotations. Extract data from screenshots (order books, dashboards, news). Skip purely comedic images unless they encode a real market opinion.
+
+WRITING:
+- Titles: max 12 words, scannable in 2 seconds, lead with $TICKER when relevant. Signal inference when present.
+- Summaries: 1-2 sentences answering: what's the view, why, and what's the implied trade? Quote key phrases from the tweet when they add punch.
+- Plain language for a smart generalist. Clarify jargon briefly if used (e.g. "TVL (total value locked)").
+- Be precise about which price/level belongs to which asset when multiple are mentioned.
+
+Return a JSON array. Each signal:
+- "title": headline, lead with $TICKER when relevant
+- "summary": 1-2 sentences — opinion, reasoning, implied positioning
+- "category": "Trade" (direct position idea with clear direction) | "Insight" (macro thesis, market structure, analytical observation) | "Tool" (product, platform, or technology for trading/research) | "Resource" (educational content, data source, reference)
+- "source": twitter handle (no @)
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}]
+  Extract ALL tradeable assets. Convert:
+  • Company → stock (Nvidia → $NVDA, Apple → $AAPL, Samsung → $005930.KS, TSMC → $TSM)
+  • Index → ETF (S&P/SPX → $SPY, Nasdaq → $QQQ, Dow → $DIA, Russell → $IWM, VIX → $VIX)
+  • Crypto name or abbreviation → ticker with $ (Bitcoin/BTC → $BTC, Ethereum/ETH → $ETH, Solana/SOL → $SOL, Hyperliquid/HYPE → $HYPE)
+  • Protocol → token (Uniswap → $UNI, Aave → $AAVE, Chainlink → $LINK, Jupiter → $JUP)
+  • Commodity → standard ticker (Gold → $XAU, Silver → $XAG, Oil → $USO, Natgas → $UNG)
+  Yahoo Finance format: US = symbol ($AAPL), Taiwan = .TW, HK = .HK, Japan = .T, Korea = .KS, crypto = symbol only. NEVER skip a tradeable asset. When in doubt, include it.
+- "tweet_url": exact tweet_url from data
+- "links": external URLs mentioned (articles, substacks, dashboards). Empty array if none.
+
+Return ONLY valid JSON array. No markdown, no explanation.`;
+
+/**
+ * Check if a schedule is due to run right now.
+ * Accounts for the schedule's timezone.
+ */
+function isScheduleDue(schedule) {
+  const tz = schedule.timezone || 'UTC';
+  let now;
+  try {
+    // Get current time in the schedule's timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric', minute: 'numeric', weekday: 'short',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+    const weekday = parts.find(p => p.type === 'weekday')?.value || '';
+    const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const today = dayMap[weekday] ?? new Date().getDay();
+    now = { hour, minute, today };
+  } catch {
+    // Fallback to UTC
+    const d = new Date();
+    now = { hour: d.getUTCHours(), minute: d.getUTCMinutes(), today: d.getUTCDay() };
+  }
+
+  // Check day-of-week filter (empty = every day)
+  if (schedule.days?.length > 0 && !schedule.days.includes(now.today)) return false;
+
+  // Parse schedule time
+  const [schedH, schedM] = (schedule.time || '07:00').split(':').map(Number);
+  const scheduleMinutes = schedH * 60 + schedM;
+  const currentMinutes = now.hour * 60 + now.minute;
+
+  // Must be within a 2-minute window of the scheduled time
+  // (cron runs every minute, so we need a small window to avoid misses)
+  if (currentMinutes < scheduleMinutes || currentMinutes > scheduleMinutes + 1) return false;
+
+  // Check if already ran recently (within last 30 minutes)
+  if (schedule.last_run_at) {
+    const lastRun = new Date(schedule.last_run_at);
+    const msSinceLastRun = Date.now() - lastRun.getTime();
+    if (msSinceLastRun < 30 * 60 * 1000) return false; // Ran within 30 min
+  }
+
+  return true;
+}
+
+/**
+ * Format a single tweet for Claude analysis (server-side version of client's formatTweetForAnalysis).
+ */
+function formatTweetForAnalysisServer(tw, account) {
+  const date = new Date(tw.createdAt).toISOString().slice(0, 16).replace('T', ' ');
+  const engagement = `${tw.likeCount || 0}♥ ${tw.retweetCount || 0}↻ ${tw.viewCount || 0}👁`;
+  const tweetId = tw.id || '';
+  const author = tw.author?.userName || account;
+  const url = `https://x.com/${author}/status/${tweetId}`;
+
+  let text = (tw.text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  const externalLinks = [];
+
+  if (tw.entities?.urls) {
+    for (const u of tw.entities.urls) {
+      if (u.url && u.expanded_url) {
+        text = text.replace(u.url, u.expanded_url);
+        if (!u.expanded_url.match(/^https?:\/\/(twitter\.com|x\.com|t\.co)\//)) {
+          externalLinks.push(u.expanded_url);
+        }
+      }
+    }
+  }
+
+  const parts = [`[${date}] ${text}`, `engagement: ${engagement}`, `tweet_url: ${url}`];
+  if (externalLinks.length) parts.push(`external_links: ${externalLinks.join(', ')}`);
+  if (tw.isReply) parts.push(`(reply to @${tw.inReplyToUsername || 'unknown'})`);
+  if (tw.quoted_tweet) {
+    const quotedText = (tw.quoted_tweet.text || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+    const quotedAuthor = tw.quoted_tweet.author?.userName || 'unknown';
+    parts.push(`--- QUOTED TWEET from @${quotedAuthor} ---\n${quotedText}\n--- END QUOTED TWEET ---`);
+  }
+
+  return { text: parts.join('\n'), url };
+}
+
+/**
+ * Build analysis batches from account tweet data (server-side version).
+ */
+function buildAnalysisBatches(accountData, promptLength) {
+  const MAX_BATCH_CHARS = 120000;
+  const SEPARATOR = '\n\n';
+
+  const items = accountData.map(a => {
+    const header = `=== @${a.account} (${a.tweets.length} tweets) ===`;
+    const formatted = a.tweets.map(tw => formatTweetForAnalysisServer(tw, a.account));
+    const body = formatted.map(f => f.text).join('\n---\n');
+    const tweetUrls = formatted.map(f => f.url);
+    return {
+      account: a.account,
+      text: `${header}\n${body}`,
+      size: header.length + body.length,
+      tweetUrls,
+    };
+  });
+
+  items.sort((a, b) => b.size - a.size);
+
+  const batches = [];
+  items.forEach(item => {
+    let placed = false;
+    for (const batch of batches) {
+      const extra = (batch.items.length ? SEPARATOR.length : 0) + item.size;
+      if (batch.size + extra <= MAX_BATCH_CHARS) {
+        batch.items.push(item);
+        batch.size += extra;
+        batch.tweetUrls.push(...item.tweetUrls);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      batches.push({ items: [item], size: promptLength + item.size, tweetUrls: [...item.tweetUrls] });
+    }
+  });
+
+  return batches.map(b => ({
+    text: b.items.map(i => i.text).join(SEPARATOR),
+    tweetUrls: [...new Set(b.tweetUrls)],
+    accounts: b.items.map(i => i.account),
+  }));
+}
+
+/**
+ * Simple djb2 hash (same as client-side hashString).
+ */
+function djb2Hash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i);
+    h |= 0;
+  }
+  return (h >>> 0).toString(16);
+}
+
+/**
+ * Run a single scheduled scan server-side.
+ */
+async function executeScheduledScan(env, ctx, schedule) {
+  const userId = schedule.user_id;
+
+  // Mark as running
+  await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+    method: 'PATCH',
+    body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
+  });
+
+  try {
+    // 1. Resolve accounts from preset or explicit list
+    let accounts = schedule.accounts || [];
+    if (schedule.preset_id) {
+      const presetRows = await supabaseQuery(env,
+        `presets?id=eq.${schedule.preset_id}&user_id=eq.${userId}&select=accounts`
+      );
+      if (presetRows?.[0]?.accounts?.length) {
+        accounts = presetRows[0].accounts;
+      }
+    }
+
+    if (!accounts.length) {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: 'No accounts configured' },
+      });
+      return;
+    }
+
+    // 2. Get user's active analyst prompt
+    let prompt = DEFAULT_ANALYST_PROMPT;
+    try {
+      const analysts = await supabaseQuery(env,
+        `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`
+      );
+      if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
+    } catch { /* use default */ }
+
+    // 3. Get user's model preference
+    let model = 'claude-sonnet-4-20250514';
+    try {
+      const settings = await supabaseQuery(env,
+        `user_settings?user_id=eq.${userId}&select=model`
+      );
+      if (settings?.[0]?.model) model = settings[0].model;
+    } catch { /* use default */ }
+
+    // 4. Check credits
+    const profile = await getProfile(env, userId);
+    const days = schedule.range_days || 1;
+    const creditsNeeded = calculateScanCredits(accounts.length, days, model);
+
+    if (!profile || profile.credits_balance < creditsNeeded) {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+        method: 'PATCH',
+        body: {
+          last_run_status: 'error',
+          last_run_message: `Insufficient credits (need ${creditsNeeded}, have ${profile?.credits_balance || 0})`,
+        },
+      });
+      return;
+    }
+
+    // 5. Check cross-user scan cache first
+    const promptHash = djb2Hash(`${model}\n${prompt}`);
+    const scanKey = hashScanKey(accounts, days, promptHash);
+    if (env.TWEET_CACHE) {
+      const cached = await env.TWEET_CACHE.get(scanKey, 'json');
+      if (cached?.signals?.length) {
+        // Save cached results as a new scan
+        await saveScanToDb(env, ctx, userId, {
+          accounts, days, model, promptHash, creditsNeeded,
+          signals: cached.signals,
+          totalTweets: cached.total_tweets || 0,
+          label: schedule.label,
+        });
+        await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+          method: 'PATCH',
+          body: { last_run_status: 'success', last_run_message: `${cached.signals.length} signals (cached)` },
+        });
+        return;
+      }
+    }
+
+    // 6. Fetch tweets for all accounts
+    const CONCURRENCY = 5;
+    const accountData = [];
+    for (let i = 0; i < accounts.length; i += CONCURRENCY) {
+      const chunk = accounts.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (account) => {
+          try {
+            const { tweets } = await fetchTweetsCoalesced(account, days, env, ctx);
+            return { account, tweets: tweets || [] };
+          } catch {
+            return { account, tweets: [] };
+          }
+        })
+      );
+      accountData.push(...chunkResults);
+    }
+
+    const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
+    if (totalTweets === 0) {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: 'No tweets found' },
+      });
+      return;
+    }
+
+    // 7. Check per-tweet analysis cache
+    const allTweetUrls = [];
+    accountData.forEach(a => {
+      a.tweets.forEach(tw => {
+        const author = tw.author?.userName || a.account;
+        allTweetUrls.push(`https://x.com/${author}/status/${tw.id}`);
+      });
+    });
+
+    let cachedSignals = [];
+    let uncachedAccountData = accountData;
+    try {
+      const urlBatches = [];
+      for (let i = 0; i < allTweetUrls.length; i += 500) {
+        urlBatches.push(allTweetUrls.slice(i, i + 500));
+      }
+      const cachedUrlSet = new Set();
+      for (const batch of urlBatches) {
+        const urlList = batch.map(u => `"${u}"`).join(',');
+        const rows = await supabaseQuery(env,
+          `analysis_cache?prompt_hash=eq.${promptHash}&tweet_url=in.(${urlList})&select=tweet_url,signals`
+        );
+        if (rows?.length) {
+          rows.forEach(r => {
+            cachedUrlSet.add(r.tweet_url);
+            if (r.signals?.length) cachedSignals.push(...r.signals);
+          });
+        }
+      }
+
+      if (cachedUrlSet.size > 0) {
+        uncachedAccountData = accountData.map(a => ({
+          account: a.account,
+          tweets: a.tweets.filter(tw => {
+            const author = tw.author?.userName || a.account;
+            const url = `https://x.com/${author}/status/${tw.id}`;
+            return !cachedUrlSet.has(url);
+          }),
+        })).filter(a => a.tweets.length > 0);
+      }
+    } catch {
+      // Cache check failed — analyze everything
+    }
+
+    // 8. Call Claude for uncached tweets
+    let newSignals = [];
+    if (uncachedAccountData.length > 0) {
+      // Resolve model
+      let resolvedModel = model;
+      try {
+        const modelInfo = await resolveAnthropicModel(env, model);
+        if (modelInfo?.resolved) resolvedModel = modelInfo.resolved;
+      } catch { /* use original model */ }
+
+      const batches = buildAnalysisBatches(uncachedAccountData, prompt.length);
+
+      for (const batch of batches) {
+        try {
+          const anthropicBody = {
+            model: resolvedModel,
+            max_tokens: 16384,
+            system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
+            messages: [{ role: 'user', content: batch.text }],
+          };
+
+          let data = null;
+          for (let attempt = 0; attempt <= 3; attempt++) {
+            try {
+              const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': env.ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify(anthropicBody),
+              });
+              data = await res.json();
+              if (data.error) {
+                if (attempt < 3) {
+                  await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+                  continue;
+                }
+                throw new Error(data.error.message || 'Anthropic API error');
+              }
+              break;
+            } catch (e) {
+              if (attempt >= 3) throw e;
+              await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+            }
+          }
+
+          if (data?.content) {
+            const text = extractText(data.content);
+            const batchSignals = safeParseSignals(text);
+            newSignals.push(...batchSignals);
+
+            // Cache analysis results
+            if (promptHash && batch.tweetUrls?.length) {
+              ctx.waitUntil(cacheAnalysis(env, promptHash, batch.tweetUrls, text, resolvedModel));
+            }
+
+            // Track usage
+            const inputTokens = data.usage?.input_tokens || 0;
+            const outputTokens = data.usage?.output_tokens || 0;
+            ctx.waitUntil(logUsage(env, userId, 'scheduled_scan_analyze', {
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
+              accounts_count: batch.accounts.length,
+            }));
+          }
+        } catch (e) {
+          console.error(`Scheduled scan batch failed for user ${userId}:`, e.message);
+        }
+      }
+    }
+
+    // 9. Combine and save
+    const allSignals = [...cachedSignals, ...newSignals];
+
+    // Deduplicate by tweet_url + title
+    const seen = new Set();
+    const dedupedSignals = allSignals.filter(s => {
+      const key = `${s.tweet_url}::${s.title}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    await saveScanToDb(env, ctx, userId, {
+      accounts, days, model, promptHash, creditsNeeded,
+      signals: dedupedSignals,
+      totalTweets,
+      label: schedule.label,
+    });
+
+    // 10. Update schedule status
+    await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+      method: 'PATCH',
+      body: {
+        last_run_status: 'success',
+        last_run_message: `${dedupedSignals.length} signals from ${totalTweets} tweets`,
+      },
+    });
+
+  } catch (e) {
+    console.error(`Scheduled scan failed for schedule ${schedule.id}:`, e.message, e.stack);
+    try {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: e.message?.slice(0, 200) || 'Unknown error' },
+      });
+    } catch { /* best effort */ }
+  }
+}
+
+/**
+ * Save a completed scan to the scans table and deduct credits.
+ */
+async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals, totalTweets, label }) {
+  // Deduct credits
+  const result = await supabaseRpc(env, 'deduct_credits', {
+    p_user_id: userId,
+    p_amount: creditsNeeded,
+    p_description: `Scheduled scan "${label}": ${accounts.length} accounts × ${days}d`,
+    p_metadata: { accounts_count: accounts.length, range_days: days, scheduled: true },
+  });
+
+  if (result === -1) {
+    throw new Error('Insufficient credits');
+  }
+
+  // Build range label
+  const rangeLabel = days <= 1 ? 'Today' : days <= 7 ? 'Week' : 'Month';
+
+  // Build tweet meta from signals
+  const tweetMeta = {};
+  signals.forEach(s => {
+    if (s.tweet_url) {
+      tweetMeta[s.tweet_url] = { text: (s.summary || '').slice(0, 500), author: s.source || '' };
+    }
+  });
+
+  // Save scan
+  const data = {
+    user_id: userId,
+    accounts: accounts,
+    range_label: `${rangeLabel} (scheduled: ${label})`,
+    range_days: days,
+    total_tweets: totalTweets,
+    signal_count: signals.length,
+    signals: signals,
+    tweet_meta: tweetMeta,
+    credits_used: creditsNeeded,
+  };
+
+  await supabaseQuery(env, 'scans', { method: 'POST', body: data });
+
+  // Cache the whole scan result
+  cacheScanResult(env, ctx, accounts, days, promptHash, signals, totalTweets);
+}
+
+/**
+ * Main cron handler: find and execute all due scheduled scans.
+ */
+async function runDueScheduledScans(env, ctx) {
+  try {
+    // Query all enabled schedules
+    const schedules = await supabaseQuery(env,
+      `scheduled_scans?enabled=eq.true&select=*`
+    );
+
+    if (!schedules?.length) return;
+
+    // Filter to due schedules
+    const dueSchedules = schedules.filter(isScheduleDue);
+    if (!dueSchedules.length) return;
+
+    console.log(`Found ${dueSchedules.length} due scheduled scans`);
+
+    // Execute up to 5 concurrent scheduled scans
+    const MAX_CONCURRENT = 5;
+    for (let i = 0; i < dueSchedules.length; i += MAX_CONCURRENT) {
+      const batch = dueSchedules.slice(i, i + MAX_CONCURRENT);
+      await Promise.allSettled(
+        batch.map(schedule => executeScheduledScan(env, ctx, schedule))
+      );
+    }
+  } catch (e) {
+    console.error('runDueScheduledScans error:', e.message, e.stack);
+  }
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 
-function corsHeaders(env) {
-  const origin = env?.CORS_ORIGIN || '*';
+// Allowed origins for CORS (production + local dev)
+const ALLOWED_ORIGINS = new Set([
+  'https://sentry.is',
+  'http://localhost:5173',
+  'http://localhost:5174',
+]);
+
+function corsHeaders(env, originOverride) {
+  const origin = originOverride || env?._cors_origin || env?.CORS_ORIGIN || '*';
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Admin-Secret',
     'Access-Control-Max-Age': '86400',
   };
 }
 
-function corsResponse(body, status, env) {
-  return new Response(body, { status, headers: corsHeaders(env) });
+function corsResponse(body, status, env, originOverride) {
+  return new Response(body, { status, headers: corsHeaders(env, originOverride) });
 }
 
-function corsJson(data, status, env) {
+function corsJson(data, status, env, originOverride) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(env) },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(env, originOverride) },
   });
+}
+
+// ============================================================================
+// ANTHROPIC MODEL RESOLUTION
+// ============================================================================
+
+function normalizeModelId(model) {
+  if (!model) return model;
+
+  // Fix legacy/typoed IDs from older clients: `claude-haiku-3-5-20241022` → `claude-3-5-haiku-20241022`
+  // (Also covers similarly swapped Sonnet/Opus v3.5 IDs if they ever appear.)
+  const m = String(model).match(/^claude-(haiku|sonnet|opus)-(\d+)-(\d+)-(\d{8})$/);
+  if (m) return `claude-${m[2]}-${m[3]}-${m[1]}-${m[4]}`;
+
+  return model;
+}
+
+function modelTierFromId(modelId) {
+  const id = (modelId || '').toLowerCase();
+  if (id.includes('haiku')) return 'haiku';
+  if (id.includes('opus')) return 'opus';
+  if (id.includes('sonnet')) return 'sonnet';
+  return null;
+}
+
+function extractModelVersion(id) {
+  // Similar to frontend: ignore date-like segments; parse numeric parts.
+  const parts = String(id || '')
+    .replace(/^claude-/, '')
+    .split('-')
+    .filter(p => !/^\d{8,}$/.test(p));
+  const nums = parts.filter(p => /^\d+$/.test(p));
+  if (nums.length >= 2) return parseFloat(nums[0] + '.' + nums[1]);
+  if (nums.length === 1) return parseFloat(nums[0]);
+  return 0;
+}
+
+function pickBestModelForTier(models, tier) {
+  const filtered = (models || [])
+    .map(m => (typeof m === 'string' ? { id: m } : m))
+    .filter(m => m?.id && m.id.startsWith('claude-') && !m.id.includes('embed'))
+    .filter(m => !tier || modelTierFromId(m.id) === tier);
+
+  if (!filtered.length) return null;
+
+  // Prefer higher version. If equal, prefer ids with a date suffix (usually more specific).
+  filtered.sort((a, b) => {
+    const va = extractModelVersion(a.id);
+    const vb = extractModelVersion(b.id);
+    if (va !== vb) return vb - va;
+    const hasDateA = /\d{8}$/.test(a.id) ? 1 : 0;
+    const hasDateB = /\d{8}$/.test(b.id) ? 1 : 0;
+    if (hasDateA !== hasDateB) return hasDateB - hasDateA;
+    return a.id.localeCompare(b.id);
+  });
+
+  return filtered[0].id;
+}
+
+async function fetchAnthropicModels(env) {
+  const res = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+    headers: {
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    throw new Error(`Anthropic models list failed: ${msg}`);
+  }
+  return Array.isArray(data?.data) ? data.data : [];
+}
+
+async function getAnthropicModels(env, { forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (!forceRefresh && anthropicModelsCache.models && (now - anthropicModelsCache.ts) < ANTHROPIC_MODELS_CACHE_TTL_MS) {
+    return anthropicModelsCache.models;
+  }
+  const models = await fetchAnthropicModels(env);
+  anthropicModelsCache = { ts: now, models };
+  return models;
+}
+
+async function resolveAnthropicModel(env, requestedModel) {
+  const normalized = normalizeModelId(requestedModel);
+  const desiredTier = modelTierFromId(normalized) || 'sonnet';
+
+  let models = null;
+  try {
+    models = await getAnthropicModels(env);
+  } catch (e) {
+    // If model listing fails, fall back to requested (best effort).
+    console.warn('Model list fetch failed; using requested model:', e.message);
+    return { requested: requestedModel, normalized, resolved: normalized, tier: desiredTier, from_cache: false };
+  }
+
+  const ids = models.map(m => m?.id).filter(Boolean);
+  if (normalized && ids.includes(normalized)) {
+    return { requested: requestedModel, normalized, resolved: normalized, tier: desiredTier, from_cache: true };
+  }
+
+  const bestSameTier = pickBestModelForTier(models, desiredTier);
+  if (bestSameTier) {
+    return { requested: requestedModel, normalized, resolved: bestSameTier, tier: desiredTier, from_cache: true };
+  }
+
+  // Don't silently switch tiers — that would desync billing expectations.
+  const availableTiers = Array.from(new Set(ids.map(modelTierFromId).filter(Boolean)));
+  const err = new Error(`No available ${desiredTier} model for this API key.`);
+  err.code = 'MODEL_TIER_UNAVAILABLE';
+  err.meta = { desiredTier, availableTiers };
+  throw err;
 }
 
 // ============================================================================
@@ -517,6 +1242,20 @@ async function fetchTwitterTweetsRaw(env, account, days) {
 async function handleAnalyze(request, env, user) {
   const body = await request.json();
   const { model, max_tokens, messages, prompt_hash, tweet_urls } = body;
+  let resolvedModelInfo;
+  try {
+    resolvedModelInfo = await resolveAnthropicModel(env, model);
+  } catch (e) {
+    if (e.code === 'MODEL_TIER_UNAVAILABLE') {
+      return corsJson({
+        error: e.message,
+        code: e.code,
+        ...e.meta,
+      }, 400, env);
+    }
+    throw e;
+  }
+  const resolvedModel = resolvedModelInfo?.resolved || normalizeModelId(model);
 
   if (!messages) {
     return corsJson({ error: 'Missing messages' }, 400, env);
@@ -546,7 +1285,7 @@ async function handleAnalyze(request, env, user) {
   // across calls, so subsequent calls get ~90% input token discount).
   const systemPrompt = body.system;
   const anthropicBody = {
-    model: model || 'claude-sonnet-4-20250514',
+    model: resolvedModel || 'claude-sonnet-4-20250514',
     max_tokens: max_tokens || 16384,
     messages,
     ...(systemPrompt ? {
@@ -571,6 +1310,45 @@ async function handleAnalyze(request, env, user) {
       const data = await res.json();
       if (data.error) {
         const errType = data.error.type;
+        // If the requested model was invalid/deprecated, refresh model list and retry once with the best match.
+        if (errType === 'not_found_error' && data.error.message?.toLowerCase?.().includes('model')) {
+          try {
+            // Force refresh and resolve again.
+            await getAnthropicModels(env, { forceRefresh: true });
+            const retryInfo = await resolveAnthropicModel(env, model);
+            const retryModel = retryInfo?.resolved;
+            if (retryModel && retryModel !== resolvedModel) {
+              const retryRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': env.ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({ ...anthropicBody, model: retryModel }),
+              });
+              const retryData = await retryRes.json();
+              if (!retryData?.error) {
+                // Cache the analysis result
+                if (prompt_hash && tweet_urls?.length) {
+                  const text = extractText(retryData.content);
+                  await cacheAnalysis(env, prompt_hash, tweet_urls, text, retryModel);
+                }
+                // Track usage
+                const inputTokens = retryData.usage?.input_tokens || 0;
+                const outputTokens = retryData.usage?.output_tokens || 0;
+                await logUsage(env, user.id, 'analyze', {
+                  input_tokens: inputTokens,
+                  output_tokens: outputTokens,
+                  cost_anthropic: estimateAnthropicCost(retryModel, inputTokens, outputTokens),
+                });
+                return corsJson(retryData, 200, env);
+              }
+            }
+          } catch (e) {
+            console.warn('Model retry failed:', e.message);
+          }
+        }
         // Non-retryable errors
         if (['authentication_error', 'invalid_request_error', 'not_found_error'].includes(errType)) {
           return corsJson({ error: data.error.message || 'Anthropic API error' }, res.status, env);
@@ -587,7 +1365,7 @@ async function handleAnalyze(request, env, user) {
       // Cache the analysis result
       if (prompt_hash && tweet_urls?.length) {
         const text = extractText(data.content);
-        await cacheAnalysis(env, prompt_hash, tweet_urls, text, model);
+        await cacheAnalysis(env, prompt_hash, tweet_urls, text, resolvedModel);
       }
 
       // Track usage
@@ -596,7 +1374,7 @@ async function handleAnalyze(request, env, user) {
       await logUsage(env, user.id, 'analyze', {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
-        cost_anthropic: estimateAnthropicCost(model, inputTokens, outputTokens),
+        cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
       });
 
       return corsJson(data, 200, env);
@@ -886,6 +1664,67 @@ async function handleDeleteAnalyst(request, env, user) {
 }
 
 // ============================================================================
+// SCHEDULED SCANS
+// ============================================================================
+
+async function handleGetSchedules(env, user) {
+  const rows = await supabaseQuery(env,
+    `scheduled_scans?user_id=eq.${user.id}&select=*&order=time.asc`
+  );
+  return corsJson(rows || [], 200, env);
+}
+
+async function handleSaveSchedule(request, env, user) {
+  const body = await request.json();
+  const { id, label, time, timezone, days, range_days, preset_id, accounts, enabled } = body;
+
+  if (!time || !label) {
+    return corsJson({ error: 'Time and label required' }, 400, env);
+  }
+
+  // Validate time format
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    return corsJson({ error: 'Time must be in HH:MM format' }, 400, env);
+  }
+
+  const data = {
+    user_id: user.id,
+    label: label || 'Scan',
+    time,
+    timezone: timezone || 'UTC',
+    days: days || [],
+    range_days: range_days || 1,
+    preset_id: preset_id || null,
+    accounts: accounts || [],
+    enabled: enabled !== undefined ? enabled : true,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (id) {
+    // Update existing
+    await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, {
+      method: 'PATCH',
+      body: data,
+    });
+    return corsJson({ ok: true, id }, 200, env);
+  } else {
+    // Insert new
+    const rows = await supabaseQuery(env, 'scheduled_scans', {
+      method: 'POST',
+      body: data,
+    });
+    return corsJson({ ok: true, id: rows?.[0]?.id }, 200, env);
+  }
+}
+
+async function handleDeleteSchedule(request, env, user) {
+  const { id } = await request.json();
+  if (!id) return corsJson({ error: 'Missing id' }, 400, env);
+  await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
+  return corsJson({ ok: true }, 200, env);
+}
+
+// ============================================================================
 // SCAN HISTORY
 // ============================================================================
 
@@ -898,11 +1737,11 @@ async function handleGetScans(env, user) {
 
 async function handleSaveScan(request, env, user, ctx) {
   const body = await request.json();
-  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok, reservation_id } = body;
+  const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok, reservation_id, model } = body;
 
   const accountCount = accounts?.length || 0;
   const days = range_days || 1;
-  const creditsUsed = byok ? 0 : calculateScanCredits(accountCount, days);
+  const creditsUsed = byok ? 0 : calculateScanCredits(accountCount, days, model);
 
   // Deduct credits if user has them and scan used managed keys (not BYOK)
   const profile = await getProfile(env, user.id);
@@ -1056,7 +1895,7 @@ function cleanupReservations() {
 }
 
 async function handleReserveCredits(request, env, user) {
-  const { accounts_count, range_days } = await request.json();
+  const { accounts_count, range_days, model } = await request.json();
   if (!accounts_count || !range_days) {
     return corsJson({ error: 'Missing accounts_count or range_days' }, 400, env);
   }
@@ -1065,7 +1904,7 @@ async function handleReserveCredits(request, env, user) {
     return corsJson({ error: `Maximum ${MAX_ACCOUNTS_PER_SCAN} accounts per scan.`, code: 'TOO_MANY_ACCOUNTS' }, 400, env);
   }
 
-  const creditsNeeded = calculateScanCredits(accounts_count, range_days);
+  const creditsNeeded = calculateScanCredits(accounts_count, range_days, model);
   const profile = await getProfile(env, user.id);
 
   if (!profile) {
@@ -1512,6 +2351,221 @@ async function verifyStripeSignature(payload, header, secret) {
     return computed === signature;
   } catch {
     return false;
+  }
+}
+
+// ============================================================================
+// ADMIN MONITORING
+// ============================================================================
+
+async function handleAdminMonitoring(request, env) {
+  // Admin endpoint allows any origin (protected by secret, not CORS)
+  const anyOrigin = '*';
+  const url = new URL(request.url);
+  const secret = url.searchParams.get('secret') || request.headers.get('x-admin-secret');
+  if (!env.ADMIN_SECRET || !secret || secret !== env.ADMIN_SECRET) {
+    return corsJson({ error: 'Unauthorized. Pass ?secret=YOUR_ADMIN_SECRET' }, 401, env, anyOrigin);
+  }
+
+  try {
+    // Fetch all data in parallel (service key bypasses RLS)
+    // Each query is wrapped so a single table failure doesn't break everything
+    const safeQuery = async (path) => {
+      try { return await supabaseQuery(env, path); }
+      catch (e) { console.warn('Monitoring query failed:', path.split('?')[0], e.message); return []; }
+    };
+    const [profiles, scans, usageLogs, creditTxs, modelSettings] = await Promise.all([
+      safeQuery('profiles?select=id,email,name,credits_balance,stripe_customer_id,subscription_status,created_at&order=created_at.desc&limit=5000'),
+      safeQuery('scans?select=id,user_id,accounts,range_label,range_days,total_tweets,signal_count,credits_used,created_at&order=created_at.desc&limit=2000'),
+      safeQuery('usage_log?select=id,user_id,action,accounts_count,tweets_count,signals_count,input_tokens,output_tokens,cost_twitter,cost_anthropic,cost_total,created_at&order=created_at.desc&limit=5000'),
+      safeQuery('credit_transactions?select=id,user_id,type,amount,balance_after,description,metadata,created_at&order=created_at.desc&limit=2000'),
+      safeQuery('user_settings?select=user_id,model'),
+    ]);
+
+    // Time boundaries
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    const monthAgo = new Date(now.getTime() - 30 * 86400000);
+    const isToday = (d) => new Date(d) >= todayStart;
+    const isThisWeek = (d) => new Date(d) >= weekAgo;
+    const isThisMonth = (d) => new Date(d) >= monthAgo;
+
+    // Build email lookup
+    const emailMap = {};
+    (profiles || []).forEach(p => { emailMap[p.id] = p.email; });
+
+    // --- USERS ---
+    const allProfiles = profiles || [];
+    const users = {
+      total: allProfiles.length,
+      today: allProfiles.filter(p => isToday(p.created_at)).length,
+      this_week: allProfiles.filter(p => isThisWeek(p.created_at)).length,
+      this_month: allProfiles.filter(p => isThisMonth(p.created_at)).length,
+      paying: allProfiles.filter(p => p.credits_balance > 0 || p.stripe_customer_id).length,
+      total_credits_outstanding: allProfiles.reduce((s, p) => s + (p.credits_balance || 0), 0),
+      recent: allProfiles.slice(0, 30).map(p => ({
+        email: p.email,
+        name: p.name,
+        credits: p.credits_balance,
+        subscription: p.subscription_status,
+        has_stripe: !!p.stripe_customer_id,
+        created_at: p.created_at,
+      })),
+    };
+
+    // --- SCANS ---
+    const allScans = scans || [];
+    const accountCounts = {};
+    allScans.forEach(s => {
+      (s.accounts || []).forEach(a => {
+        const key = a.toLowerCase();
+        accountCounts[key] = (accountCounts[key] || 0) + 1;
+      });
+    });
+    const topAccounts = Object.entries(accountCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 50)
+      .map(([account, count]) => ({ account, count }));
+
+    const scansData = {
+      total: allScans.length,
+      today: allScans.filter(s => isToday(s.created_at)).length,
+      this_week: allScans.filter(s => isThisWeek(s.created_at)).length,
+      this_month: allScans.filter(s => isThisMonth(s.created_at)).length,
+      total_tweets: allScans.reduce((s, sc) => s + (sc.total_tweets || 0), 0),
+      total_signals: allScans.reduce((s, sc) => s + (sc.signal_count || 0), 0),
+      total_credits_used: allScans.reduce((s, sc) => s + (sc.credits_used || 0), 0),
+      unique_accounts: Object.keys(accountCounts).length,
+      top_accounts: topAccounts,
+      recent: allScans.slice(0, 30).map(s => ({
+        user_email: emailMap[s.user_id] || s.user_id,
+        accounts_count: s.accounts?.length || 0,
+        accounts_list: (s.accounts || []).slice(0, 5),
+        range: s.range_label,
+        range_days: s.range_days,
+        tweets: s.total_tweets,
+        signals: s.signal_count,
+        credits: s.credits_used,
+        created_at: s.created_at,
+      })),
+    };
+
+    // --- COSTS ---
+    const allUsage = usageLogs || [];
+    const sumCosts = (items) => ({
+      twitter: items.reduce((s, u) => s + parseFloat(u.cost_twitter || 0), 0),
+      anthropic: items.reduce((s, u) => s + parseFloat(u.cost_anthropic || 0), 0),
+      total: items.reduce((s, u) => s + parseFloat(u.cost_total || 0), 0),
+      input_tokens: items.reduce((s, u) => s + (u.input_tokens || 0), 0),
+      output_tokens: items.reduce((s, u) => s + (u.output_tokens || 0), 0),
+      api_calls: items.length,
+    });
+
+    const costs = {
+      all_time: sumCosts(allUsage),
+      today: sumCosts(allUsage.filter(u => isToday(u.created_at))),
+      this_week: sumCosts(allUsage.filter(u => isThisWeek(u.created_at))),
+      this_month: sumCosts(allUsage.filter(u => isThisMonth(u.created_at))),
+    };
+
+    // --- USAGE BY ACTION ---
+    const actionBreakdown = {};
+    allUsage.forEach(u => {
+      if (!actionBreakdown[u.action]) actionBreakdown[u.action] = { count: 0, twitter: 0, anthropic: 0, total: 0, input_tokens: 0, output_tokens: 0 };
+      const ab = actionBreakdown[u.action];
+      ab.count++;
+      ab.twitter += parseFloat(u.cost_twitter || 0);
+      ab.anthropic += parseFloat(u.cost_anthropic || 0);
+      ab.total += parseFloat(u.cost_total || 0);
+      ab.input_tokens += u.input_tokens || 0;
+      ab.output_tokens += u.output_tokens || 0;
+    });
+
+    // --- REVENUE ---
+    const allTx = creditTxs || [];
+    const purchases = allTx.filter(t => t.type === 'purchase' || t.type === 'recurring');
+    const revenue = {
+      total_purchases: purchases.length,
+      today: purchases.filter(t => isToday(t.created_at)).length,
+      this_week: purchases.filter(t => isThisWeek(t.created_at)).length,
+      this_month: purchases.filter(t => isThisMonth(t.created_at)).length,
+      total_credits_sold: purchases.reduce((s, t) => s + Math.abs(t.amount || 0), 0),
+      recent: purchases.slice(0, 30).map(t => ({
+        user_email: emailMap[t.user_id] || t.user_id,
+        type: t.type,
+        credits: t.amount,
+        description: t.description,
+        created_at: t.created_at,
+      })),
+    };
+
+    // --- MODELS ---
+    const modelDist = {};
+    (modelSettings || []).forEach(s => {
+      const m = s.model || 'unknown';
+      modelDist[m] = (modelDist[m] || 0) + 1;
+    });
+
+    // --- RECENT USAGE LOG ---
+    const recentUsage = allUsage.slice(0, 50).map(u => ({
+      user_email: emailMap[u.user_id] || u.user_id,
+      action: u.action,
+      accounts: u.accounts_count,
+      tweets: u.tweets_count,
+      signals: u.signals_count,
+      input_tokens: u.input_tokens,
+      output_tokens: u.output_tokens,
+      cost_twitter: parseFloat(u.cost_twitter || 0),
+      cost_anthropic: parseFloat(u.cost_anthropic || 0),
+      cost_total: parseFloat(u.cost_total || 0),
+      created_at: u.created_at,
+    }));
+
+    // --- DAILY BREAKDOWN (last 30 days) ---
+    const dailyMap = {};
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      dailyMap[key] = { date: key, users: 0, scans: 0, cost_twitter: 0, cost_anthropic: 0, cost_total: 0, credits_sold: 0 };
+    }
+    allProfiles.forEach(p => {
+      const key = new Date(p.created_at).toISOString().slice(0, 10);
+      if (dailyMap[key]) dailyMap[key].users++;
+    });
+    allScans.forEach(s => {
+      const key = new Date(s.created_at).toISOString().slice(0, 10);
+      if (dailyMap[key]) dailyMap[key].scans++;
+    });
+    allUsage.forEach(u => {
+      const key = new Date(u.created_at).toISOString().slice(0, 10);
+      if (dailyMap[key]) {
+        dailyMap[key].cost_twitter += parseFloat(u.cost_twitter || 0);
+        dailyMap[key].cost_anthropic += parseFloat(u.cost_anthropic || 0);
+        dailyMap[key].cost_total += parseFloat(u.cost_total || 0);
+      }
+    });
+    purchases.forEach(t => {
+      const key = new Date(t.created_at).toISOString().slice(0, 10);
+      if (dailyMap[key]) dailyMap[key].credits_sold += Math.abs(t.amount || 0);
+    });
+    const daily = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    return corsJson({
+      generated_at: now.toISOString(),
+      users,
+      scans: scansData,
+      revenue,
+      costs,
+      action_breakdown: actionBreakdown,
+      models: modelDist,
+      recent_usage: recentUsage,
+      daily,
+    }, 200, env, anyOrigin);
+
+  } catch (e) {
+    console.error('Admin monitoring error:', e.message, e.stack);
+    return corsJson({ error: 'Failed to fetch monitoring data: ' + e.message }, 500, env, anyOrigin);
   }
 }
 

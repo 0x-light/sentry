@@ -180,15 +180,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
 export function SignalList() {
   const { scanResult, filters, isSharedView, sharedSignal } = useSentry()
 
-  // For shared signal view
-  if (isSharedView && sharedSignal) {
-    return (
-      <div>
-        <SignalCard signal={sharedSignal} index={0} />
-      </div>
-    )
-  }
-
+  // useMemo MUST be called before any early returns (Rules of Hooks)
   const signals = useMemo(() => {
     if (!scanResult?.signals) return []
     let result = scanResult.signals
@@ -202,6 +194,15 @@ export function SignalList() {
     }
     return result
   }, [scanResult, filters])
+
+  // For shared signal view
+  if (isSharedView && sharedSignal) {
+    return (
+      <div>
+        <SignalCard signal={sharedSignal} index={0} />
+      </div>
+    )
+  }
 
   if (!signals.length) {
     if (scanResult?.signals?.length === 0) {

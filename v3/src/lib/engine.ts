@@ -2,7 +2,7 @@
 // SENTRY ENGINE - Core business logic (ported from app.js)
 // ============================================================================
 
-import type { Signal, Tweet, AccountTweets, Analyst, AnalysisCache, PriceData, ScanResult, ScanHistoryEntry, Preset } from './types'
+import type { Signal, Tweet, AccountTweets, Analyst, AnalysisCache, PriceData, ScanResult, ScanHistoryEntry, Preset, ScheduledScan } from './types'
 import {
   DEFAULT_PRESETS, DEFAULT_PROMPT, DEFAULT_ANALYST_ID, DEFAULT_MODEL,
   CORS_PROXY, CRYPTO_SLUGS, INDEX_MAP, MODEL_PRICING, TV_SYMBOL_OVERRIDES,
@@ -941,6 +941,126 @@ export function safeParseSignals(text: string): Signal[] {
   return parsed.filter(isValidSignal);
 }
 
+// ── Signal post-processing / ticker normalization ────────────────────────────
+// The LLM occasionally emits partial/incorrect tickers for multi-word companies
+// (e.g. "SK hynix" → $SK + $HYNIX). We normalize known aliases and collapse
+// split tokens into a single canonical Yahoo Finance symbol.
+
+const TICKER_SYMBOL_ALIASES: Record<string, string> = {
+  // SK hynix (KRX:000660) — canonical Yahoo symbol is 000660.KS
+  HYNIX: '000660.KS',
+  SKHYNIX: '000660.KS',
+  'SK HYNIX': '000660.KS',
+  'SK-HYNIX': '000660.KS',
+  'SK_HYNIX': '000660.KS',
+  'KRX:000660': '000660.KS',
+  '000660': '000660.KS',
+};
+
+function stripDollar(sym: any): string {
+  return (sym || '').toString().trim().replace(/^\$/, '').toUpperCase();
+}
+
+function normalizeTickerAction(action: any): string {
+  const a = (action || 'watch').toString().trim().toLowerCase();
+  if (a === 'buy' || a === 'sell' || a === 'hold' || a === 'watch' || a === 'mixed') return a;
+  return 'watch';
+}
+
+function canonicalTickerSymbol(sym: any): string {
+  const clean = stripDollar(sym);
+  return TICKER_SYMBOL_ALIASES[clean] || clean;
+}
+
+function fixSkHynixInText(text: any): string {
+  if (!text || typeof text !== 'string') return text || '';
+  let t = text;
+  // Common model output forms
+  t = t.replace(/\$SK\s+\$HYNIX\b/gi, '$000660.KS');
+  t = t.replace(/\$SK[-_ ]?HYNIX\b/gi, '$000660.KS');
+  t = t.replace(/\$HYNIX\b/gi, '$000660.KS');
+  return t;
+}
+
+export function normalizeSignals(signals: Signal[]): Signal[] {
+  if (!Array.isArray(signals) || signals.length === 0) return signals || [];
+  let changedAny = false;
+  const out = signals.map((signal: any) => {
+    if (!signal || typeof signal !== 'object') return signal;
+
+    const rawTickers = Array.isArray(signal.tickers) ? signal.tickers : [];
+    const rawSyms = rawTickers.map((t: any) => stripDollar(t?.symbol)).filter(Boolean);
+
+    // Detect split "SK hynix" tokens and collapse into a single canonical ticker.
+    const hasSk = rawSyms.includes('SK');
+    const hasHynix = rawSyms.includes('HYNIX');
+    const shouldCollapseSkHynix = hasSk && hasHynix;
+
+    const actionSet = new Set<string>();
+    rawTickers.forEach((t: any) => {
+      const s = stripDollar(t?.symbol);
+      if (s === 'SK' || s === 'HYNIX') actionSet.add(normalizeTickerAction(t?.action));
+    });
+    const collapsedAction = actionSet.size === 1 ? [...actionSet][0] : (actionSet.size > 1 ? 'mixed' : 'watch');
+
+    // Normalize + de-dupe by symbol (merge actions to 'mixed' when conflicting).
+    const bySymbol = new Map<string, { symbol: string; action: string }>();
+    const add = (sym: string, action: string) => {
+      if (!sym) return;
+      const symbol = sym.startsWith('$') ? sym : `$${sym}`;
+      const existing = bySymbol.get(symbol);
+      if (!existing) bySymbol.set(symbol, { symbol, action });
+      else if (existing.action !== action && existing.action !== 'mixed') existing.action = 'mixed';
+    };
+
+    rawTickers.forEach((t: any) => {
+      const raw = stripDollar(t?.symbol);
+      if (!raw) return;
+      if (shouldCollapseSkHynix && (raw === 'SK' || raw === 'HYNIX')) return; // replaced below
+      add(canonicalTickerSymbol(raw), normalizeTickerAction(t?.action));
+    });
+
+    if (shouldCollapseSkHynix) add('000660.KS', collapsedAction);
+    else if (hasHynix) {
+      // Even without $SK present, treat $HYNIX as SK hynix (prevents duplicate "company-word" tickers).
+      // If it already existed after aliasing, this is a no-op due to de-dupe.
+      add('000660.KS', collapsedAction);
+      bySymbol.delete('$HYNIX');
+    }
+
+    const normalizedTickers = [...bySymbol.values()];
+
+    const title = fixSkHynixInText(signal.title);
+    const summary = fixSkHynixInText(signal.summary);
+
+    const tickersChanged = (() => {
+      const existing = Array.isArray(signal.tickers) ? signal.tickers : [];
+      if (existing.length !== normalizedTickers.length) return true;
+      for (let i = 0; i < existing.length; i++) {
+        const e = existing[i] || {};
+        const n = normalizedTickers[i] || {};
+        if ((e.symbol || '') !== (n.symbol || '')) return true;
+        if (normalizeTickerAction((e as any).action) !== normalizeTickerAction((n as any).action)) return true;
+      }
+      return false;
+    })();
+
+    const textChanged = title !== (signal.title || '') || summary !== (signal.summary || '');
+    if (!tickersChanged && !textChanged) return signal;
+
+    changedAny = true;
+    return { ...signal, title, summary, tickers: normalizedTickers };
+  });
+  return changedAny ? out : signals;
+}
+
+export function normalizeScanResult(scan: ScanResult): ScanResult {
+  if (!scan || typeof scan !== 'object') return scan;
+  const sigs = Array.isArray((scan as any).signals) ? (scan as any).signals : [];
+  const normalized = normalizeSignals(sigs);
+  return normalized === sigs ? scan : { ...scan, signals: normalized };
+}
+
 export function groupSignalsByTweet(signals: Signal[]): Map<string, Signal[]> {
   const map = new Map<string, Signal[]>();
   signals.forEach(s => {
@@ -955,7 +1075,11 @@ export function groupSignalsByTweet(signals: Signal[]): Map<string, Signal[]> {
 export function dedupeSignals(signals: Signal[]): Signal[] {
   const seen = new Set<string>();
   return signals.filter(s => {
-    const key = s.tweet_url || `${s.title || ''}|${s.summary || ''}`;
+    // Use composite key: a single tweet can legitimately produce multiple signals
+    // (e.g. one about $BTC and another about $ETH). Dedup by tweet_url + title.
+    const key = s.tweet_url
+      ? `${s.tweet_url}::${s.title || ''}`
+      : `${s.title || ''}|${s.summary || ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1100,7 +1224,7 @@ export async function analyzeWithBatching(
         );
         clearInterval(elapsedTimer);
         const txt = extractText(data.content);
-        const batchSignals = safeParseSignals(txt);
+        const batchSignals = normalizeSignals(safeParseSignals(txt));
         results.push({ i, signals: batchSignals, tweetUrls: batch.tweetUrls });
         const grouped = groupSignalsByTweet(batchSignals);
         batch.tweetUrls.forEach(url => setCachedSignals(cache, promptHash, url, grouped.get(url) || []));
@@ -1131,7 +1255,8 @@ export async function runScan(
   accounts: string[], days: number, signal: AbortSignal | null,
   onStatus: (text: string, animate?: boolean) => void,
   onNotice: (type: 'error' | 'warning', msg: string) => void,
-  analysts: Analyst[]
+  analysts: Analyst[],
+  prefetchedTweets?: AccountTweets[]
 ): Promise<ScanResult | null> {
   onStatus('', true);
 
@@ -1139,26 +1264,28 @@ export async function runScan(
   // Check if ANY user already scanned the same accounts + range + analyst.
   // Works for both managed-key and BYOK users (as long as they're authenticated).
   // This is a lightweight API call that doesn't consume credits.
-  try {
-    const promptHash = getPromptHash(analysts);
-    const { checkScanCache } = await import('./api');
-    const cached = await checkScanCache(accounts, days, promptHash);
-    if (cached.cached && cached.signals?.length) {
-      onStatus(`${cached.signals.length} signals (from cache)`, false);
-      return {
-        date: new Date().toISOString(),
-        range: '',
-        days,
-        accounts: [...accounts],
-        totalTweets: cached.total_tweets || 0,
-        signals: cached.signals,
-      };
+  if (!prefetchedTweets) {
+    try {
+      const promptHash = getPromptHash(analysts);
+      const { checkScanCache } = await import('./api');
+      const cached = await checkScanCache(accounts, days, promptHash);
+      if (cached.cached && cached.signals?.length) {
+        onStatus(`${cached.signals.length} signals (from cache)`, false);
+        return {
+          date: new Date().toISOString(),
+          range: '',
+          days,
+          accounts: [...accounts],
+          totalTweets: cached.total_tweets || 0,
+          signals: normalizeSignals(cached.signals),
+        };
+      }
+    } catch {
+      // Cache miss, auth error, or network error — continue with full scan
     }
-  } catch {
-    // Cache miss, auth error, or network error — continue with full scan
   }
 
-  const accountTweets = await fetchAllTweets(accounts, days, (msg) => onStatus(msg, true), signal);
+  const accountTweets = prefetchedTweets || await fetchAllTweets(accounts, days, (msg) => onStatus(msg, true), signal);
   const totalTweets = accountTweets.reduce((s, a) => s + a.tweets.length, 0);
   const fails = accountTweets.filter(a => a.error);
 
@@ -1236,10 +1363,10 @@ export async function runScan(
       (msg) => onStatus(msg, true),
       promptHash, analysisCache, signal, analysts
     );
-    signals = dedupeSignals([...cachedSignals, ...newSignals]);
+    signals = normalizeSignals(dedupeSignals([...cachedSignals, ...newSignals]));
   } else {
     onStatus(`${totalTweets} tweets fetched · Using cache`, false);
-    signals = dedupeSignals(cachedSignals);
+    signals = normalizeSignals(dedupeSignals(cachedSignals));
   }
 
   pruneCache(analysisCache);
@@ -1265,6 +1392,8 @@ export async function runScan(
 
 export function saveScan(scan: ScanResult, skipHistory = false) {
   try {
+    // Normalize before persisting so chips/links/prices are consistent across reloads.
+    scan = normalizeScanResult(scan);
     const tweetMeta: Record<string, any> = {};
     if (scan.rawTweets) {
       scan.rawTweets.forEach(a => {
@@ -1310,11 +1439,23 @@ export function saveScan(scan: ScanResult, skipHistory = false) {
 export function loadCurrentScan(): ScanResult | null {
   const saved = localStorage.getItem(LS_CURRENT);
   if (!saved) return null;
-  try { return JSON.parse(saved); } catch { return null; }
+  try {
+    const parsed = JSON.parse(saved);
+    const normalized = normalizeScanResult(parsed);
+    // Opportunistically migrate stored data so history + reloads are fixed.
+    if (normalized !== parsed) localStorage.setItem(LS_CURRENT, JSON.stringify(normalized));
+    return normalized;
+  } catch { return null; }
 }
 
 export function getScanHistory(): ScanHistoryEntry[] {
-  try { return JSON.parse(localStorage.getItem(LS_SCANS) || '[]'); } catch { return []; }
+  try {
+    const parsed: ScanHistoryEntry[] = JSON.parse(localStorage.getItem(LS_SCANS) || '[]');
+    return parsed.map(e => (e && (e as any).signals)
+      ? ({ ...e, signals: normalizeSignals((e as any).signals) })
+      : e
+    );
+  } catch { return []; }
 }
 
 export function deleteHistoryScan(index: number) {
@@ -1335,11 +1476,19 @@ export function savePendingScan(accounts: string[], days: number, accountTweets:
   } catch { }
 }
 export function clearPendingScan() { localStorage.removeItem(LS_PENDING_SCAN); }
-export function loadPendingScan(): any | null {
+
+interface PendingScan {
+  date: string;
+  accounts: string[];
+  days: number;
+  accountTweets: AccountTweets[];
+}
+
+export function loadPendingScan(): PendingScan | null {
   const raw = localStorage.getItem(LS_PENDING_SCAN);
   if (!raw) return null;
   try {
-    const pending = JSON.parse(raw);
+    const pending = JSON.parse(raw) as PendingScan;
     if (Date.now() - new Date(pending.date).getTime() > 3600000) { clearPendingScan(); return null; }
     return pending;
   } catch { clearPendingScan(); return null; }
@@ -1485,13 +1634,92 @@ export function decodeSignal(encoded: string): Signal | null {
     while (b64.length % 4) b64 += '=';
     const json = decodeURIComponent(escape(atob(b64)));
     const compact = JSON.parse(json);
-    return {
+    const signal: Signal = {
       title: compact.t || '', summary: compact.s || '', category: compact.c || '',
       source: compact.src || '',
       tickers: (compact.tk || []).map((t: any) => ({ symbol: t.s, action: t.a })),
       tweet_url: compact.u || '', links: compact.ln || [],
     };
+    return normalizeSignals([signal])[0] || signal;
   } catch { return null; }
+}
+
+// ============================================================================
+// SCHEDULED SCANS (display utilities only — scheduling is server-side)
+// ============================================================================
+
+/**
+ * Format a time string for display (converts 24h "HH:MM" to locale-friendly format).
+ */
+export function formatScheduleTime(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Get the next upcoming scheduled scan time for display purposes.
+ * Uses the server-provided schedule data.
+ */
+export function getNextScheduleTime(schedules: ScheduledScan[]): { schedule: ScheduledScan; date: Date } | null {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const today = now.getDay();
+
+  const activeSchedules = schedules.filter(s => s.enabled);
+  if (!activeSchedules.length) return null;
+
+  let best: { schedule: ScheduledScan; date: Date } | null = null;
+
+  for (const schedule of activeSchedules) {
+    const [h, m] = schedule.time.split(':').map(Number);
+    const scheduleMinutes = h * 60 + m;
+
+    // Check each of the next 7 days
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + dayOffset);
+      targetDate.setHours(h, m, 0, 0);
+      const targetDay = targetDate.getDay();
+
+      // Skip if day filter doesn't match
+      if (schedule.days.length > 0 && !schedule.days.includes(targetDay)) continue;
+
+      // Skip if it's today but the time has passed and already ran
+      if (dayOffset === 0) {
+        if (currentMinutes >= scheduleMinutes) {
+          if (schedule.last_run_at) {
+            const lastRun = new Date(schedule.last_run_at);
+            if (lastRun.toDateString() === now.toDateString()) {
+              const lastRunMinutes = lastRun.getHours() * 60 + lastRun.getMinutes();
+              if (lastRunMinutes >= scheduleMinutes) continue;
+            }
+          }
+          // Time passed but hasn't run yet — it's due now, not "next"
+          continue;
+        }
+      }
+
+      if (!best || targetDate < best.date) {
+        best = { schedule, date: targetDate };
+      }
+      break; // Found earliest for this schedule
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Get the browser's IANA timezone string.
+ */
+export function getBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return 'UTC';
+  }
 }
 
 // ============================================================================

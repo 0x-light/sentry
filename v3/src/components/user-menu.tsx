@@ -43,12 +43,14 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm w-full">
-        <DialogHeader>
-          <DialogTitle>Account</DialogTitle>
-          <DialogDescription>{user.email}</DialogDescription>
-        </DialogHeader>
+        <div className="px-6 pt-6 pb-4">
+          <DialogHeader>
+            <DialogTitle>Account</DialogTitle>
+            <DialogDescription>{user.email}</DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="mt-6 space-y-4">
+        <div className="px-6 pb-6 space-y-4">
           {/* Credit Balance */}
           <div className="p-4 rounded-lg border space-y-3">
             <div className="flex items-center justify-between">
@@ -89,15 +91,19 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
 
           {/* Free tier info */}
           {!hasCredits && (
-            <div className="p-3 rounded-lg bg-muted/30 space-y-1">
+            <div className="p-3 rounded-lg bg-muted/30 space-y-1.5">
               <p className="text-xs text-muted-foreground">
-                Free tier: 1 scan/day, up to 10 accounts, using your own API keys.
+                Free tier: <span className="text-foreground font-medium">1 scan per day</span>, up to 10 accounts.
               </p>
-              <p className="text-xs text-muted-foreground">
-                {profile?.free_scan_available
-                  ? '✓ Free scan available today'
-                  : '✗ Free scan used today — come back tomorrow'}
-              </p>
+              {profile?.free_scan_available ? (
+                <p className="text-xs text-signal-green font-medium">
+                  ✓ Free scan available today
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  ✗ Free scan used today — resets tomorrow
+                </p>
+              )}
             </div>
           )}
 

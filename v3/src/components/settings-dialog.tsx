@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
 import { useAuth } from '@/hooks/use-auth'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,7 +14,9 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import * as engine from '@/lib/engine'
 import { DEFAULT_PROMPT } from '@/lib/constants'
-import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download, Settings, Loader2 } from '@/components/icons'
+import { Trash2, Copy, Check, ChevronDown, ChevronRight, ExternalLink, ClipboardPaste, Download, Settings, Loader2, Clock, Plus, X, CalendarClock } from '@/components/icons'
+import { RANGES } from '@/lib/constants'
+import type { ScheduledScan } from '@/lib/types'
 
 export function SettingsDialog() {
   const {
@@ -28,6 +30,10 @@ export function SettingsDialog() {
     pricingOpen, setPricingOpen,
     authDialogOpen, setAuthDialogOpen,
     applySettings,
+    schedules,
+    addSchedule: addScheduleAction,
+    updateSchedule: updateScheduleAction,
+    deleteSchedule: deleteScheduleAction,
   } = useSentry()
 
   const { isAuthenticated, user, profile, signOut } = useAuth()
@@ -130,31 +136,33 @@ export function SettingsDialog() {
     ? 'text-signal-green bg-signal-green-bg'
     : 'text-muted-foreground bg-muted'
 
-  // Which tabs to show
-  const showAccountTab = true // always show
-  const tabCount = 5
-
   return (
-    <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
-      <DialogContent className="sm:max-w-lg w-full">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>
-            {isAuthenticated ? user?.email : 'Configure your API keys, analysts, and preferences.'}
-          </DialogDescription>
-        </DialogHeader>
+    <Sheet open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
+      <SheetContent side="right" className="sm:max-w-[29rem] w-full">
+        <div className="px-6 pt-6 pb-4 shrink-0">
+          <SheetHeader>
+            <SheetTitle>Settings</SheetTitle>
+            <SheetDescription>
+              {isAuthenticated ? user?.email : 'Configure your API keys, analysts, and preferences.'}
+            </SheetDescription>
+          </SheetHeader>
+        </div>
 
-        <Tabs value={settingsTab} onValueChange={setSettingsTab} className="mt-6">
-          <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-5">
-            <TabsTrigger value="account">Account</TabsTrigger>
-            <TabsTrigger value="api">API</TabsTrigger>
-            <TabsTrigger value="analyst">Analyst</TabsTrigger>
-            <TabsTrigger value="display">Display</TabsTrigger>
-            <TabsTrigger value="data">Data</TabsTrigger>
-          </TabsList>
+        <div className="flex-1 overflow-y-auto px-6">
+          <Tabs value={settingsTab} onValueChange={setSettingsTab} className="h-full">
+            <div className="sticky top-0 bg-background pb-4 -mx-6 px-6 z-10 overflow-x-auto scrollbar-hide">
+              <TabsList className="inline-flex w-auto min-w-full">
+                <TabsTrigger value="account">Account</TabsTrigger>
+                <TabsTrigger value="api">API</TabsTrigger>
+                <TabsTrigger value="schedule">Schedule</TabsTrigger>
+                <TabsTrigger value="analyst">Analyst</TabsTrigger>
+                <TabsTrigger value="display">Display</TabsTrigger>
+                <TabsTrigger value="data">Data</TabsTrigger>
+              </TabsList>
+            </div>
 
           {/* Account Tab */}
-          <TabsContent value="account" className="space-y-4 mt-4">
+          <TabsContent value="account" className="space-y-4 pb-4">
             {isAuthenticated ? (
               <>
                 {/* Credits & Status */}
@@ -203,7 +211,7 @@ export function SettingsDialog() {
                 </Button>
               </>
             ) : (
-              <div className="space-y-4 text-center py-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Sign in to unlock more</h3>
                   <p className="text-sm text-muted-foreground">
@@ -228,7 +236,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* API Tab */}
-          <TabsContent value="api" className="space-y-4 mt-4">
+          <TabsContent value="api" className="space-y-4 pb-4">
             {hasCredits && (
               <div className="p-3 rounded-lg bg-accent/50 border space-y-2">
                 <div className="flex items-center gap-2">
@@ -287,8 +295,205 @@ export function SettingsDialog() {
             </div>
           </TabsContent>
 
+          {/* Schedule Tab */}
+          <TabsContent value="schedule" className="space-y-4 pb-4">
+            {!isAuthenticated ? (
+              <div className="p-4 rounded-lg border border-dashed text-center space-y-3">
+                <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">Sign in to set up scheduled scans</p>
+                <Button size="sm" onClick={() => { closeSettings(); setAuthDialogOpen(true) }}>
+                  Sign in
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Set recurring scans so results are ready when you need them.
+                  </p>
+                </div>
+
+                {schedules.length === 0 && (
+                  <div className="p-4 rounded-lg border border-dashed text-center space-y-3">
+                    <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground">No scheduled scans yet</p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '07:00', label: 'Morning', range_days: 1, accounts: [] })}>
+                        + Morning (7am)
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '12:00', label: 'Midday', range_days: 1, accounts: [] })}>
+                        + Midday (12pm)
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '18:00', label: 'Evening', range_days: 1, accounts: [] })}>
+                        + Evening (6pm)
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {schedules.map(schedule => {
+                  const lastRunDate = schedule.last_run_at ? new Date(schedule.last_run_at) : null
+                  const lastRunStr = lastRunDate
+                    ? lastRunDate.toLocaleDateString() + ' ' + lastRunDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                    : null
+                  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+                  return (
+                    <div key={schedule.id} className="border rounded-lg">
+                      {/* Header row */}
+                      <div className="flex items-center gap-3 p-3">
+                        <Switch
+                          checked={schedule.enabled}
+                          onCheckedChange={(checked) => updateScheduleAction(schedule.id, { enabled: checked })}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm font-medium", !schedule.enabled && "text-muted-foreground")}>
+                              {schedule.label}
+                            </span>
+                            <span className={cn("text-sm", !schedule.enabled ? "text-muted-foreground/60" : "text-muted-foreground")}>
+                              {engine.formatScheduleTime(schedule.time)}
+                            </span>
+                            {schedule.last_run_status === 'running' && (
+                              <Loader2 className="h-3 w-3 animate-spin text-signal-blue" />
+                            )}
+                          </div>
+                          {lastRunStr && (
+                            <p className="text-xs text-muted-foreground/70 mt-0.5">
+                              Last: {lastRunStr}
+                              {schedule.last_run_status === 'error' && (
+                                <span className="text-destructive ml-1" title={schedule.last_run_message || ''}>· failed</span>
+                              )}
+                              {schedule.last_run_status === 'success' && <span className="text-signal-green ml-1">· ok</span>}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteScheduleAction(schedule.id)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      {/* Settings row */}
+                      <div className="px-3 pb-3 space-y-3">
+                        <Separator />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Time</Label>
+                            <Input
+                              type="time"
+                              value={schedule.time}
+                              onChange={e => updateScheduleAction(schedule.id, { time: e.target.value })}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Range</Label>
+                            <Select
+                              value={String(schedule.range_days)}
+                              onValueChange={v => updateScheduleAction(schedule.id, { range_days: Number(v) })}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {RANGES.map(r => (
+                                  <SelectItem key={r.days} value={String(r.days)}>{r.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Days</Label>
+                          <div className="flex gap-1">
+                            {DAY_LABELS.map((day, i) => {
+                              const isActive = schedule.days.length === 0 || schedule.days.includes(i)
+                              const isAllDays = schedule.days.length === 0
+                              return (
+                                <button
+                                  key={day}
+                                  className={cn(
+                                    "flex-1 py-1 text-xs rounded-md transition-all font-medium",
+                                    isActive
+                                      ? isAllDays
+                                        ? "bg-primary/10 text-primary"
+                                        : "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground/50 hover:text-muted-foreground"
+                                  )}
+                                  onClick={() => {
+                                    let newDays: number[]
+                                    if (schedule.days.length === 0) {
+                                      newDays = [0, 1, 2, 3, 4, 5, 6].filter(d => d !== i)
+                                    } else if (schedule.days.includes(i)) {
+                                      newDays = schedule.days.filter(d => d !== i)
+                                      if (newDays.length === 0) newDays = []
+                                    } else {
+                                      newDays = [...schedule.days, i].sort()
+                                      if (newDays.length === 7) newDays = []
+                                    }
+                                    updateScheduleAction(schedule.id, { days: newDays })
+                                  }}
+                                >
+                                  {day}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="text-xs text-muted-foreground/70">
+                            {schedule.days.length === 0 ? 'Every day' : schedule.days.map(d => DAY_LABELS[d]).join(', ')}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Label</Label>
+                          <Input
+                            value={schedule.label}
+                            onChange={e => updateScheduleAction(schedule.id, { label: e.target.value })}
+                            placeholder="Schedule name"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {schedules.length > 0 && (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '07:00', label: 'Morning', range_days: 1, accounts: [] })}>
+                        <Plus className="h-3 w-3 mr-1" />Morning
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '12:00', label: 'Midday', range_days: 1, accounts: [] })}>
+                        <Plus className="h-3 w-3 mr-1" />Midday
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '18:00', label: 'Evening', range_days: 1, accounts: [] })}>
+                        <Plus className="h-3 w-3 mr-1" />Evening
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => addScheduleAction({ time: '09:00', label: 'Custom', range_days: 1, accounts: [] })}>
+                        <Plus className="h-3 w-3 mr-1" />Custom
+                      </Button>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-accent/50 border">
+                      <p className="text-xs text-muted-foreground">
+                        <strong className="font-medium text-foreground/80">How it works:</strong>{' '}
+                        Scans run automatically on our servers at scheduled times — no need to keep your browser open.
+                        Results will be waiting when you open Sentry. Uses your currently active accounts and presets.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </TabsContent>
+
           {/* Analyst Tab */}
-          <TabsContent value="analyst" className="space-y-4 mt-4">
+          <TabsContent value="analyst" className="space-y-4 pb-4">
             {analysts.map(a => (
               <div key={a.id} className="border rounded-lg">
                 <div
@@ -346,7 +551,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Display Tab */}
-          <TabsContent value="display" className="space-y-4 mt-4">
+          <TabsContent value="display" className="space-y-4 pb-4">
             <div className="space-y-2">
               <Label>Charts</Label>
               <Select value={localFinance} onValueChange={setLocalFinance}>
@@ -404,7 +609,7 @@ export function SettingsDialog() {
           </TabsContent>
 
           {/* Data Tab */}
-          <TabsContent value="data" className="space-y-4 mt-4">
+          <TabsContent value="data" className="space-y-4 pb-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Live feed</Label>
@@ -461,22 +666,24 @@ export function SettingsDialog() {
               </div>
             </div>
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        </div>
 
-        {/* Save/Cancel — only show for non-account tabs */}
-        {settingsTab !== 'account' && (
-          <>
-            <Separator className="my-4" />
+        {/* Save/Cancel — only show for tabs that need explicit save */}
+        {settingsTab !== 'account' && settingsTab !== 'schedule' && (
+          <div className="px-6 pb-6 pt-4 shrink-0 border-t">
             <div className="flex flex-wrap gap-2 justify-end">
-              <Button variant="destructive" size="sm" onClick={handleClearKeys} className="mr-auto">
-                Clear all
-              </Button>
+              {settingsTab === 'api' && (
+                <Button variant="destructive" size="sm" onClick={handleClearKeys} className="mr-auto">
+                  Clear keys
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={closeSettings}>Cancel</Button>
               <Button size="sm" onClick={handleSave}>Save</Button>
             </div>
-          </>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   )
 }

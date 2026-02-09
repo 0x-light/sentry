@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { supabase } from './supabase'
-import type { Analyst, UserProfile } from './types'
+import type { Analyst, UserProfile, ScheduledScan } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://sentry-api.tomaspalmeirim.workers.dev'
 
@@ -242,7 +242,7 @@ export async function checkScanCache(accounts: string[], days: number, promptHas
   })
 }
 
-export async function reserveCredits(accountsCount: number, rangeDays: number): Promise<{
+export async function reserveCredits(accountsCount: number, rangeDays: number, model?: string): Promise<{
   ok: boolean
   reservation_id?: string
   credits_needed: number
@@ -253,7 +253,7 @@ export async function reserveCredits(accountsCount: number, rangeDays: number): 
 }> {
   return fetchApi('/api/scans/reserve', {
     method: 'POST',
-    body: JSON.stringify({ accounts_count: accountsCount, range_days: rangeDays }),
+    body: JSON.stringify({ accounts_count: accountsCount, range_days: rangeDays, model }),
   })
 }
 
@@ -268,6 +268,7 @@ export async function saveScanToServer(data: {
   prompt_hash?: string
   byok?: boolean
   reservation_id?: string
+  model?: string
 }): Promise<{ ok: boolean; id?: string; credits_used?: number; credits_balance?: number }> {
   return fetchApi('/api/scans', {
     method: 'POST',
@@ -277,6 +278,38 @@ export async function saveScanToServer(data: {
 
 export async function deleteScanFromServer(id: string): Promise<void> {
   return fetchApi('/api/scans', {
+    method: 'DELETE',
+    body: JSON.stringify({ id }),
+  })
+}
+
+// ============================================================================
+// SCHEDULED SCANS (matches worker routes: /api/user/schedules)
+// ============================================================================
+
+export async function getSchedules(): Promise<ScheduledScan[]> {
+  return fetchApi('/api/user/schedules')
+}
+
+export async function saveSchedule(data: {
+  id?: string
+  label: string
+  time: string
+  timezone: string
+  days: number[]
+  range_days: number
+  preset_id?: string | null
+  accounts: string[]
+  enabled: boolean
+}): Promise<{ ok: boolean; id?: string }> {
+  return fetchApi('/api/user/schedules', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteScheduleFromServer(id: string): Promise<void> {
+  return fetchApi('/api/user/schedules', {
     method: 'DELETE',
     body: JSON.stringify({ id }),
   })
@@ -382,6 +415,10 @@ export const api = {
   reserveCredits,
   saveScan: saveScanToServer,
   deleteScan: deleteScanFromServer,
+  // Schedules
+  getSchedules,
+  saveSchedule,
+  deleteSchedule: deleteScheduleFromServer,
   // Billing
   buyCredits,
   getBillingPortalUrl,

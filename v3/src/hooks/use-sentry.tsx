@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import type { Signal, Analyst, ScanResult, ScanHistoryEntry, Preset } from '@/lib/types'
+import type { Signal, Analyst, ScanResult, ScanHistoryEntry, Preset, ScheduledScan } from '@/lib/types'
 import { RANGES } from '@/lib/constants'
 import * as engine from '@/lib/engine'
 import { useAuth } from '@/hooks/use-auth'
@@ -116,8 +116,20 @@ interface SentryStore {
   pricingOpen: boolean;
   setPricingOpen: (open: boolean) => void;
 
+  // Current model (reactive)
+  model: string;
+
   // Settings apply (no page reload)
   applySettings: () => void;
+
+  // Scheduled scans (server-side)
+  schedules: ScheduledScan[];
+  schedulesLoading: boolean;
+  addSchedule: (data: { time: string; label: string; range_days: number; preset_id?: string | null; accounts: string[] }) => void;
+  updateSchedule: (id: string, updates: Partial<ScheduledScan>) => void;
+  deleteSchedule: (id: string) => void;
+  refreshSchedules: () => void;
+  nextScheduleLabel: string;
 }
 
 const SentryContext = createContext<SentryStore | null>(null)
@@ -261,6 +273,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [filters, setFilters] = useState<{ category: string | null; ticker: string | null }>({ category: null, ticker: null })
   const [scanHistory, setScanHistory] = useState(() => engine.getScanHistory())
   const abortRef = useRef<AbortController | null>(null)
+  const pendingTweetsRef = useRef<import('@/lib/types').AccountTweets[] | null>(null)
 
   // Pending scan
   const [hasPendingScan, setHasPendingScan] = useState(() => !!engine.loadPendingScan())
@@ -313,6 +326,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
 
   // Display settings
   const [financeProvider, setFinanceProvider] = useState(() => engine.getFinanceProvider())
+  const [model, setModelState] = useState(() => engine.getModel())
   const [font, setFont] = useState(() => engine.getFont())
   const [fontSize, setFontSize] = useState(() => engine.getFontSize())
   const [showTickerPrice, setShowTickerPrice] = useState(() => engine.getShowTickerPrice())
@@ -397,12 +411,65 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       const hasCredits = isAuthenticated && profile?.has_credits
       if (!engine.bothKeys() && !hasCredits) { openSettings('api'); return; }
       setIsLiveMode(true)
-      // Initialize seen tweets
+      // Initialize seen tweets from the current scan result
+      seenTweetUrlsRef.current.clear()
       if (scanResult?.rawTweets) {
         scanResult.rawTweets.forEach(a => a.tweets.forEach(tw => seenTweetUrlsRef.current.add(engine.getTweetUrl(tw))))
       }
+
+      // Start polling for new tweets every 90 seconds
+      const pollAccounts = scanResult?.accounts || getAllAccounts()
+      if (!pollAccounts.length) { setIsLiveMode(false); return; }
+
+      const poll = async () => {
+        try {
+          const hasBYOK = engine.bothKeys()
+          const useManaged = !!hasCredits && !hasBYOK
+          engine.setUseServerApi(useManaged)
+
+          const fresh = await engine.fetchAllTweets(pollAccounts, 1, () => {}, null)
+          engine.setUseServerApi(false)
+
+          const newTweets: import('@/lib/types').AccountTweets[] = []
+          for (const acct of fresh) {
+            const unseen = acct.tweets.filter(tw => !seenTweetUrlsRef.current.has(engine.getTweetUrl(tw)))
+            if (unseen.length) {
+              unseen.forEach(tw => seenTweetUrlsRef.current.add(engine.getTweetUrl(tw)))
+              newTweets.push({ account: acct.account, tweets: unseen })
+            }
+          }
+
+          if (!newTweets.length) return
+
+          const cache = engine.loadAnalysisCache()
+          const promptHash = engine.getPromptHash(analysts)
+          const newSignals = await engine.analyzeWithBatching(
+            newTweets,
+            newTweets.reduce((s, a) => s + a.tweets.length, 0),
+            () => {},
+            promptHash, cache, null, analysts
+          )
+          if (newSignals.length) {
+            setScanResult(prev => {
+              if (!prev) return prev
+              return { ...prev, signals: [...newSignals, ...prev.signals], totalTweets: prev.totalTweets + newTweets.reduce((s, a) => s + a.tweets.length, 0) }
+            })
+          }
+        } catch (e) {
+          console.warn('Live poll error:', e)
+        }
+      }
+
+      liveIntervalRef.current = setInterval(poll, 90_000)
     }
-  }, [liveEnabled, isLiveMode, scanResult, openSettings, isAuthenticated, profile])
+  }, [liveEnabled, isLiveMode, scanResult, openSettings, isAuthenticated, profile, getAllAccounts, analysts])
+
+  // Clean up live polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (liveIntervalRef.current) { clearInterval(liveIntervalRef.current); liveIntervalRef.current = null; }
+    }
+  }, [])
 
   // Sharing
   const isSharedView = typeof window !== 'undefined' && window.location.hash.startsWith('#s=')
@@ -482,7 +549,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         accounts: Array.isArray(s.accounts) ? s.accounts.length : (s.accounts ?? 0),
         totalTweets: s.total_tweets ?? 0,
         signalCount: s.signal_count ?? 0,
-        signals: s.signals || [],
+        signals: engine.normalizeSignals(s.signals || []),
       }))
       setScanHistory(serverHistory)
 
@@ -495,7 +562,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
           days: latest.range_days,
           accounts: Array.isArray(latest.accounts) ? latest.accounts : [],
           totalTweets: latest.total_tweets ?? 0,
-          signals: latest.signals || [],
+          signals: engine.normalizeSignals(latest.signals || []),
           tweetMeta: latest.tweet_meta || {},
         }
         setScanResult(restored)
@@ -559,7 +626,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     if (useManaged && isAuthenticated) {
       try {
         setStatus({ text: 'Checking credits…', animate: true, showDownload: false })
-        const reservation = await api.reserveCredits(accounts.length, days)
+        const reservation = await api.reserveCredits(accounts.length, days, engine.getModel())
         if (!reservation.ok) {
           setBusy(false)
           setPricingOpen(true)
@@ -590,11 +657,16 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
 
     engine.setUseServerApi(useManaged)
     try {
+      // If resuming, use pre-fetched tweets to skip the fetch phase
+      const prefetched = pendingTweetsRef.current || undefined
+      pendingTweetsRef.current = null
+
       const result = await engine.runScan(
         accounts, days, abortRef.current.signal,
         (text, animate) => setStatus({ text, animate: !!animate, showDownload: false }),
         (type, msg) => setNotices(prev => [...prev, { type, message: msg }]),
-        analysts
+        analysts,
+        prefetched
       )
 
       if (result) {
@@ -633,6 +705,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
             prompt_hash: engine.getPromptHash(analysts),
             byok: !useManaged,
             reservation_id: reservationId,
+            model: engine.getModel(),
           }).then((saveResult) => {
             refreshProfile()
             loadServerHistory()
@@ -669,8 +742,13 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const resumeScan = useCallback(async () => {
+    const pending = engine.loadPendingScan()
     setHasPendingScan(false)
     engine.clearPendingScan()
+    // Re-use the already-fetched tweets so we skip straight to analysis
+    if (pending?.accountTweets?.length) {
+      pendingTweetsRef.current = pending.accountTweets
+    }
     await scan()
   }, [scan])
 
@@ -731,12 +809,128 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   // Re-read all display settings from engine/localStorage (avoids page reload)
   const applySettings = useCallback(() => {
     setFinanceProvider(engine.getFinanceProvider())
+    setModelState(engine.getModel())
     setFont(engine.getFont())
     setFontSize(engine.getFontSize())
     setShowTickerPrice(engine.getShowTickerPrice())
     setIconSet(engine.getIconSet())
     setLiveEnabledState(engine.isLiveEnabled())
   }, [])
+
+  // ── Scheduled Scans (server-side) ─────────────────────────────────────────
+  const [schedules, setSchedules] = useState<ScheduledScan[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [nextScheduleLabel, setNextScheduleLabel] = useState('')
+
+  const loadSchedules = useCallback(async () => {
+    if (!isAuthenticated) { setSchedules([]); return }
+    setSchedulesLoading(true)
+    try {
+      const data = await api.getSchedules()
+      setSchedules(data || [])
+    } catch (e) {
+      console.warn('Failed to load schedules:', e)
+    } finally {
+      setSchedulesLoading(false)
+    }
+  }, [isAuthenticated])
+
+  // Load schedules when auth state changes
+  useEffect(() => { loadSchedules() }, [loadSchedules])
+
+  const addScheduleHandler = useCallback(async (data: { time: string; label: string; range_days: number; preset_id?: string | null; accounts: string[] }) => {
+    if (!isAuthenticated) return
+    try {
+      await api.saveSchedule({
+        ...data,
+        timezone: engine.getBrowserTimezone(),
+        days: [],
+        enabled: true,
+      })
+      loadSchedules()
+    } catch (e: any) {
+      console.warn('Failed to add schedule:', e.message)
+    }
+  }, [isAuthenticated, loadSchedules])
+
+  const updateScheduleHandler = useCallback(async (id: string, updates: Partial<ScheduledScan>) => {
+    if (!isAuthenticated) return
+    // Optimistic update
+    setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+    try {
+      const schedule = schedules.find(s => s.id === id)
+      if (!schedule) return
+      await api.saveSchedule({
+        id,
+        label: updates.label ?? schedule.label,
+        time: updates.time ?? schedule.time,
+        timezone: updates.timezone ?? schedule.timezone ?? engine.getBrowserTimezone(),
+        days: updates.days ?? schedule.days,
+        range_days: updates.range_days ?? schedule.range_days,
+        preset_id: updates.preset_id !== undefined ? updates.preset_id : schedule.preset_id,
+        accounts: updates.accounts ?? schedule.accounts,
+        enabled: updates.enabled !== undefined ? updates.enabled : schedule.enabled,
+      })
+      loadSchedules()
+    } catch (e: any) {
+      console.warn('Failed to update schedule:', e.message)
+      loadSchedules() // revert on error
+    }
+  }, [isAuthenticated, schedules, loadSchedules])
+
+  const deleteScheduleHandler = useCallback(async (id: string) => {
+    if (!isAuthenticated) return
+    // Optimistic update
+    setSchedules(prev => prev.filter(s => s.id !== id))
+    try {
+      await api.deleteScheduleFromServer(id)
+    } catch (e: any) {
+      console.warn('Failed to delete schedule:', e.message)
+      loadSchedules() // revert on error
+    }
+  }, [isAuthenticated, loadSchedules])
+
+  // Update "next schedule" label
+  const updateNextScheduleLabel = useCallback(() => {
+    const next = engine.getNextScheduleTime(schedules)
+    if (!next) { setNextScheduleLabel(''); return }
+    const now = new Date()
+    const diffMs = next.date.getTime() - now.getTime()
+    const diffMin = Math.round(diffMs / 60000)
+    if (diffMin < 1) {
+      setNextScheduleLabel('now')
+    } else if (diffMin < 60) {
+      setNextScheduleLabel(`in ${diffMin}m`)
+    } else if (diffMin < 1440) {
+      const h = Math.floor(diffMin / 60)
+      const m = diffMin % 60
+      setNextScheduleLabel(m > 0 ? `in ${h}h ${m}m` : `in ${h}h`)
+    } else {
+      setNextScheduleLabel(engine.formatScheduleTime(next.schedule.time))
+    }
+  }, [schedules])
+
+  // ── Timer: update "next schedule" label every 30 seconds ─────────────────
+  // Scans run server-side via cron — no browser execution needed.
+  // Also refresh schedules from server when tab becomes visible (to get latest run status).
+  useEffect(() => {
+    updateNextScheduleLabel()
+    const interval = setInterval(updateNextScheduleLabel, 30_000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        updateNextScheduleLabel()
+        loadSchedules() // refresh status from server
+        loadServerHistory() // pick up any new scan results
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [updateNextScheduleLabel, loadSchedules, loadServerHistory])
 
   const value: SentryStore = {
     theme, toggleTheme,
@@ -765,7 +959,16 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     authDialogOpen, setAuthDialogOpen,
     authDialogTab,
     pricingOpen, setPricingOpen,
+    model,
     applySettings,
+    // Scheduled scans (server-side)
+    schedules,
+    schedulesLoading,
+    addSchedule: addScheduleHandler,
+    updateSchedule: updateScheduleHandler,
+    deleteSchedule: deleteScheduleHandler,
+    refreshSchedules: loadSchedules,
+    nextScheduleLabel,
   }
 
   return <SentryContext.Provider value={value}>{children}</SentryContext.Provider>

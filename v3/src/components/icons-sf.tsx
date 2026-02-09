@@ -212,3 +212,34 @@ export const EyeOff = icon(
   </>,
   'EyeOff'
 )
+
+/** SF: clock */
+export const Clock = icon(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </>,
+  'Clock'
+)
+
+/** SF: bell */
+export const Bell = icon(
+  <>
+    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+  </>,
+  'Bell'
+)
+
+/** SF: calendar.clock */
+export const CalendarClock = icon(
+  <>
+    <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" />
+    <path d="M16 2v4" />
+    <path d="M8 2v4" />
+    <path d="M3 10h5" />
+    <circle cx="16" cy="16" r="6" />
+    <path d="M16 14v2l1 1" />
+  </>,
+  'CalendarClock'
+)

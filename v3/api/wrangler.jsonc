@@ -20,6 +20,10 @@
 	"observability": {
 		"enabled": true
 	},
+	// Cron trigger: check for due scheduled scans every minute
+	"triggers": {
+		"crons": ["* * * * *"]
+	},
 	// Environment variables (set secrets via `wrangler secret put`)
 	// Required secrets:
 	//   SUPABASE_URL          - Your Supabase project URL

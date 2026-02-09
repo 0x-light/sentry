@@ -96,19 +96,22 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md w-full">
-        <DialogHeader>
-          <DialogTitle>Welcome to Sentry</DialogTitle>
-          <DialogDescription>Sign in to sync your data, unlock scans, and manage your subscription.</DialogDescription>
-        </DialogHeader>
+        <div className="px-6 pt-6 pb-4">
+          <DialogHeader>
+            <DialogTitle>Welcome to Sentry</DialogTitle>
+            <DialogDescription>Sign in to sync your data, unlock scans, and manage your subscription.</DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <Tabs value={tab} onValueChange={setTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Log in</TabsTrigger>
-            <TabsTrigger value="signup">Sign up</TabsTrigger>
-          </TabsList>
+        <div className="px-6 pb-6">
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="login">Log in</TabsTrigger>
+              <TabsTrigger value="signup">Sign up</TabsTrigger>
+            </TabsList>
 
-          {/* Login Tab */}
-          <TabsContent value="login" className="space-y-4 mt-4">
+            {/* Login Tab */}
+            <TabsContent value="login" className="space-y-4 mt-4">
             {error && <p className="text-sm text-destructive">{error}</p>}
             {message && <p className="text-sm text-signal-green">{message}</p>}
 
@@ -202,7 +205,8 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
               </a>.
             </p>
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   )

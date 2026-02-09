@@ -36,7 +36,6 @@ export const MAX_RECENTS = 10;
 export const RANGES = [
   { label: 'Today', days: 1 },
   { label: 'Week', days: 7 },
-  { label: 'Month', days: 30 },
 ];
 
 export const CATEGORIES = ['Trade', 'Tool', 'Insight', 'Resource'] as const;
@@ -83,6 +82,7 @@ export const LS_LIVE_MODE = 'signal_live_mode';
 export const LS_LIVE_ENABLED = 'signal_live_enabled';
 export const LS_MODEL = 'signal_model';
 export const LS_ONBOARDING_DONE = 'signal_onboarding_done';
+export const LS_SCHEDULE_LOG = 'signal_schedule_execution_log';
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 export const DEFAULT_ANALYST_ID = 'default';
@@ -169,6 +169,8 @@ export const CRYPTO_SLUGS: Record<string, string> = {
 export const TV_SYMBOL_OVERRIDES: Record<string, string> = {
   // Crypto
   HYPE: 'PYTH:HYPEUSD',
+  // Korea
+  '000660.KS': 'KRX:000660', // SK hynix
   // Commodities
   XAU: 'TVC:GOLD',
   XAG: 'TVC:SILVER',

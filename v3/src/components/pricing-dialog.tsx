@@ -31,7 +31,7 @@ const CREDIT_PACKS: CreditPack[] = [
     savings: '13% off',
     recommended: true,
     estimates: [
-      { label: 'Scan 200 accounts ~90× with Haiku', count: 90 },
+      { label: 'Scan 200 accounts ~100× with Haiku', count: 100 },
     ],
   },
   {
@@ -42,7 +42,7 @@ const CREDIT_PACKS: CreditPack[] = [
     perCredit: 0.0066,
     savings: '27% off',
     estimates: [
-      { label: 'Scan 200 accounts ~280× with Haiku', count: 280 },
+      { label: 'Scan 200 accounts ~300× with Haiku', count: 300 },
     ],
   },
   {
@@ -53,7 +53,7 @@ const CREDIT_PACKS: CreditPack[] = [
     perCredit: 0.005,
     savings: '45% off',
     estimates: [
-      { label: 'Scan 200 accounts ~750× with Haiku', count: 750 },
+      { label: 'Scan 200 accounts ~800× with Haiku', count: 800 },
     ],
   },
 ]
@@ -121,15 +121,17 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg w-full">
-        <DialogHeader>
-          <DialogTitle>Buy Credits</DialogTitle>
-          <DialogDescription>
-            Credits are used for scans with managed API keys. 1 credit = 1 account per day.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-4xl w-full">
+        <div className="px-6 pt-6 pb-4">
+          <DialogHeader>
+            <DialogTitle>Buy Credits</DialogTitle>
+            <DialogDescription>
+              Credits are used for scans with managed API keys. 1 credit = 1 account per day.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="mt-6 space-y-3">
+        <div className="px-6 pb-6 space-y-3 overflow-y-auto">
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
@@ -159,56 +161,58 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
           </label>
 
           {/* Credit packs */}
-          {CREDIT_PACKS.map(pack => (
-            <div
-              key={pack.id}
-              className={cn(
-                "p-4 rounded-lg border space-y-3",
-                pack.recommended && "border-primary ring-1 ring-primary"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-medium">{pack.name}</h4>
-                {pack.savings && (
-                  <Badge variant="secondary" className="text-xs">{pack.savings}</Badge>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {CREDIT_PACKS.map(pack => (
+              <div
+                key={pack.id}
+                className={cn(
+                  "p-4 rounded-lg border space-y-3 flex flex-col",
+                  pack.recommended && "border-primary ring-1 ring-primary"
                 )}
-                {pack.recommended && (
-                  <Badge variant="default" className="text-xs">Popular</Badge>
-                )}
-              </div>
-
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-semibold">{formatPrice(pack.price)}</span>
-                <span className="text-sm text-muted-foreground">
-                  {pack.credits.toLocaleString()} credits
-                </span>
-                {recurring && <span className="text-xs text-muted-foreground">/mo</span>}
-              </div>
-
-              {/* Estimates */}
-              <div className="space-y-1">
-                {pack.estimates.map((est, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Check className="h-3 w-3 text-signal-green shrink-0" />
-                    <span>{est.label}</span>
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                className="w-full"
-                variant={pack.recommended ? 'default' : 'outline'}
-                onClick={() => handleBuyCredits(pack.id)}
-                disabled={!!loadingPack || !isAuthenticated}
               >
-                {loadingPack === pack.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  recurring ? `Subscribe — ${formatPrice(pack.price)}/mo` : `Buy — ${formatPrice(pack.price)}`
-                )}
-              </Button>
-            </div>
-          ))}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-medium">{pack.name}</h4>
+                  {pack.savings && (
+                    <Badge variant="secondary" className="text-xs">{pack.savings}</Badge>
+                  )}
+                  {pack.recommended && (
+                    <Badge variant="default" className="text-xs">Popular</Badge>
+                  )}
+                </div>
+
+                <div>
+                  <span className="text-2xl font-semibold">{formatPrice(pack.price)}</span>
+                  <span className="text-sm text-muted-foreground ml-2">
+                    {pack.credits.toLocaleString()} credits
+                  </span>
+                  {recurring && <span className="text-xs text-muted-foreground">/mo</span>}
+                </div>
+
+                {/* Estimates */}
+                <div className="space-y-1 flex-1">
+                  {pack.estimates.map((est, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Check className="h-3 w-3 text-signal-green shrink-0" />
+                      <span>{est.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  className="w-full"
+                  variant={pack.recommended ? 'default' : 'outline'}
+                  onClick={() => handleBuyCredits(pack.id)}
+                  disabled={!!loadingPack || !isAuthenticated}
+                >
+                  {loadingPack === pack.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    recurring ? `Subscribe — ${formatPrice(pack.price)}/mo` : `Buy — ${formatPrice(pack.price)}`
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
 
           {/* Free tier info */}
           <div className="p-4 rounded-lg border space-y-2">
@@ -222,10 +226,11 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
           <div className="p-3 rounded-lg bg-muted/30 space-y-2">
             <p className="text-xs font-medium text-muted-foreground">How credits work</p>
             <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>Credits = accounts × range multiplier</p>
-              <p>Today = ×1 · 3 days = ×2 · Week = ×3 · 2 weeks = ×5 · Month = ×8</p>
-              <p className="pt-1">Example: 200 accounts × today = 200 credits</p>
-              <p>Example: 200 accounts × week = 600 credits</p>
+              <p>Credits = accounts × range × model</p>
+              <p>Range: today ×1 · 3d ×2 · week ×3 · 2w ×5 · month ×8</p>
+              <p>Model: Haiku ×0.25 · Sonnet ×1 · Opus ×5</p>
+              <p className="pt-1">Example: 200 accounts × today × Haiku = 50 credits</p>
+              <p>Example: 200 accounts × today × Sonnet = 200 credits</p>
             </div>
           </div>
 

@@ -1,12 +1,19 @@
 import { useSentry } from '@/hooks/use-sentry'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Settings, Sun, Moon, Radio } from '@/components/icons'
+import { Settings, Sun, Moon, Radio, Clock } from '@/components/icons'
 
 export function Topbar() {
-  const { theme, toggleTheme, liveEnabled, isLiveMode, toggleLive, openSettings, busy } = useSentry()
+  const {
+    theme, toggleTheme, liveEnabled, isLiveMode, toggleLive, openSettings, busy,
+    schedules, nextScheduleLabel,
+  } = useSentry()
   const { isAuthenticated, user, profile } = useAuth()
+
+  const hasActiveSchedules = schedules.some(s => s.enabled)
+  const isScheduleRunning = schedules.some(s => s.last_run_status === 'running')
 
   return (
     <div className="flex items-center justify-between px-4 h-14 border-b">
@@ -20,6 +27,29 @@ export function Topbar() {
         <span className="font-normal text-sm tracking-tight">sentry</span>
       </div>
       <div className="flex items-center gap-1">
+        {hasActiveSchedules && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openSettings('schedule')}
+                className={cn(
+                  "gap-1.5",
+                  isScheduleRunning && "text-signal-blue"
+                )}
+              >
+                <Clock className={cn("h-3.5 w-3.5", isScheduleRunning && "animate-spin")} />
+                {nextScheduleLabel && (
+                  <span className="text-sm font-normal hidden sm:inline">{nextScheduleLabel}</span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isScheduleRunning ? 'Scheduled scan running…' : `Next scan ${nextScheduleLabel || 'scheduled'}`}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
         {liveEnabled && (
           <Button
             variant="ghost"

@@ -97,12 +97,14 @@ export function PresetDialog() {
   return (
     <Dialog open={presetDialogOpen} onOpenChange={(open) => { if (!open) { handleCancelImport(); closePresetDialog() } }}>
       <DialogContent className="sm:max-w-md w-full">
-        <DialogHeader>
-          <DialogTitle>{editingPreset ? 'Edit preset' : 'Manage presets'}</DialogTitle>
-          <DialogDescription>Create lists of accounts for quick scanning.</DialogDescription>
-        </DialogHeader>
+        <div className="px-6 pt-6 pb-4">
+          <DialogHeader>
+            <DialogTitle>{editingPreset ? 'Edit preset' : 'Manage presets'}</DialogTitle>
+            <DialogDescription>Create lists of accounts for quick scanning.</DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4 mt-6">
+        <div className="px-6 pb-6 space-y-4">
           {/* Import from Twitter following */}
           {!editingPreset && (
             <>
@@ -111,21 +113,26 @@ export function PresetDialog() {
                 <p className="text-xs text-muted-foreground">
                   Enter a Twitter username to import the accounts they follow as a preset.
                 </p>
-                <div className="flex gap-2">
+                <div className="rounded-md bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/30 dark:border-amber-500/20 px-3 py-2">
+                  <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <strong className="font-medium">Note:</strong> Importing lists with thousands of accounts can consume credits rapidly when scanned. Consider creating smaller, focused presets to manage your credit usage effectively.
+                  </p>
+                </div>
+                <div className="flex gap-2 items-center">
                   <Input
                     value={importUsername}
                     onChange={e => setImportUsername(e.target.value)}
                     placeholder="@ username"
-                    className="flex-1"
+                    className="flex-1 h-9"
                     onKeyDown={e => { if (e.key === 'Enter') handleImportFollowing() }}
                     disabled={importing}
                   />
                   {importing ? (
-                    <Button variant="outline" onClick={handleCancelImport} size="sm">
+                    <Button variant="outline" onClick={handleCancelImport} size="sm" className="h-9">
                       Cancel
                     </Button>
                   ) : (
-                    <Button onClick={handleImportFollowing} size="sm" disabled={!importUsername.trim()}>
+                    <Button onClick={handleImportFollowing} size="sm" disabled={!importUsername.trim()} className="h-9">
                       <Download className="h-3.5 w-3.5 mr-1.5" />
                       Import
                     </Button>
@@ -173,31 +180,31 @@ export function PresetDialog() {
               {editingPreset ? 'Update preset' : 'Save preset'}
             </Button>
           </div>
-        </div>
 
-        {presets.length > 0 && (
-          <>
-            <Separator className="my-4" />
-            <div className="space-y-2">
-              <Label>Existing presets</Label>
-              {presets.map(p => (
-                <div key={p.name} className="flex items-center gap-2 p-2 rounded-md border text-sm">
-                  <span className={`flex-1 font-normal ${p.hidden ? 'text-muted-foreground' : ''}`}>{p.name}</span>
-                  <span className="text-muted-foreground">{p.accounts.length}</span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePresetVisibility(p.name)}>
-                    {p.hidden ? <EyeOff className="h-3 w-3 text-muted-foreground" /> : <Eye className="h-3 w-3" />}
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPresetDialog(p.name)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => { if (confirm(`Delete preset "${p.name}"?`)) deletePreset(p.name) }}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+          {presets.length > 0 && (
+            <>
+              <Separator className="my-4" />
+              <div className="space-y-2">
+                <Label>Existing presets</Label>
+                {presets.map(p => (
+                  <div key={p.name} className="flex items-center gap-2 p-2 rounded-md border text-sm">
+                    <span className={`flex-1 font-normal ${p.hidden ? 'text-muted-foreground' : ''}`}>{p.name}</span>
+                    <span className="text-muted-foreground">{p.accounts.length}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePresetVisibility(p.name)}>
+                      {p.hidden ? <EyeOff className="h-3 w-3 text-muted-foreground" /> : <Eye className="h-3 w-3" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPresetDialog(p.name)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => { if (confirm(`Delete preset "${p.name}"?`)) deletePreset(p.name) }}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )

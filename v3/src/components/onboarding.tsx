@@ -648,17 +648,22 @@ export function Onboarding() {
                 <p className="text-xs text-muted-foreground">
                   Enter a username to import all accounts they follow as a preset.
                 </p>
-                <div className="flex gap-2">
+                <div className="rounded-md bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/30 dark:border-amber-500/20 px-3 py-2">
+                  <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <strong className="font-medium">Note:</strong> Importing lists with thousands of accounts can consume credits rapidly when scanned. Consider creating smaller, focused presets to manage your credit usage effectively.
+                  </p>
+                </div>
+                <div className="flex gap-2 items-center">
                   <Input
                     value={importUsername}
                     onChange={e => setImportUsername(e.target.value)}
                     placeholder="@ your username"
-                    className="flex-1"
+                    className="flex-1 h-10"
                     onKeyDown={e => { if (e.key === 'Enter') handleImportFollowing() }}
                     disabled={importing || !hasTwKey}
                   />
                   {importing ? (
-                    <Button variant="outline" size="icon" onClick={handleCancelImport}>
+                    <Button variant="outline" size="icon" onClick={handleCancelImport} className="h-10 w-10">
                       <X className="h-4 w-4" />
                     </Button>
                   ) : (
@@ -667,6 +672,7 @@ export function Onboarding() {
                       size="icon"
                       onClick={handleImportFollowing}
                       disabled={!importUsername.trim() || !hasTwKey}
+                      className="h-10 w-10"
                     >
                       <Download className="h-4 w-4" />
                     </Button>

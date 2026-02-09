@@ -16,6 +16,7 @@ import { AuthDialog } from '@/components/auth-dialog'
 import { PricingDialog } from '@/components/pricing-dialog'
 import { DevToolbar } from '@/components/dev-toolbar'
 import { TosPage } from '@/components/tos-page'
+import { MonitoringPage } from '@/components/monitoring-page'
 import { Download } from '@/components/icons'
 import { IconSetProvider, type IconSet } from '@/components/icons'
 
@@ -105,8 +106,8 @@ function AppContent() {
 
   return (
     <div className={`min-h-screen bg-background ${isDev ? 'pb-10' : ''}`}>
-      <div className="mx-auto max-w-2xl">
-        <Card className="min-h-screen sm:min-h-0 sm:my-8 border-0 sm:border shadow-none sm:shadow-sm rounded-none sm:rounded-xl overflow-hidden [&>*:last-child]:border-b-0">
+      <div>
+        <Card className="min-h-screen border-0 shadow-none rounded-none overflow-hidden [&>*:last-child]:border-b-0">
           <Topbar />
           <Controls />
 
@@ -192,6 +193,10 @@ function IconSetWrapper({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  if (window.location.pathname === '/monitoring') {
+    return <MonitoringPage />
+  }
+
   if (window.location.pathname === '/tos') {
     return <TosPage />
   }
