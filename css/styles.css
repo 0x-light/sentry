@@ -84,7 +84,7 @@ body.modal-open { overflow: hidden; }
 .modal-close { position: absolute; top: 12px; right: 16px; background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; line-height: 1; z-index: 1; }
 .modal-close:hover { color: var(--text-strong); }
 .settings-header { font-size: var(--fs); color: var(--text-strong); margin-bottom: 10px; }
-.modal-tabs { display: flex; gap: 0; margin: 0 -10px 0; padding: 0 10px 10px 10px; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; flex-wrap: nowrap; }
+.modal-tabs { display: flex; gap: 0; margin: 0 -10px 0; padding: 10px 10px 20px 10px; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; flex-wrap: nowrap; }
 .modal-tabs::-webkit-scrollbar { display: none; }
 .modal-tab { background: none; border: none; border-bottom: none; font-size: var(--fs); color: var(--text-muted); margin-right: 16px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .modal-tab:hover { color: var(--text); }
