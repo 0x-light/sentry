@@ -824,9 +824,16 @@ function initEventDelegation() {
     const openSettings = e.target.closest('[data-open-settings]');
     if (openSettings) { closeModal('userMenuModal'); openSettingsModal(openSettings.dataset.openSettings); return; }
 
-    // Schedule actions
-    const quickSchedule = e.target.closest('[data-quick-schedule]');
-    if (quickSchedule) { addSchedule(quickSchedule.dataset.quickSchedule); return; }
+    // Schedule actions — quick-pick sets the time inputs
+    const setTime = e.target.closest('[data-set-schedule-time]');
+    if (setTime) {
+      const [h, m] = setTime.dataset.setScheduleTime.split(':');
+      const hInput = $('scheduleHourInput');
+      const mInput = $('scheduleMinInput');
+      if (hInput) hInput.value = h;
+      if (mInput) mInput.value = m;
+      return;
+    }
     const toggleSchedule = e.target.closest('[data-toggle-schedule]');
     if (toggleSchedule) { toggleScheduleEnabled(toggleSchedule.dataset.toggleSchedule); return; }
     const delSchedule = e.target.closest('[data-delete-schedule]');
@@ -878,7 +885,14 @@ function initEventDelegation() {
       case 'acctSignOutBtn': auth.signOut().then(() => { state.schedules = []; ui.renderAccountTab(); ui.renderTopbar(); }); break;
       case 'acctBuyCreditsBtn': case 'acctBuyCreditsBtn2': closeModal('modal'); openPricingModal(); break;
 
-      // (schedule add is handled via data-quick-schedule in event delegation)
+      // Schedule add
+      case 'addScheduleBtn': {
+        const h = ($('scheduleHourInput')?.value || '').padStart(2, '0');
+        const m = ($('scheduleMinInput')?.value || '').padStart(2, '0');
+        const time = `${h}:${m}`;
+        if (/^\d{2}:\d{2}$/.test(time)) addSchedule(time);
+        break;
+      }
 
       // Analyst
       case 'newAnalystBtn': ui.saveAnalystsFromUI(); {

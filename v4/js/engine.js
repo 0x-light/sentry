@@ -884,7 +884,9 @@ export async function analyzeWithBatching(accountData, totalTweets, onProgress, 
 // ============================================================================
 
 export function createStorableScan(scan) {
-  const tweetMeta = {};
+  // Start with any existing tweetMeta (e.g. from server cache)
+  const tweetMeta = scan.tweetMeta ? { ...scan.tweetMeta } : {};
+  // Overlay with rawTweets data (more detailed, has full text)
   if (scan.rawTweets) {
     scan.rawTweets.forEach(a => {
       (a.tweets || []).forEach(tw => {

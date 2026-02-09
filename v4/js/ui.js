@@ -280,6 +280,15 @@ export function renderSignals(signals) {
 function buildTweetMap() {
   const tweetMap = {};
   const scan = appState.lastScanResult;
+  // Layer 1: tweetMeta (from localStorage / server)
+  if (scan?.tweetMeta) {
+    Object.entries(scan.tweetMeta).forEach(([url, meta]) => {
+      const date = meta.time ? new Date(meta.time) : null;
+      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+      tweetMap[url] = { text: meta.text || '', author: meta.author || '', time: timeStr };
+    });
+  }
+  // Layer 2: rawTweets (from fresh scan — overwrites with full data)
   if (scan?.rawTweets) {
     scan.rawTweets.forEach(a => (a.tweets || []).forEach(tw => {
       const url = engine.getTweetUrl(tw);
@@ -287,12 +296,6 @@ function buildTweetMap() {
       const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
       tweetMap[url] = { text: tw.text || '', author: tw.author?.userName || a.account || '', time: timeStr };
     }));
-  } else if (scan?.tweetMeta) {
-    Object.entries(scan.tweetMeta).forEach(([url, meta]) => {
-      const date = meta.time ? new Date(meta.time) : null;
-      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-      tweetMap[url] = { text: meta.text || '', author: meta.author || '', time: timeStr };
-    });
   }
   return tweetMap;
 }
@@ -594,15 +597,21 @@ export function renderScheduleTab(schedules, schedulesLoading) {
     h += `<p style="color:var(--text-muted);margin-bottom:16px">No scheduled scans yet.</p>`;
   }
 
-  // Add schedule
-  h += `<div style="margin-top:16px">`;
+  // Add schedule form
+  h += `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">`;
+  h += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">`;
+  h += `<input type="text" id="scheduleHourInput" value="08" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
+  h += `<span style="color:var(--text-muted)">:</span>`;
+  h += `<input type="text" id="scheduleMinInput" value="00" maxlength="2" style="width:28px;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none;text-align:center">`;
+  h += `<button class="scan-btn" id="addScheduleBtn" style="font-size:var(--fs)">Add</button>`;
+  h += `</div>`;
   h += `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
   ['07:00', '08:00', '09:00', '12:00', '18:00', '21:00'].forEach(t => {
-    h += `<button class="modal-sm-btn" data-quick-schedule="${t}">${engine.formatScheduleTime(t)}</button>`;
+    h += `<button class="modal-sm-btn" data-set-schedule-time="${t}" style="font-size:var(--fs-sm)">${engine.formatScheduleTime(t)}</button>`;
   });
   h += `</div>`;
   h += `</div>`;
-  h += `<p style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:12px">Pick a time to add a daily scan. Runs automatically on the server.</p>`;
+  h += `<p style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:12px">Runs automatically on the server every day.</p>`;
   container.innerHTML = h;
 }
 
@@ -636,7 +645,7 @@ export function renderAccountTab() {
       h += `<span style="font-size:var(--fs-sm);color:var(--text-muted)">Managed API keys active</span>`;
       if (hasSub) h += `<span style="font-size:var(--fs-xs);color:var(--green);background:var(--green-10);padding:1px 5px">Auto-refill</span>`;
       h += `</div>`;
-      h += `<button class="scan-btn" style="width:100%" id="acctBuyCreditsBtn">Buy more credits</button>`;
+      h += `<button class="scan-btn" id="acctBuyCreditsBtn">Buy more credits</button>`;
       h += `</div>`;
 
       h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">`;
@@ -666,7 +675,7 @@ export function renderAccountTab() {
       h += `</div>`;
 
       if (!hasBothKeys) {
-        h += `<button class="modal-sm-btn" style="width:100%;margin-top:10px" data-open-settings="api">Configure keys →</button>`;
+        h += `<button class="modal-sm-btn" style="margin-top:10px" data-open-settings="api">Configure keys →</button>`;
       }
       h += `</div>`;
 
@@ -685,7 +694,7 @@ export function renderAccountTab() {
 
       h += `<div style="border-top:1px solid var(--border);padding-top:12px">`;
       h += `<p style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:10px;line-height:1.5">Buy credits for managed API keys — no setup needed, unlimited accounts, scheduled scans.</p>`;
-      h += `<button class="scan-btn" style="width:100%" id="acctBuyCreditsBtn">Buy credits</button>`;
+      h += `<button class="scan-btn" id="acctBuyCreditsBtn">Buy credits</button>`;
       h += `</div>`;
     }
 
@@ -769,7 +778,7 @@ export function renderAuthModal(tab = 'login') {
     </div>
     ${isLogin ? '<button style="background:none;border:none;color:var(--text-muted);font-size:var(--fs);cursor:pointer;margin-top:8px" id="forgotPwBtn">Forgot password?</button>' : ''}
     <div style="border-top:1px solid var(--border);margin:16px 0;padding-top:16px">
-      <button class="modal-sm-btn" style="width:100%" id="googleSignInBtn">Continue with Google</button>
+      <button class="modal-sm-btn" id="googleSignInBtn">Continue with Google</button>
     </div>
     ${!isLogin ? '<p style="font-size:var(--fs-sm);color:var(--text-muted);margin-top:12px">By signing up, you agree to our Terms of Service.</p>' : ''}
   `;
@@ -817,7 +826,7 @@ export function renderPricingModal() {
   h += `<p style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:12px">Free tier: bring your own API keys for unlimited scans.</p>`;
 
   if (profile?.subscription_status === 'active') {
-    h += `<button class="modal-sm-btn" style="width:100%;margin-top:12px" id="manageBillingBtn">Manage subscription</button>`;
+    h += `<button class="modal-sm-btn" style="margin-top:12px" id="manageBillingBtn">Manage subscription</button>`;
   }
   if (!isAuth) {
     h += `<p style="font-size:var(--fs);color:var(--text-muted);margin-top:12px">Sign in to purchase credits.</p>`;
@@ -849,7 +858,7 @@ export function renderUserMenuModal() {
   const barColor = credits > 5000 ? 'var(--green)' : credits > 1000 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
   h += `<div style="height:4px;background:var(--bg-alt);margin-bottom:8px"><div style="height:100%;width:${barPercent}%;background:${barColor}"></div></div>`;
   h += `<div style="font-size:var(--fs-sm);color:var(--text-muted);margin-bottom:10px">${hasCredits ? 'Managed API keys active' : 'No credits — BYOK mode'}${hasSub ? ' · <span style="color:var(--green)">Auto-refill</span>' : ''}</div>`;
-  h += `<button class="modal-sm-btn" style="width:100%" id="buyCreditsBtn">${hasCredits ? 'Buy more credits' : 'Buy credits'}</button>`;
+  h += `<button class="modal-sm-btn" id="buyCreditsBtn">${hasCredits ? 'Buy more credits' : 'Buy credits'}</button>`;
   h += `</div>`;
 
   if (!hasCredits) {
@@ -860,10 +869,10 @@ export function renderUserMenuModal() {
     h += `</div>`;
   }
 
-  if (hasSub) h += `<button class="modal-sm-btn" style="width:100%;margin-bottom:8px" id="manageBillingBtn2">Manage subscription</button>`;
-  h += `<button class="modal-sm-btn" style="width:100%;margin-bottom:8px" data-open-settings="api">API keys</button>`;
-  h += `<button class="modal-sm-btn" style="width:100%;margin-bottom:8px" data-open-settings="analyst">Analysts</button>`;
-  h += `<button class="modal-sm-btn" style="width:100%;margin-bottom:8px" data-open-settings="display">Display settings</button>`;
+  if (hasSub) h += `<button class="modal-sm-btn" style="margin-bottom:8px" id="manageBillingBtn2">Manage subscription</button><br>`;
+  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="api">API keys</button> `;
+  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="analyst">Analysts</button> `;
+  h += `<button class="modal-sm-btn" style="margin-bottom:8px" data-open-settings="display">Display settings</button>`;
 
   h += `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">`;
   h += `<button style="background:none;border:none;color:var(--red);font-size:var(--fs);cursor:pointer;width:100%" id="signOutBtn">Sign out</button>`;
@@ -1052,7 +1061,7 @@ export function renderOnboarding(onStep, onComplete, onAction) {
       h += `<div style="margin-bottom:16px"><h2 style="font-size:var(--fs-lg);color:var(--text-strong);margin-bottom:8px">Sign in</h2></div>`;
       h += `<div id="obAuthError" style="color:var(--red);font-size:var(--fs);margin-bottom:8px;display:none"></div>`;
       h += `<div id="obAuthMsg" style="color:var(--green);font-size:var(--fs);margin-bottom:8px;display:none"></div>`;
-      h += `<button class="modal-sm-btn" style="width:100%;margin-bottom:12px" id="obGoogleBtn">Continue with Google</button>`;
+      h += `<button class="modal-sm-btn" style="margin-bottom:12px" id="obGoogleBtn">Continue with Google</button>`;
       h += `<div style="border-top:1px solid var(--border);margin:12px 0;padding-top:12px">`;
       h += `<div style="margin-bottom:12px"><label style="display:block;margin-bottom:6px;font-size:var(--fs-sm);color:var(--text-muted);text-transform:uppercase">Email</label><input type="email" id="obEmail" placeholder="you@email.com" style="width:100%;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none"></div>`;
       h += `<div style="margin-bottom:12px"><label style="display:block;margin-bottom:6px;font-size:var(--fs-sm);color:var(--text-muted);text-transform:uppercase">Password</label><input type="password" id="obPassword" placeholder="••••••••" style="width:100%;background:var(--bg-alt);border:none;color:var(--text-strong);font-family:inherit;font-size:inherit;outline:none"></div>`;
