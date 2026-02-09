@@ -1471,8 +1471,11 @@ async function init() {
     $('dismissBtn')?.addEventListener('click', () => { engine.clearPendingScan(); $('notices').innerHTML = ''; });
   }
 
+  // Unregister any old service workers that may be caching stale files
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    });
   }
 
   if (engine.isLiveEnabled() && localStorage.getItem(LS_LIVE_MODE) === 'true' && savedScan) {
