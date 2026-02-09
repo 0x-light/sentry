@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -94,12 +94,12 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-md w-full">
-        <SheetHeader>
-          <SheetTitle>Welcome to Sentry</SheetTitle>
-          <SheetDescription>Sign in to sync your data, unlock scans, and manage your subscription.</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md w-full">
+        <DialogHeader>
+          <DialogTitle>Welcome to Sentry</DialogTitle>
+          <DialogDescription>Sign in to sync your data, unlock scans, and manage your subscription.</DialogDescription>
+        </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-6">
           <TabsList className="grid w-full grid-cols-2">
@@ -203,7 +203,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
             </p>
           </TabsContent>
         </Tabs>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

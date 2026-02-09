@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -120,14 +120,14 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-lg w-full">
-        <SheetHeader>
-          <SheetTitle>Buy Credits</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg w-full">
+        <DialogHeader>
+          <DialogTitle>Buy Credits</DialogTitle>
+          <DialogDescription>
             Credits are used for scans with managed API keys. 1 credit = 1 account per day.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="mt-6 space-y-3">
           {error && (
@@ -263,7 +263,7 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
             </p>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

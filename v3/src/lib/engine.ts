@@ -341,7 +341,10 @@ export function pruneCache(cache: AnalysisCache) {
 // TWEET HELPERS
 // ============================================================================
 
-const tweetCache = new Map<string, Tweet[]>();
+// In-memory tweet cache with timestamp-based expiry (2 hours).
+// Unlike hour-bucket keys, this won't expire at the top of each hour.
+const TWEET_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const tweetCache = new Map<string, { tweets: Tweet[]; ts: number }>();
 
 export function getTweetUrl(tw: Tweet): string {
   return tw.url || `https://x.com/i/status/${tw.id}`;
@@ -394,22 +397,36 @@ function backoffDelay(attempt: number, baseDelay = 2000, maxDelay = 60000, jitte
 }
 
 function getCacheKey(account: string, days: number): string {
-  const hour = Math.floor(Date.now() / 3600000);
-  return `${account}:${days}:${hour}`;
+  return `${account.toLowerCase()}:${days}`;
+}
+
+function getCached(key: string): Tweet[] | null {
+  const entry = tweetCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > TWEET_CACHE_TTL_MS) {
+    tweetCache.delete(key);
+    return null;
+  }
+  return entry.tweets;
+}
+
+function setCache(key: string, tweets: Tweet[]) {
+  tweetCache.set(key, { tweets, ts: Date.now() });
 }
 
 export async function fetchTweetsWithRetry(
   account: string, days: number, maxRetries = 3, signal: AbortSignal | null = null
 ): Promise<Tweet[]> {
   const key = getCacheKey(account, days);
-  if (tweetCache.has(key)) return tweetCache.get(key)!;
+  const cached = getCached(key);
+  if (cached) return cached;
 
   // Server API mode: use managed keys via the backend worker
   if (_useServerApi) {
     const { fetchTweets } = await import('./api')
     const result = await fetchTweets(account, days)
     const tweets = (result.tweets || []) as Tweet[]
-    if (tweets.length > 0) tweetCache.set(key, tweets)
+    if (tweets.length > 0) setCache(key, tweets)
     return tweets
   }
 
@@ -494,7 +511,7 @@ export async function fetchTweetsWithRetry(
     await new Promise(r => setTimeout(r, 100));
   }
 
-  if (allTweets.length > 0) tweetCache.set(key, allTweets);
+  if (allTweets.length > 0) setCache(key, allTweets);
   return allTweets;
 }
 
@@ -506,7 +523,7 @@ const prefetchInFlight = new Set<string>();
 
 export function prefetchTweets(account: string, days: number) {
   const key = getCacheKey(account, days);
-  if (tweetCache.has(key) || prefetchInFlight.has(key)) return;
+  if (getCached(key) || prefetchInFlight.has(key)) return;
   prefetchInFlight.add(key);
   fetchTweetsWithRetry(account, days, 2, null)
     .catch(() => {}) // swallow errors — this is best-effort
@@ -575,7 +592,7 @@ async function fetchAllTweetsServerBatch(
       // Also populate the in-memory cache so subsequent reads are instant
       if (tweets.length > 0) {
         const key = getCacheKey(r.account, days);
-        tweetCache.set(key, tweets);
+        setCache(key, tweets);
       }
       accountTweets.push({ account: r.account, tweets, error: r.error || null });
     }
@@ -1119,27 +1136,26 @@ export async function runScan(
   onStatus('', true);
 
   // ── Cross-user scan cache check ──────────────────────────────────────
-  // If using server API, check if another user already scanned the same
-  // accounts + range + analyst. If so, return their result instantly.
-  if (_useServerApi) {
-    try {
-      const promptHash = getPromptHash(analysts);
-      const { checkScanCache } = await import('./api');
-      const cached = await checkScanCache(accounts, days, promptHash);
-      if (cached.cached && cached.signals?.length) {
-        onStatus(`${cached.signals.length} signals (from cache)`, false);
-        return {
-          date: new Date().toISOString(),
-          range: '',
-          days,
-          accounts: [...accounts],
-          totalTweets: cached.total_tweets || 0,
-          signals: cached.signals,
-        };
-      }
-    } catch {
-      // Cache miss or error — continue with full scan
+  // Check if ANY user already scanned the same accounts + range + analyst.
+  // Works for both managed-key and BYOK users (as long as they're authenticated).
+  // This is a lightweight API call that doesn't consume credits.
+  try {
+    const promptHash = getPromptHash(analysts);
+    const { checkScanCache } = await import('./api');
+    const cached = await checkScanCache(accounts, days, promptHash);
+    if (cached.cached && cached.signals?.length) {
+      onStatus(`${cached.signals.length} signals (from cache)`, false);
+      return {
+        date: new Date().toISOString(),
+        range: '',
+        days,
+        accounts: [...accounts],
+        totalTweets: cached.total_tweets || 0,
+        signals: cached.signals,
+      };
     }
+  } catch {
+    // Cache miss, auth error, or network error — continue with full scan
   }
 
   const accountTweets = await fetchAllTweets(accounts, days, (msg) => onStatus(msg, true), signal);
@@ -1163,7 +1179,8 @@ export async function runScan(
   const analysisCache = loadAnalysisCache();
   let cachedSignals: Signal[] = [];
 
-  const uncachedAccountData = accountData.map(a => {
+  // ── Layer 1: Check local (localStorage) analysis cache ──
+  let uncachedAccountData = accountData.map(a => {
     const uncachedTweets: Tweet[] = [];
     (a.tweets || []).forEach(tw => {
       const url = getTweetUrl(tw);
@@ -1174,8 +1191,46 @@ export async function runScan(
     return { account: a.account, tweets: uncachedTweets };
   }).filter(a => a.tweets.length);
 
+  // ── Layer 2: Check server-side cross-user analysis cache ──
+  // For tweets not in our local cache, check if another user already
+  // analyzed them with the same prompt. This is the key cross-user cache.
+  if (uncachedAccountData.length) {
+    try {
+      const allUncachedUrls = uncachedAccountData.flatMap(a =>
+        a.tweets.map(tw => getTweetUrl(tw))
+      );
+      if (allUncachedUrls.length > 0) {
+        onStatus(`Checking analysis cache (${allUncachedUrls.length} tweets)…`, true);
+        const { checkAnalysisCache: checkServerCache } = await import('./api');
+        const serverCache = await checkServerCache(promptHash, allUncachedUrls);
+
+        if (serverCache.cached && Object.keys(serverCache.cached).length > 0) {
+          const serverCachedUrls = new Set(Object.keys(serverCache.cached));
+          // Pull signals from server cache and populate local cache
+          for (const [url, sigs] of Object.entries(serverCache.cached)) {
+            const validSigs = (sigs as Signal[]).filter(isValidSignal);
+            cachedSignals.push(...validSigs);
+            setCachedSignals(analysisCache, promptHash, url, validSigs);
+          }
+          // Filter out server-cached tweets from uncached data
+          uncachedAccountData = uncachedAccountData.map(a => ({
+            account: a.account,
+            tweets: a.tweets.filter(tw => !serverCachedUrls.has(getTweetUrl(tw))),
+          })).filter(a => a.tweets.length);
+        }
+      }
+    } catch {
+      // Server cache unavailable — continue without it
+    }
+  }
+
   let signals: Signal[];
   if (uncachedAccountData.length) {
+    const cached = cachedSignals.length;
+    const remaining = uncachedAccountData.reduce((s, a) => s + a.tweets.length, 0);
+    if (cached > 0) {
+      onStatus(`${cached} signals cached · Analyzing ${remaining} remaining tweets`, true);
+    }
     const newSignals = await analyzeWithBatching(
       uncachedAccountData, totalTweets,
       (msg) => onStatus(msg, true),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
 import { useAuth } from '@/hooks/use-auth'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -135,14 +135,14 @@ export function SettingsDialog() {
   const tabCount = 5
 
   return (
-    <Sheet open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
-      <SheetContent className="overflow-y-auto sm:max-w-lg w-full">
-        <SheetHeader>
-          <SheetTitle>Settings</SheetTitle>
-          <SheetDescription>
+    <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings() }}>
+      <DialogContent className="sm:max-w-lg w-full">
+        <DialogHeader>
+          <DialogTitle>Settings</DialogTitle>
+          <DialogDescription>
             {isAuthenticated ? user?.email : 'Configure your API keys, analysts, and preferences.'}
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <Tabs value={settingsTab} onValueChange={setSettingsTab} className="mt-6">
           <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-5">
@@ -279,7 +279,7 @@ export function SettingsDialog() {
                 <SelectContent>
                   <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
                   <SelectItem value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5 v2</SelectItem>
-                  <SelectItem value="claude-haiku-3-5-20241022">Claude Haiku 3.5</SelectItem>
+                  <SelectItem value="claude-3-5-haiku-20241022">Claude Haiku 3.5</SelectItem>
                   <SelectItem value="claude-opus-4-20250514">Claude Opus 4</SelectItem>
                 </SelectContent>
               </Select>
@@ -476,7 +476,7 @@ export function SettingsDialog() {
             </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -6,6 +6,7 @@
 //   POST /api/tweets/fetch       - Fetch tweets for an account (proxied)
 //   POST /api/tweets/fetch-batch - Fetch tweets for multiple accounts (batched)
 //   POST /api/analyze            - Analyze tweets with Claude (proxied)
+//   POST /api/analysis/check-cache - Check per-tweet analysis cache (cross-user)
 //   GET  /api/user               - Get user profile + plan
 //   PUT  /api/user/settings      - Update settings
 //   GET  /api/user/presets       - Get presets
@@ -116,6 +117,9 @@ export default {
       // Claude analysis
       if (path === '/api/analyze' && method === 'POST') {
         return handleAnalyze(request, env, user);
+      }
+      if (path === '/api/analysis/check-cache' && method === 'POST') {
+        return handleCheckAnalysisCache(request, env, user);
       }
 
       // User profile
@@ -298,14 +302,18 @@ async function supabaseRpc(env, fn, args = {}) {
 // — Stale-while-revalidate: return stale cache instantly, refresh in background
 // ============================================================================
 
+// Tweet cache uses 4-hour buckets for better hit rates across users.
+// Stale-while-revalidate: return the previous bucket instantly + refresh in bg.
+const TWEET_CACHE_HOURS = 4;
+
 function tweetCacheKey(account, days) {
-  const hourBucket = Math.floor(Date.now() / 3600000);
-  return `tweets:${account.toLowerCase()}:${days}:${hourBucket}`;
+  const bucket = Math.floor(Date.now() / (TWEET_CACHE_HOURS * 3600000));
+  return `tweets:${account.toLowerCase()}:${days}:${bucket}`;
 }
 
 function tweetCacheKeyStale(account, days) {
-  const hourBucket = Math.floor(Date.now() / 3600000);
-  return `tweets:${account.toLowerCase()}:${days}:${hourBucket - 1}`;
+  const bucket = Math.floor(Date.now() / (TWEET_CACHE_HOURS * 3600000));
+  return `tweets:${account.toLowerCase()}:${days}:${bucket - 1}`;
 }
 
 // Shared fetch function with coalescing + stale-while-revalidate
@@ -328,7 +336,7 @@ async function fetchTweetsCoalesced(account, days, env, ctx) {
         try {
           const fresh = await fetchTwitterTweetsRaw(env, account, days);
           if (fresh.length > 0) {
-            await env.TWEET_CACHE.put(key, JSON.stringify(fresh), { expirationTtl: 3600 });
+            await env.TWEET_CACHE.put(key, JSON.stringify(fresh), { expirationTtl: TWEET_CACHE_HOURS * 3600 });
           }
         } catch (e) { console.warn('Background refresh failed:', e.message); }
       })());
@@ -347,11 +355,11 @@ async function fetchTweetsCoalesced(account, days, env, ctx) {
 
   try {
     const tweets = await promise;
-    // Cache in KV (TTL: 1 hour)
+    // Cache in KV (TTL: 4 hours — matches bucket size)
     if (env.TWEET_CACHE && tweets.length > 0) {
       // Don't await KV write — fire and continue
       ctx.waitUntil(
-        env.TWEET_CACHE.put(key, JSON.stringify(tweets), { expirationTtl: 3600 })
+        env.TWEET_CACHE.put(key, JSON.stringify(tweets), { expirationTtl: TWEET_CACHE_HOURS * 3600 })
       );
     }
     return { tweets, cached: false };
@@ -637,6 +645,44 @@ async function checkAnalysisCache(env, promptHash, tweetUrls) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PER-TWEET ANALYSIS CACHE CHECK — returns partial results
+// Allows clients to skip re-analyzing tweets that were already analyzed
+// by ANY user with the same prompt. Returns cached signals + list of missing URLs.
+// ---------------------------------------------------------------------------
+async function handleCheckAnalysisCache(request, env, user) {
+  const { prompt_hash, tweet_urls } = await request.json();
+  if (!prompt_hash || !tweet_urls?.length) {
+    return corsJson({ cached: {}, missing: tweet_urls || [] }, 200, env);
+  }
+
+  // Cap batch size to prevent abuse
+  const urls = tweet_urls.slice(0, 500);
+
+  try {
+    const urlList = urls.map(u => `"${u}"`).join(',');
+    const rows = await supabaseQuery(env,
+      `analysis_cache?prompt_hash=eq.${prompt_hash}&tweet_url=in.(${urlList})&select=tweet_url,signals`
+    );
+
+    const cached = {};
+    const foundUrls = new Set();
+    if (rows?.length) {
+      rows.forEach(r => {
+        cached[r.tweet_url] = r.signals || [];
+        foundUrls.add(r.tweet_url);
+      });
+    }
+
+    const missing = urls.filter(u => !foundUrls.has(u));
+
+    return corsJson({ cached, missing }, 200, env);
+  } catch (e) {
+    console.warn('Analysis cache check failed:', e.message);
+    return corsJson({ cached: {}, missing: urls }, 200, env);
+  }
+}
+
 async function cacheAnalysis(env, promptHash, tweetUrls, responseText, model) {
   try {
     const signals = safeParseSignals(responseText);
@@ -909,6 +955,38 @@ async function handleSaveScan(request, env, user, ctx) {
   // Also save to cross-user whole-scan cache
   if (prompt_hash && signals?.length) {
     cacheScanResult(env, ctx, accounts, days, prompt_hash, signals, total_tweets);
+
+    // Populate per-tweet analysis cache from the scan signals (benefits cross-user cache).
+    // This is especially important for BYOK users whose analysis doesn't go through /api/analyze.
+    ctx.waitUntil((async () => {
+      try {
+        const grouped = new Map();
+        signals.forEach(s => {
+          const url = s.tweet_url;
+          if (!url) return;
+          if (!grouped.has(url)) grouped.set(url, []);
+          grouped.get(url).push(s);
+        });
+        const rows = [];
+        for (const [url, sigs] of grouped) {
+          rows.push({
+            prompt_hash,
+            tweet_url: url,
+            signals: sigs,
+            model: 'unknown', // BYOK users may use different models
+          });
+        }
+        if (rows.length) {
+          await supabaseQuery(env, 'analysis_cache', {
+            method: 'POST',
+            body: rows,
+            headers: { 'Prefer': 'resolution=merge-duplicates' },
+          });
+        }
+      } catch (e) {
+        console.warn('Analysis cache backfill failed:', e.message);
+      }
+    })());
   }
 
   return corsJson({ ok: true, id: rows?.[0]?.id, credits_used: creditsUsed, credits_balance: newBalance }, 200, env);
@@ -1049,7 +1127,7 @@ async function cacheScanResult(env, ctx, accounts, days, promptHash, signals, to
       signals,
       total_tweets: totalTweets,
       ts: Date.now(),
-    }), { expirationTtl: 3600 }) // 1 hour TTL
+    }), { expirationTtl: 86400 }) // 24 hour TTL — signals rarely change that fast
   );
 }
 

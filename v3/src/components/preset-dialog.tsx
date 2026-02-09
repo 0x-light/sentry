@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -95,12 +95,12 @@ export function PresetDialog() {
   }
 
   return (
-    <Sheet open={presetDialogOpen} onOpenChange={(open) => { if (!open) { handleCancelImport(); closePresetDialog() } }}>
-      <SheetContent className="overflow-y-auto w-full sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{editingPreset ? 'Edit preset' : 'Manage presets'}</SheetTitle>
-          <SheetDescription>Create lists of accounts for quick scanning.</SheetDescription>
-        </SheetHeader>
+    <Dialog open={presetDialogOpen} onOpenChange={(open) => { if (!open) { handleCancelImport(); closePresetDialog() } }}>
+      <DialogContent className="sm:max-w-md w-full">
+        <DialogHeader>
+          <DialogTitle>{editingPreset ? 'Edit preset' : 'Manage presets'}</DialogTitle>
+          <DialogDescription>Create lists of accounts for quick scanning.</DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4 mt-6">
           {/* Import from Twitter following */}
@@ -198,7 +198,7 @@ export function PresetDialog() {
             </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

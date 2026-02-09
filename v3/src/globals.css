@@ -115,11 +115,10 @@ html[data-font-size="xlarge"] { font-size: 19px; }
   }
 }
 
-/* Disable modal animations on mobile — instant open/close */
+/* Faster modal animations on mobile — snappy bottom sheet feel */
 @media (max-width: 639px) {
-  [role="dialog"],
-  :has(+ [role="dialog"]) {
-    animation-duration: 0s !important;
+  [role="dialog"] {
+    animation-duration: 150ms !important;
   }
 }
 

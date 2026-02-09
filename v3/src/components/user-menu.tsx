@@ -1,5 +1,5 @@
 import { useAuth } from '@/hooks/use-auth'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -41,12 +41,12 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
         : 'bg-muted-foreground/30'
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-sm w-full">
-        <SheetHeader>
-          <SheetTitle>Account</SheetTitle>
-          <SheetDescription>{user.email}</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm w-full">
+        <DialogHeader>
+          <DialogTitle>Account</DialogTitle>
+          <DialogDescription>{user.email}</DialogDescription>
+        </DialogHeader>
 
         <div className="mt-6 space-y-4">
           {/* Credit Balance */}
@@ -158,7 +158,7 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
             Sign out
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

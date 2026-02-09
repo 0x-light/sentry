@@ -206,6 +206,22 @@ export async function analyze(params: {
   })
 }
 
+/**
+ * Check the server-side analysis cache for individual tweet URLs.
+ * Returns partial results: cached signals for known URLs + list of missing URLs.
+ * This enables cross-user analysis caching — if another user already analyzed
+ * the same tweets with the same prompt, we skip re-analysis.
+ */
+export async function checkAnalysisCache(promptHash: string, tweetUrls: string[]): Promise<{
+  cached: Record<string, any[]>
+  missing: string[]
+}> {
+  return fetchApi('/api/analysis/check-cache', {
+    method: 'POST',
+    body: JSON.stringify({ prompt_hash: promptHash, tweet_urls: tweetUrls }),
+  })
+}
+
 // ============================================================================
 // SCAN HISTORY (matches worker routes: /api/scans)
 // ============================================================================
@@ -359,6 +375,7 @@ export const api = {
   fetchTweetsBatch,
   // Analysis
   analyze,
+  checkAnalysisCache,
   // Scans
   getScanHistory,
   checkScanCache,
