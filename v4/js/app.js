@@ -401,26 +401,35 @@ async function loadServerHistory() {
     state._serverHistory = serverHistory;
     ui.renderHistory(serverHistory);
 
-    // Auto-restore latest scan if no current scan in localStorage
-    if (!engine.loadCurrentScan() && serverScans[0]) {
+    // Show latest server scan if it's newer than local, or if no local scan exists
+    if (serverScans[0]) {
       const latest = serverScans[0];
-      const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
-      state.lastScanResult = {
-        date: latest.created_at || new Date().toISOString(),
-        range: latest.range_label || '',
-        days: parseInt(latest.range_days) || 1,
-        accounts: Array.isArray(latest.accounts) ? latest.accounts : [],
-        totalTweets: parseInt(latest.total_tweets) || 0,
-        signals,
-        tweetMeta: (latest.tweet_meta && typeof latest.tweet_meta === 'object') ? latest.tweet_meta : {},
-      };
-      const idx = RANGES.findIndex(r => r.label === latest.range_label);
-      if (idx !== -1) { state.range = idx; ui.renderRanges(); }
-      const d = new Date(state.lastScanResult.date);
-      const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      ui.setStatus(`${dateStr} · ${signals.length} signals (synced)`, false, true);
-      ui.renderTickers(signals);
-      ui.renderSignals(signals);
+      const localScan = engine.loadCurrentScan();
+      const serverDate = new Date(latest.created_at).getTime();
+      const localDate = localScan ? new Date(localScan.date).getTime() : 0;
+
+      if (serverDate > localDate) {
+        const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
+        const isScheduled = !!latest.scheduled;
+        state.lastScanResult = {
+          date: latest.created_at || new Date().toISOString(),
+          range: latest.range_label || '',
+          days: parseInt(latest.range_days) || 1,
+          accounts: Array.isArray(latest.accounts) ? latest.accounts : [],
+          totalTweets: parseInt(latest.total_tweets) || 0,
+          signals,
+          tweetMeta: (latest.tweet_meta && typeof latest.tweet_meta === 'object') ? latest.tweet_meta : {},
+          scheduled: isScheduled,
+        };
+        const idx = RANGES.findIndex(r => r.label === latest.range_label);
+        if (idx !== -1) { state.range = idx; ui.renderRanges(); }
+        const d = new Date(state.lastScanResult.date);
+        const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const label = isScheduled ? `${dateStr} · ${signals.length} signals (scheduled)` : `${dateStr} · ${signals.length} signals (synced)`;
+        ui.setStatus(label, false, true);
+        ui.renderTickers(signals);
+        ui.renderSignals(signals);
+      }
     }
   } catch (e) {
     console.warn('Failed to load server history:', e);

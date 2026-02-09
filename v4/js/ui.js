@@ -261,6 +261,14 @@ export function renderSignals(signals) {
 
   const tweetMap = buildTweetMap();
   let h = '';
+
+  // Scheduled scan indicator
+  if (appState.lastScanResult?.scheduled) {
+    const d = new Date(appState.lastScanResult.date);
+    const timeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    h += `<div style="padding:10px;border-bottom:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-muted)">Scheduled scan · ${timeStr}</div>`;
+  }
+
   signals.forEach((item, i) => {
     h += renderSignalCard(item, i, tweetMap);
   });
@@ -565,7 +573,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
       const daysLabel = (!s.days || !s.days.length) ? 'Every day'
         : s.days.length === 5 && !s.days.includes(0) && !s.days.includes(6) ? 'Weekdays'
         : s.days.map(d => DAY_LABELS[d]).join(' ');
-      const statusIcon = s.last_run_status === 'running' ? '⟳'
+      const statusIcon = s.last_run_status === 'running' ? '…'
         : s.last_run_status === 'success' ? '✓'
         : s.last_run_status === 'error' ? '✕' : '';
       const statusColor = s.last_run_status === 'success' ? 'var(--green)'
@@ -581,7 +589,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
       h += `</div>`;
       h += `<div style="display:flex;align-items:center;gap:8px">`;
       if (statusIcon) h += `<span style="color:${statusColor}">${statusIcon}</span>`;
-      h += `<button data-delete-schedule="${s.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer">×</button>`;
+      h += `<button data-delete-schedule="${s.id}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:var(--fs-sm)">delete</button>`;
       h += `</div>`;
       h += `</div>`;
     });
@@ -589,7 +597,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
     const nextLabel = engine.getNextScheduleLabel(schedules);
     const anyRunning = schedules.some(s => s.last_run_status === 'running');
     if (anyRunning) {
-      h += `<div style="padding:8px 0;color:var(--green);font-size:var(--fs-sm)">⟳ Scan running…</div>`;
+      h += `<div style="padding:8px 0;color:var(--green);font-size:var(--fs-sm)">Scan running…</div>`;
     } else if (nextLabel) {
       h += `<div style="padding:8px 0;color:var(--text-muted);font-size:var(--fs-sm)">Next scan ${nextLabel}</div>`;
     }
@@ -758,8 +766,8 @@ export function renderTopbar() {
   const hasRunning = (appState.schedules || []).some(s => s.last_run_status === 'running');
   if (nextLabel || hasRunning) {
     h += `<button class="top-btn hide-mobile" id="scheduleIndicatorBtn" title="Scheduled scans">`;
-    if (hasRunning) h += `<span style="color:var(--green)">⟳ Scanning…</span>`;
-    else h += `<span>⏱ ${esc(nextLabel)}</span>`;
+    if (hasRunning) h += `<span style="color:var(--green)">Scanning…</span>`;
+    else h += `<span>${esc(nextLabel)}</span>`;
     h += `</button>`;
   }
 
