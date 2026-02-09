@@ -504,9 +504,16 @@ function startSchedulePolling() {
 }
 
 async function addSchedule(time) {
-  if (!auth.isAuthenticated()) return;
+  if (!auth.isAuthenticated()) {
+    console.warn('Cannot add schedule: not authenticated');
+    openAuthModal();
+    return;
+  }
   const accounts = state.getAllAccounts();
-  if (!accounts.length) return;
+  if (!accounts.length) {
+    console.warn('Cannot add schedule: no accounts selected');
+    return;
+  }
   try {
     await api.saveSchedule({
       label: `Scan at ${engine.formatScheduleTime(time)}`,
