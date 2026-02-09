@@ -582,6 +582,14 @@ export function renderScheduleTab(schedules, schedulesLoading) {
       h += `</div>`;
       h += `</div>`;
     });
+    // Next schedule status
+    const nextLabel = engine.getNextScheduleLabel(schedules);
+    const anyRunning = schedules.some(s => s.last_run_status === 'running');
+    if (anyRunning) {
+      h += `<div style="padding:8px 0;color:var(--green);font-size:var(--fs-sm)">⟳ Scan running…</div>`;
+    } else if (nextLabel) {
+      h += `<div style="padding:8px 0;color:var(--text-muted);font-size:var(--fs-sm)">Next scan ${nextLabel}</div>`;
+    }
   } else {
     h += `<p style="color:var(--text-muted);margin-bottom:16px">No scheduled scans yet.</p>`;
   }
@@ -711,11 +719,11 @@ export function renderTopbar() {
 
   let h = '';
 
-  // Schedule indicator
+  // Schedule indicator (desktop only)
   const nextLabel = appState.nextScheduleLabel || '';
   const hasRunning = (appState.schedules || []).some(s => s.last_run_status === 'running');
   if (nextLabel || hasRunning) {
-    h += `<button class="top-btn" id="scheduleIndicatorBtn" title="Scheduled scans">`;
+    h += `<button class="top-btn hide-mobile" id="scheduleIndicatorBtn" title="Scheduled scans">`;
     if (hasRunning) h += `<span style="color:var(--green)">⟳ Scanning…</span>`;
     else h += `<span>⏱ ${esc(nextLabel)}</span>`;
     h += `</button>`;
@@ -725,8 +733,7 @@ export function renderTopbar() {
 
   if (isAuth) {
     const credits = profile?.credits_balance || 0;
-    const name = auth.getUserName() || auth.getUserEmail().split('@')[0];
-    h += `<button class="top-btn" id="userMenuBtn">${esc(name)}${credits > 0 ? ` · ${credits.toLocaleString()}` : ''}</button>`;
+    h += `<button class="top-btn" id="userMenuBtn">${credits > 0 ? `${credits.toLocaleString()}c` : 'Account'}</button>`;
   } else {
     h += `<button class="top-btn" id="signInBtn">Sign in</button>`;
   }
