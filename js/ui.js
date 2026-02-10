@@ -628,6 +628,13 @@ export function renderScheduleTab(schedules, schedulesLoading) {
     h += `<button data-quick-schedule="${padded}" style="padding:6px 0;font-size:var(--fs-sm);font-family:inherit;cursor:pointer;border:none;background:${isActive ? 'var(--text-strong)' : 'var(--bg-alt)'};color:${isActive ? 'var(--bg)' : 'var(--text-muted)'}">${label}</button>`;
   }
   h += `</div>`;
+
+  // Exact time input
+  h += `<div style="display:flex;gap:8px;align-items:center;margin-top:10px">`;
+  h += `<input type="time" id="scheduleExactTime" style="font-family:inherit;font-size:var(--fs-sm);background:var(--bg-alt);color:var(--text-strong);border:none;padding:6px 8px;cursor:text">`;
+  h += `<button id="scheduleExactBtn" style="font-family:inherit;font-size:var(--fs-sm);background:var(--bg-alt);color:var(--text-muted);border:none;padding:6px 10px;cursor:pointer">Add</button>`;
+  h += `</div>`;
+
   h += `</div>`;
 
   container.innerHTML = h;

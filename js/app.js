@@ -1030,7 +1030,12 @@ function initEventDelegation() {
       case 'acctSignOutBtn': auth.signOut().then(() => { state.schedules = []; ui.renderAccountTab(); ui.renderTopbar(); }); break;
       case 'acctBuyCreditsBtn': case 'acctBuyCreditsBtn2': closeModal('modal'); openPricingModal(); break;
 
-      // (custom schedule time handled via initInputListeners)
+      // Custom exact time schedule
+      case 'scheduleExactBtn': {
+        const input = $('scheduleExactTime');
+        if (input?.value) { addSchedule(input.value); input.value = ''; }
+        break;
+      }
 
       // Analyst
       case 'newAnalystBtn': ui.saveAnalystsFromUI(); {
