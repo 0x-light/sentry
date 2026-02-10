@@ -99,10 +99,9 @@ function packFromPriceId(env, priceId) {
 }
 
 export default {
-  // ── Cron trigger: dispatches scheduled scans via self-fetch ─────────────
-  // Each scan runs in its own fetch invocation with a fresh subrequest budget.
+  // ── Cron trigger: runs scheduled scans server-side ─────────────────────
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(dispatchDueScheduledScans(env, ctx));
+    ctx.waitUntil(runDueScheduledScans(env, ctx));
   },
 
   async fetch(request, env, ctx) {
@@ -143,11 +142,6 @@ export default {
       }
       if (path === '/api/admin/monitoring' && method === 'GET') {
         return handleAdminMonitoring(request, env);
-      }
-
-      // --- Internal endpoints (service-key auth, used by cron self-dispatch) ---
-      if (path === '/api/internal/scheduled-scan' && method === 'POST') {
-        return handleInternalScheduledScan(request, env, ctx);
       }
 
       // --- Auth required routes ---
@@ -504,11 +498,17 @@ function djb2Hash(str) {
 
 /**
  * Run a single scheduled scan server-side.
- * Note: status is already set to 'running' by the cron dispatcher before this is called.
+ * Optimized to stay under the 1000 subrequest limit per Worker invocation.
  */
 async function executeScheduledScan(env, ctx, schedule) {
   const userId = schedule.user_id;
-  const SCAN_TIMEOUT_MS = 8 * 60_000; // 8 minute hard timeout (large account lists need time)
+  const SCAN_TIMEOUT_MS = 8 * 60_000; // 8 minute hard timeout
+
+  // Mark as running
+  await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+    method: 'PATCH',
+    body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
+  });
 
   // Wrap entire scan in a timeout so we always update status
   const scanPromise = executeScheduledScanInner(env, ctx, schedule, userId);
@@ -545,12 +545,23 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
       body: { last_run_status: status, last_run_message: message?.slice(0, 250) },
     }).catch(e => console.error(`[sched:${sid.slice(0, 8)}] Failed to set status:`, e.message));
 
+  // ── SUBREQUEST BUDGET ──────────────────────────────────────────────────
+  // Cloudflare Workers limit: 1000 subrequests per invocation.
+  // EVERYTHING counts: KV reads/writes, Supabase fetch(), Twitter API, Anthropic API.
+  // We track usage and stop fetching before hitting the limit.
+  const SUBREQ_LIMIT = 950; // leave 50 margin for error handling / status updates
+  const RESERVED_FOR_POST_FETCH = 30; // analysis (2-4) + save (3) + cache writes + status + margin
+  // Shared mutable budget object — passed by reference to fetchTweetsLean
+  // limit = SUBREQ_LIMIT minus reserved for post-fetch (analysis, save, status update)
+  const budget = { used: 5, limit: SUBREQ_LIMIT - RESERVED_FOR_POST_FETCH }; // start at ~5 (cron already used some)
+
   // 1. Resolve accounts — schedule > preset > user's presets
   let accounts = Array.isArray(schedule.accounts) ? [...schedule.accounts] : [];
   let accountSource = 'schedule';
 
   if (schedule.preset_id && !accounts.length) {
     try {
+      budget.used++;
       const rows = await supabaseQuery(env, `presets?id=eq.${schedule.preset_id}&user_id=eq.${userId}&select=accounts`);
       if (rows?.[0]?.accounts?.length) { accounts = rows[0].accounts; accountSource = 'preset'; }
       else log('Preset not found or empty, trying fallbacks');
@@ -559,6 +570,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
 
   if (!accounts.length) {
     try {
+      budget.used++;
       const userPresets = await supabaseQuery(env, `presets?user_id=eq.${userId}&select=accounts&order=updated_at.desc&limit=5`);
       if (userPresets?.length) {
         const all = new Set();
@@ -576,23 +588,23 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
 
   log(`${accounts.length} accounts (from ${accountSource})`);
 
-  // 2. Get analyst prompt
+  // 2. Get analyst prompt + model in ONE parallel batch (save subrequests)
   let prompt = DEFAULT_ANALYST_PROMPT;
-  try {
-    const analysts = await supabaseQuery(env, `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`);
-    if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
-  } catch { /* use default */ }
-
-  // 3. Get model preference
   let model = 'claude-sonnet-4-20250514';
   try {
-    const settings = await supabaseQuery(env, `user_settings?user_id=eq.${userId}&select=model`);
+    budget.used += 2;
+    const [analysts, settings] = await Promise.all([
+      supabaseQuery(env, `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`),
+      supabaseQuery(env, `user_settings?user_id=eq.${userId}&select=model`),
+    ]);
+    if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
     if (settings?.[0]?.model) model = settings[0].model;
-  } catch { /* use default */ }
+  } catch { /* use defaults */ }
 
-  // 4. Check credits
+  // 3. Check credits
   const days = Math.max(1, Math.min(30, schedule.range_days || 1));
   const creditsNeeded = calculateScanCredits(accounts.length, days, model);
+  budget.used++;
   const profile = await getProfile(env, userId);
 
   if (!profile || profile.credits_balance < creditsNeeded) {
@@ -600,13 +612,15 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     return;
   }
 
-  // 5. Check cross-user scan cache
+  // 4. Check cross-user scan cache (1 KV read)
   const promptHash = djb2Hash(`${model}\n${prompt}`);
   const scanKey = hashScanKey(accounts, days, promptHash);
   if (env.TWEET_CACHE) {
     try {
+      budget.used++;
       const cached = await env.TWEET_CACHE.get(scanKey, 'json');
       if (cached?.signals?.length) {
+        budget.used += 3; // saveScanToDb uses ~3 subrequests
         await saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals: cached.signals, totalTweets: cached.total_tweets || 0, label: schedule.label });
         await setStatus('success', `${cached.signals.length} signals (cached)`);
         log('Served from scan cache');
@@ -615,21 +629,38 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     } catch (e) { log(`Scan cache check failed: ${e.message}`); }
   }
 
-  // 6. Fetch tweets (concurrency-limited, with error tracking)
-  const CONCURRENCY = 10; // higher concurrency — most calls hit KV cache
-  const PER_ACCOUNT_TIMEOUT = 30_000; // 30s max per account fetch
+  // ── 5. FETCH TWEETS (budget-aware) ─────────────────────────────────────
+  // Key optimizations vs regular fetchTweetsCoalesced:
+  //   - Only 1 KV read per account (skip stale cache check)
+  //   - Max 1 retry on Twitter API (not 3)
+  //   - Max 3 pages per account (not 5)
+  //   - Stop fetching when subrequest budget is low
+  //   - Lower concurrency to avoid thundering-herd retries
+  const CONCURRENCY = 5;
   const accountData = [];
   const failedAccounts = [];
+  const skippedAccounts = [];
   const fetchStart = Date.now();
+  // Budget for fetch phase: total limit minus what we've used minus reserved for post-fetch
+  const fetchBudgetLimit = SUBREQ_LIMIT - RESERVED_FOR_POST_FETCH;
+
+  log(`Fetch budget: ~${fetchBudgetLimit - budget.used} subrequests (used ${budget.used} so far)`);
+
   for (let i = 0; i < accounts.length; i += CONCURRENCY) {
+    // Check if we still have budget for fetching
+    const remaining = fetchBudgetLimit - budget.used;
+    if (remaining < CONCURRENCY * 2) {
+      const skipped = accounts.slice(i);
+      skippedAccounts.push(...skipped);
+      log(`Budget low (${remaining} left) — skipping ${skipped.length} accounts`);
+      break;
+    }
+
     const chunk = accounts.slice(i, i + CONCURRENCY);
+    // Pass budget object by reference — fetchTweetsLean mutates budget.used
     const results = await Promise.allSettled(
       chunk.map(async (account) => {
-        const fetchPromise = fetchTweetsCoalesced(account, days, env, ctx);
-        const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Account fetch timed out')), PER_ACCOUNT_TIMEOUT)
-        );
-        const { tweets } = await Promise.race([fetchPromise, timeout]);
+        const tweets = await fetchTweetsLean(account, days, env, budget);
         return { account, tweets: tweets || [] };
       })
     );
@@ -641,15 +672,16 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
         accountData.push({ account: chunk[j], tweets: [] });
       }
     }
-    log(`Fetched ${Math.min(i + CONCURRENCY, accounts.length)}/${accounts.length} accounts (${((Date.now() - fetchStart) / 1000).toFixed(1)}s)`);
+    log(`Fetched ${Math.min(i + CONCURRENCY, accounts.length)}/${accounts.length} accounts (${((Date.now() - fetchStart) / 1000).toFixed(1)}s, ${budget.used} subreqs)`);
   }
 
   const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
-  if (failedAccounts.length) log(`Failed to fetch: ${failedAccounts.join(', ')}`);
+  if (failedAccounts.length) log(`Failed: ${failedAccounts.length} accounts`);
+  if (skippedAccounts.length) log(`Skipped (budget): ${skippedAccounts.length} accounts`);
 
   if (totalTweets === 0) {
     const detail = failedAccounts.length
-      ? `No tweets (${failedAccounts.length}/${accounts.length} accounts failed to fetch)`
+      ? `No tweets (${failedAccounts.length}/${accounts.length} accounts failed)`
       : `No tweets found for ${accounts.length} accounts in the last ${days === 1 ? 'day' : days + ' days'}`;
     await setStatus('error', detail);
     return;
@@ -657,69 +689,20 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
 
   log(`${totalTweets} tweets from ${accountData.filter(a => a.tweets.length > 0).length}/${accounts.length} accounts`);
 
-  // 7. Check per-tweet analysis cache (with safe URL encoding)
-  let cachedSignals = [];
-  let uncachedAccountData = accountData;
-  try {
-    const allTweetUrls = [];
-    accountData.forEach(a => {
-      a.tweets.forEach(tw => {
-        if (!tw.id) return; // skip tweets without an ID
-        const author = tw.author?.userName || a.account;
-        allTweetUrls.push(`https://x.com/${author}/status/${tw.id}`);
-      });
-    });
+  // ── 6. SKIP per-tweet analysis cache ───────────────────────────────────
+  // This saves 2-5 Supabase subrequests. We analyze everything fresh.
+  // The cross-user SCAN cache (step 4) already handles full-scan dedup.
 
-    if (allTweetUrls.length > 0) {
-      // Batch in groups of 100 (safe for URL length limits)
-      const CACHE_BATCH = 100;
-      const cachedUrlSet = new Set();
-      for (let i = 0; i < allTweetUrls.length; i += CACHE_BATCH) {
-        const batch = allTweetUrls.slice(i, i + CACHE_BATCH);
-        // Escape any double-quotes in URLs for PostgREST in() filter
-        const urlList = batch.map(u => `"${u.replace(/"/g, '\\"')}"`).join(',');
-        const rows = await supabaseQuery(env,
-          `analysis_cache?prompt_hash=eq.${encodeURIComponent(promptHash)}&tweet_url=in.(${urlList})&select=tweet_url,signals`
-        );
-        if (rows?.length) {
-          rows.forEach(r => {
-            cachedUrlSet.add(r.tweet_url);
-            if (r.signals?.length) cachedSignals.push(...r.signals);
-          });
-        }
-      }
-
-      if (cachedUrlSet.size > 0) {
-        log(`${cachedUrlSet.size}/${allTweetUrls.length} tweets cached`);
-        uncachedAccountData = accountData.map(a => ({
-          account: a.account,
-          tweets: a.tweets.filter(tw => {
-            if (!tw.id) return false;
-            const author = tw.author?.userName || a.account;
-            return !cachedUrlSet.has(`https://x.com/${author}/status/${tw.id}`);
-          }),
-        })).filter(a => a.tweets.length > 0);
-      }
-    }
-  } catch (e) {
-    log(`Cache check failed (will analyze all): ${e.message}`);
-    uncachedAccountData = accountData; // fall back to analyzing everything
-  }
-
-  // 8. Call Claude for uncached tweets
+  // ── 7. CALL CLAUDE (skip model resolution to save 1 subrequest) ────────
   let newSignals = [];
   let batchesFailed = 0;
   let batchesTotal = 0;
-  if (uncachedAccountData.length > 0) {
-    let resolvedModel = model;
-    try {
-      const modelInfo = await resolveAnthropicModel(env, model);
-      if (modelInfo?.resolved) resolvedModel = modelInfo.resolved;
-    } catch { /* use original */ }
+  const resolvedModel = normalizeModelId(model) || model; // normalize locally, no API call
 
-    const batches = buildAnalysisBatches(uncachedAccountData, prompt.length || 0);
+  if (accountData.some(a => a.tweets.length > 0)) {
+    const batches = buildAnalysisBatches(accountData, prompt.length || 0);
     batchesTotal = batches.length;
-    log(`Analyzing ${uncachedAccountData.reduce((s, a) => s + a.tweets.length, 0)} uncached tweets in ${batchesTotal} batch${batchesTotal !== 1 ? 'es' : ''}`);
+    log(`Analyzing ${totalTweets} tweets in ${batchesTotal} batch${batchesTotal !== 1 ? 'es' : ''} (${budget.used} subreqs used)`);
 
     if (!env.ANTHROPIC_API_KEY) {
       throw new Error('Anthropic API key not configured');
@@ -728,8 +711,14 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     let batchIdx = 0;
     for (const batch of batches) {
       batchIdx++;
+      // Budget check before each Anthropic call
+      if (budget.used >= SUBREQ_LIMIT - 10) {
+        log(`Budget exhausted before batch ${batchIdx} — stopping analysis`);
+        batchesFailed += (batchesTotal - batchIdx + 1);
+        break;
+      }
       try {
-        log(`Analysis batch ${batchIdx}/${batchesTotal} (${batch.accounts.length} accounts, ~${(batch.text.length / 1000).toFixed(0)}KB)`);
+        log(`Batch ${batchIdx}/${batchesTotal} (${batch.accounts.length} accounts, ~${(batch.text.length / 1000).toFixed(0)}KB)`);
 
         const anthropicBody = {
           model: resolvedModel,
@@ -739,91 +728,163 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
         };
 
         let data = null;
-        const MAX_RETRIES = 1;
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': env.ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify(anthropicBody),
-            signal: AbortSignal.timeout(120_000), // 2 min per analysis batch
-          });
+        // Single attempt — no retries (save subrequests)
+        budget.used++;
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(anthropicBody),
+          signal: AbortSignal.timeout(120_000),
+        });
 
-          // Handle rate limiting with longer backoff
-          if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
-            if (attempt < MAX_RETRIES) {
-              await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 15_000)));
-              continue;
-            }
-            throw new Error('Anthropic rate limited');
-          }
-
-          data = await res.json();
-          if (data.error) {
-            if (attempt < MAX_RETRIES && res.status >= 500) {
-              await new Promise(r => setTimeout(r, 2000));
-              continue;
-            }
-            throw new Error(data.error.message || `Anthropic error (${res.status})`);
-          }
-          break;
-        }
+        if (res.status === 429) throw new Error('Anthropic rate limited');
+        data = await res.json();
+        if (data.error) throw new Error(data.error.message || `Anthropic error (${res.status})`);
 
         if (data?.content) {
           const text = extractText(data.content);
           const batchSignals = safeParseSignals(text);
           newSignals.push(...batchSignals);
-
-          if (promptHash && batch.tweetUrls?.length) {
-            ctx.waitUntil(cacheAnalysis(env, promptHash, batch.tweetUrls, text, resolvedModel));
-          }
-
-          const inputTokens = data.usage?.input_tokens || 0;
-          const outputTokens = data.usage?.output_tokens || 0;
-          ctx.waitUntil(logUsage(env, userId, 'scheduled_scan_analyze', {
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
-            accounts_count: batch.accounts.length,
-          }));
         }
       } catch (e) {
         batchesFailed++;
-        console.error(`[sched:${sid.slice(0, 8)}] Batch failed:`, e.message);
+        console.error(`[sched:${sid.slice(0, 8)}] Batch ${batchIdx} failed:`, e.message);
       }
     }
   }
 
-  // 9. Combine, dedup, save
-  const allSignals = [...cachedSignals, ...newSignals];
+  // ── 8. Combine, dedup, save ────────────────────────────────────────────
   const seen = new Set();
-  const dedupedSignals = allSignals.filter(s => {
+  const dedupedSignals = newSignals.filter(s => {
     const key = `${s.tweet_url || ''}::${s.title || ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  // If ALL batches failed and we have no signals at all, report error
   if (dedupedSignals.length === 0 && batchesFailed > 0) {
     throw new Error(`Analysis failed (${batchesFailed}/${batchesTotal} batches failed)`);
   }
 
+  budget.used += 3; // saveScanToDb: 1 Supabase POST + 1 RPC + 1 KV cache write
   await saveScanToDb(env, ctx, userId, {
     accounts, days, model, promptHash, creditsNeeded,
     signals: dedupedSignals, totalTweets, label: schedule.label,
   });
 
-  // 10. Success
+  // ── 9. Success ─────────────────────────────────────────────────────────
   const parts = [`${dedupedSignals.length} signals from ${totalTweets} tweets`];
   if (batchesFailed) parts.push(`(${batchesFailed} batch${batchesFailed > 1 ? 'es' : ''} failed)`);
-  if (failedAccounts.length) parts.push(`(${failedAccounts.length} account${failedAccounts.length > 1 ? 's' : ''} unreachable)`);
+  if (failedAccounts.length) parts.push(`(${failedAccounts.length} unreachable)`);
+  if (skippedAccounts.length) parts.push(`(${skippedAccounts.length} skipped, budget limit)`);
+  budget.used++;
   await setStatus('success', parts.join(' '));
-  log('Complete: ' + parts[0]);
+  log(`Complete: ${parts[0]} | ${budget.used} total subrequests`);
+}
+
+/**
+ * Lean tweet fetcher for scheduled scans — optimized for subrequest budget.
+ *
+ * Key differences from fetchTweetsCoalesced:
+ *   1. Single KV cache read (no stale-while-revalidate)
+ *   2. Max 1 retry on Twitter API errors
+ *   3. Max 3 pages of tweets
+ *   4. Budget-aware: checks global counter before each API call
+ *   5. No background refresh or coalescing (cron is single-threaded)
+ */
+async function fetchTweetsLean(account, days, env, budget) {
+  const key = tweetCacheKey(account, days);
+
+  // 1. KV cache check (1 subrequest each)
+  if (env.TWEET_CACHE) {
+    budget.used++;
+    const cached = await env.TWEET_CACHE.get(key, 'json');
+    if (cached) return cached;
+
+    // Also try stale key — saves a Twitter API call if found
+    if (budget.used < budget.limit - 5) {
+      budget.used++;
+      const staleKey = tweetCacheKeyStale(account, days);
+      const stale = await env.TWEET_CACHE.get(staleKey, 'json');
+      if (stale) return stale;
+    }
+  }
+
+  // 2. Budget check before hitting Twitter API
+  if (budget.used >= budget.limit - 3) return [];
+
+  // 3. Fetch from Twitter API (lean: max 3 pages, max 1 retry)
+  const FETCH_TIMEOUT = 15_000;
+  const cutoff = new Date(Date.now() - days * 86400000);
+  const allTweets = [];
+  let cursor = null;
+  const MAX_PAGES = 3;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    if (budget.used >= budget.limit - 2) break;
+
+    const params = new URLSearchParams({ userName: account });
+    if (cursor) params.set('cursor', cursor);
+    const url = `https://api.twitterapi.io/twitter/user/last_tweets?${params}`;
+
+    let data = null;
+    let retries = 0;
+    const MAX_RETRIES = 1;
+    while (retries <= MAX_RETRIES) {
+      try {
+        budget.used++;
+        const res = await fetch(url, {
+          headers: { 'X-API-Key': env.TWITTER_API_KEY, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT),
+        });
+        if (res.status === 429) {
+          if (retries < MAX_RETRIES) { retries++; await new Promise(r => setTimeout(r, 3000)); continue; }
+          break;
+        }
+        if (!res.ok) {
+          if (retries < MAX_RETRIES) { retries++; await new Promise(r => setTimeout(r, 1000)); continue; }
+          break;
+        }
+        data = await res.json();
+        break;
+      } catch (e) {
+        if (retries >= MAX_RETRIES) break;
+        retries++;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!data) break;
+    const apiData = data.data || data;
+    if (data.status === 'error') break;
+
+    const tweets = apiData.tweets || [];
+    if (!tweets.length) break;
+
+    let hitCutoff = false;
+    for (const tw of tweets) {
+      if (new Date(tw.createdAt) < cutoff) { hitCutoff = true; break; }
+      allTweets.push(tw);
+    }
+    if (hitCutoff) break;
+    if (!apiData.has_next_page || !apiData.next_cursor) break;
+    cursor = apiData.next_cursor;
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  // 4. Cache result in KV
+  if (env.TWEET_CACHE && allTweets.length > 0) {
+    try {
+      budget.used++;
+      await env.TWEET_CACHE.put(key, JSON.stringify(allTweets), { expirationTtl: TWEET_CACHE_HOURS * 3600 });
+    } catch { /* non-critical */ }
+  }
+
+  return allTweets;
 }
 
 /**
@@ -878,15 +939,13 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
 }
 
 /**
- * Cron dispatch: find due scans and dispatch each via self-fetch.
- *
- * This is the key fix for the "Too many subrequests" error.
- * The cron invocation only uses a few subrequests (Supabase queries + dispatches).
- * Each scan runs in its own fetch invocation with a fresh 1000-subrequest budget.
+ * Main cron handler: find and execute all due scheduled scans.
+ * Runs everything inline — the scan is optimized to stay under
+ * the 1000-subrequest limit per Cloudflare Worker invocation.
  */
-async function dispatchDueScheduledScans(env, ctx) {
+async function runDueScheduledScans(env, ctx) {
   try {
-    // Reset stale "running" scans (stuck for > 10 min = worker timed out/crashed)
+    // Reset stale "running" scans (stuck for > 10 min)
     try {
       const staleThreshold = new Date(Date.now() - 10 * 60_000).toISOString();
       const stale = await supabaseQuery(env,
@@ -911,7 +970,6 @@ async function dispatchDueScheduledScans(env, ctx) {
     const schedules = await supabaseQuery(env,
       `scheduled_scans?enabled=eq.true&select=*`
     );
-
     if (!schedules?.length) return;
 
     console.log(`[cron] Checking ${schedules.length} enabled schedules`);
@@ -922,88 +980,13 @@ async function dispatchDueScheduledScans(env, ctx) {
     console.log(`[cron] Found ${dueSchedules.length} due scheduled scan(s):`,
       dueSchedules.map(s => `${s.label}@${s.time} (tz=${s.timezone}, accounts=${(s.accounts||[]).length})`).join(', '));
 
-    // Dispatch each scan via self-fetch — each gets its own subrequest budget
-    // Use the Worker's own URL to dispatch
-    const workerUrl = env.WORKER_URL || 'https://api.sentry.is';
-
-    const dispatches = dueSchedules.map(async (schedule) => {
-      try {
-        // Mark as running BEFORE dispatching (so the cron tick owns the status update)
-        await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-          method: 'PATCH',
-          body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
-        });
-
-        console.log(`[cron] Dispatching scan ${schedule.id.slice(0, 8)} via self-fetch`);
-
-        // Fire-and-forget: dispatch the scan to the internal endpoint
-        // The fetch runs as a new Worker invocation with its own subrequest budget
-        const res = await fetch(`${workerUrl}/api/internal/scheduled-scan`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Internal-Key': env.SUPABASE_SERVICE_KEY,
-          },
-          body: JSON.stringify({ schedule_id: schedule.id }),
-          signal: AbortSignal.timeout(10_000), // 10s — just enough to accept the dispatch
-        });
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          console.error(`[cron] Dispatch failed for ${schedule.id.slice(0, 8)}: ${res.status} ${errText}`);
-        } else {
-          console.log(`[cron] Dispatched scan ${schedule.id.slice(0, 8)} successfully`);
-        }
-      } catch (e) {
-        console.error(`[cron] Dispatch error for ${schedule.id.slice(0, 8)}:`, e.message);
-        // Mark as error if dispatch itself failed
-        try {
-          await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-            method: 'PATCH',
-            body: { last_run_status: 'error', last_run_message: `Dispatch failed: ${e.message}`.slice(0, 200) },
-          });
-        } catch { /* best effort */ }
-      }
-    });
-
-    // Dispatch all scans (up to 5 concurrent)
-    await Promise.allSettled(dispatches);
+    // Execute one scan at a time (to stay within subrequest budget)
+    for (const schedule of dueSchedules) {
+      await executeScheduledScan(env, ctx, schedule);
+    }
   } catch (e) {
-    console.error('dispatchDueScheduledScans error:', e.message, e.stack);
+    console.error('runDueScheduledScans error:', e.message, e.stack);
   }
-}
-
-/**
- * Internal endpoint handler: receives dispatched scheduled scans from the cron.
- * Runs in its own fetch invocation with a fresh subrequest budget.
- * Auth: X-Internal-Key must match SUPABASE_SERVICE_KEY (a secret env var).
- */
-async function handleInternalScheduledScan(request, env, ctx) {
-  // Authenticate internal call
-  const internalKey = request.headers.get('X-Internal-Key');
-  if (!internalKey || internalKey !== env.SUPABASE_SERVICE_KEY) {
-    return corsJson({ error: 'Unauthorized' }, 401, env);
-  }
-
-  const { schedule_id } = await request.json();
-  if (!schedule_id) {
-    return corsJson({ error: 'Missing schedule_id' }, 400, env);
-  }
-
-  // Fetch the full schedule data
-  const rows = await supabaseQuery(env, `scheduled_scans?id=eq.${schedule_id}&select=*`);
-  const schedule = rows?.[0];
-  if (!schedule) {
-    return corsJson({ error: 'Schedule not found' }, 404, env);
-  }
-
-  console.log(`[internal] Running scheduled scan ${schedule_id.slice(0, 8)} (${schedule.label})`);
-
-  // Run the scan in the background (so we can return 200 quickly)
-  // The scan uses this invocation's subrequest budget
-  ctx.waitUntil(executeScheduledScan(env, ctx, schedule));
-
-  return corsJson({ ok: true, schedule_id }, 200, env);
 }
 
 // ============================================================================
