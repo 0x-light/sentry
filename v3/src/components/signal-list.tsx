@@ -28,7 +28,7 @@ function formatTime(dateStr?: string): string | null {
 }
 
 function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; index: number }) {
-  const { shareSignal, scanResult, priceCache, showTickerPrice } = useSentry()
+  const { shareSignal, scanResult, priceCache, showTickerPrice, setTickerFilter } = useSentry()
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const { chartPreview, showChart, moveChart, hideChart } = useChartPreview()
@@ -108,6 +108,13 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
                   href={url}
                   target="_blank"
                   rel="noopener"
+                  onClick={e => {
+                    // On mobile/touch devices, filter by ticker instead of opening TradingView
+                    if (window.matchMedia('(pointer: coarse)').matches) {
+                      e.preventDefault()
+                      setTickerFilter(sym)
+                    }
+                  }}
                   onMouseEnter={e => showChart(t.symbol, e)}
                   onMouseMove={moveChart}
                   onMouseLeave={hideChart}
