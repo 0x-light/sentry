@@ -619,6 +619,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
   const PER_ACCOUNT_TIMEOUT = 30_000; // 30s max per account fetch
   const accountData = [];
   const failedAccounts = [];
+  const fetchStart = Date.now();
   for (let i = 0; i < accounts.length; i += CONCURRENCY) {
     const chunk = accounts.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
@@ -639,6 +640,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
         accountData.push({ account: chunk[j], tweets: [] });
       }
     }
+    log(`Fetched ${Math.min(i + CONCURRENCY, accounts.length)}/${accounts.length} accounts (${((Date.now() - fetchStart) / 1000).toFixed(1)}s)`);
   }
 
   const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
@@ -716,13 +718,18 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
 
     const batches = buildAnalysisBatches(uncachedAccountData, prompt.length || 0);
     batchesTotal = batches.length;
+    log(`Analyzing ${uncachedAccountData.reduce((s, a) => s + a.tweets.length, 0)} uncached tweets in ${batchesTotal} batch${batchesTotal !== 1 ? 'es' : ''}`);
 
     if (!env.ANTHROPIC_API_KEY) {
       throw new Error('Anthropic API key not configured');
     }
 
+    let batchIdx = 0;
     for (const batch of batches) {
+      batchIdx++;
       try {
+        log(`Analysis batch ${batchIdx}/${batchesTotal} (${batch.accounts.length} accounts, ~${(batch.text.length / 1000).toFixed(0)}KB)`);
+
         const anthropicBody = {
           model: resolvedModel,
           max_tokens: 16384,
@@ -741,6 +748,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
               'anthropic-version': '2023-06-01',
             },
             body: JSON.stringify(anthropicBody),
+            signal: AbortSignal.timeout(120_000), // 2 min per analysis batch
           });
 
           // Handle rate limiting with longer backoff
@@ -1120,6 +1128,7 @@ async function supabaseQuery(env, path, options = {}) {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15_000), // 15s timeout for DB calls
   });
   if (!res.ok) {
     const err = await res.text();
@@ -1139,6 +1148,7 @@ async function supabaseRpc(env, fn, args = {}) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(args),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -1331,6 +1341,7 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
 }
 
 async function fetchTwitterTweetsRaw(env, account, days) {
+  const FETCH_TIMEOUT = 15_000; // 15s per HTTP request
   const cutoff = new Date(Date.now() - days * 86400000);
   const allTweets = [];
   let cursor = null;
@@ -1348,9 +1359,10 @@ async function fetchTwitterTweetsRaw(env, account, days) {
       try {
         const res = await fetch(url, {
           headers: { 'X-API-Key': env.TWITTER_API_KEY, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT),
         });
         if (res.status === 429) {
-          const wait = Math.min(2000 * Math.pow(2, retries), 30000);
+          const wait = Math.min(2000 * Math.pow(2, retries), 15000);
           await new Promise(r => setTimeout(r, wait));
           retries++;
           continue;

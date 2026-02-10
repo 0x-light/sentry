@@ -1030,10 +1030,16 @@ function initEventDelegation() {
       case 'acctSignOutBtn': auth.signOut().then(() => { state.schedules = []; ui.renderAccountTab(); ui.renderTopbar(); }); break;
       case 'acctBuyCreditsBtn': case 'acctBuyCreditsBtn2': closeModal('modal'); openPricingModal(); break;
 
-      // Custom exact time schedule
+      // Custom exact time schedule (24h format: HH:MM)
       case 'scheduleExactBtn': {
         const input = $('scheduleExactTime');
-        if (input?.value) { addSchedule(input.value); input.value = ''; }
+        const val = (input?.value || '').trim();
+        const m = val.match(/^(\d{1,2}):(\d{2})$/);
+        if (m && +m[1] >= 0 && +m[1] <= 23 && +m[2] >= 0 && +m[2] <= 59) {
+          const time = `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
+          addSchedule(time);
+          input.value = '';
+        }
         break;
       }
 

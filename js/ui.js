@@ -631,7 +631,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
 
   // Exact time input
   h += `<div style="display:flex;gap:8px;align-items:center;margin-top:10px">`;
-  h += `<input type="time" id="scheduleExactTime" style="font-family:inherit;font-size:var(--fs-sm);background:var(--bg-alt);color:var(--text-strong);border:none;padding:6px 8px;cursor:text">`;
+  h += `<input type="text" id="scheduleExactTime" placeholder="HH:MM" maxlength="5" style="font-family:inherit;font-size:var(--fs-sm);background:var(--bg-alt);color:var(--text-strong);border:none;padding:6px 8px;width:60px;cursor:text">`;
   h += `<button id="scheduleExactBtn" style="font-family:inherit;font-size:var(--fs-sm);background:var(--bg-alt);color:var(--text-muted);border:none;padding:6px 10px;cursor:pointer">Add</button>`;
   h += `</div>`;
 
