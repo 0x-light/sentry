@@ -1660,7 +1660,10 @@ export function tickerUrl(sym: string): string {
   const s = sym.replace(/^\$/, '').toUpperCase();
   const provider = getFinanceProvider();
   if (provider === 'tradingview') {
-    return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(getTvSymbol(s))}`;
+    // Use /symbols/ path format — works better as mobile deep link (universal links
+    // parse path segments more reliably than query params for app handoff)
+    const tvSym = getTvSymbol(s);
+    return `https://www.tradingview.com/symbols/${encodeURIComponent(tvSym.replace(':', '-'))}/`;
   }
   if (CRYPTO_SLUGS[s]) return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;
   if (provider === 'google') return `https://www.google.com/finance/quote/${s}?window=6M`;
