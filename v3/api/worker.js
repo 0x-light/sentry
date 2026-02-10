@@ -99,9 +99,10 @@ function packFromPriceId(env, priceId) {
 }
 
 export default {
-  // ── Cron trigger: runs scheduled scans server-side ─────────────────────
+  // ── Cron trigger: dispatches scheduled scans via self-fetch ─────────────
+  // Each scan runs in its own fetch invocation with a fresh subrequest budget.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runDueScheduledScans(env, ctx));
+    ctx.waitUntil(dispatchDueScheduledScans(env, ctx));
   },
 
   async fetch(request, env, ctx) {
@@ -142,6 +143,11 @@ export default {
       }
       if (path === '/api/admin/monitoring' && method === 'GET') {
         return handleAdminMonitoring(request, env);
+      }
+
+      // --- Internal endpoints (service-key auth, used by cron self-dispatch) ---
+      if (path === '/api/internal/scheduled-scan' && method === 'POST') {
+        return handleInternalScheduledScan(request, env, ctx);
       }
 
       // --- Auth required routes ---
@@ -498,16 +504,11 @@ function djb2Hash(str) {
 
 /**
  * Run a single scheduled scan server-side.
+ * Note: status is already set to 'running' by the cron dispatcher before this is called.
  */
 async function executeScheduledScan(env, ctx, schedule) {
   const userId = schedule.user_id;
   const SCAN_TIMEOUT_MS = 8 * 60_000; // 8 minute hard timeout (large account lists need time)
-
-  // Mark as running
-  await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-    method: 'PATCH',
-    body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
-  });
 
   // Wrap entire scan in a timeout so we always update status
   const scanPromise = executeScheduledScanInner(env, ctx, schedule, userId);
@@ -877,12 +878,15 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
 }
 
 /**
- * Main cron handler: find and execute all due scheduled scans.
+ * Cron dispatch: find due scans and dispatch each via self-fetch.
+ *
+ * This is the key fix for the "Too many subrequests" error.
+ * The cron invocation only uses a few subrequests (Supabase queries + dispatches).
+ * Each scan runs in its own fetch invocation with a fresh 1000-subrequest budget.
  */
-async function runDueScheduledScans(env, ctx) {
+async function dispatchDueScheduledScans(env, ctx) {
   try {
     // Reset stale "running" scans (stuck for > 10 min = worker timed out/crashed)
-    // Only reset if last_run_at is old — avoids race with scans that just completed
     try {
       const staleThreshold = new Date(Date.now() - 10 * 60_000).toISOString();
       const stale = await supabaseQuery(env,
@@ -891,7 +895,6 @@ async function runDueScheduledScans(env, ctx) {
       if (stale?.length) {
         console.log(`[cron] Resetting ${stale.length} stale running scan(s)`);
         for (const s of stale) {
-          // Only update if status is STILL 'running' (another cron tick or the scan itself may have fixed it)
           await supabaseQuery(env,
             `scheduled_scans?id=eq.${s.id}&last_run_status=eq.running&last_run_at=lt.${staleThreshold}`, {
               method: 'PATCH',
@@ -909,32 +912,98 @@ async function runDueScheduledScans(env, ctx) {
       `scheduled_scans?enabled=eq.true&select=*`
     );
 
-    if (!schedules?.length) {
-      return;
-    }
+    if (!schedules?.length) return;
 
     console.log(`[cron] Checking ${schedules.length} enabled schedules`);
 
-    // Filter to due schedules
     const dueSchedules = schedules.filter(isScheduleDue);
-    if (!dueSchedules.length) {
-      return;
-    }
+    if (!dueSchedules.length) return;
 
-    console.log(`[cron] Found ${dueSchedules.length} due scheduled scans:`,
+    console.log(`[cron] Found ${dueSchedules.length} due scheduled scan(s):`,
       dueSchedules.map(s => `${s.label}@${s.time} (tz=${s.timezone}, accounts=${(s.accounts||[]).length})`).join(', '));
 
-    // Execute up to 5 concurrent scheduled scans
-    const MAX_CONCURRENT = 5;
-    for (let i = 0; i < dueSchedules.length; i += MAX_CONCURRENT) {
-      const batch = dueSchedules.slice(i, i + MAX_CONCURRENT);
-      await Promise.allSettled(
-        batch.map(schedule => executeScheduledScan(env, ctx, schedule))
-      );
-    }
+    // Dispatch each scan via self-fetch — each gets its own subrequest budget
+    // Use the Worker's own URL to dispatch
+    const workerUrl = env.WORKER_URL || 'https://api.sentry.is';
+
+    const dispatches = dueSchedules.map(async (schedule) => {
+      try {
+        // Mark as running BEFORE dispatching (so the cron tick owns the status update)
+        await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+          method: 'PATCH',
+          body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
+        });
+
+        console.log(`[cron] Dispatching scan ${schedule.id.slice(0, 8)} via self-fetch`);
+
+        // Fire-and-forget: dispatch the scan to the internal endpoint
+        // The fetch runs as a new Worker invocation with its own subrequest budget
+        const res = await fetch(`${workerUrl}/api/internal/scheduled-scan`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Key': env.SUPABASE_SERVICE_KEY,
+          },
+          body: JSON.stringify({ schedule_id: schedule.id }),
+          signal: AbortSignal.timeout(10_000), // 10s — just enough to accept the dispatch
+        });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.error(`[cron] Dispatch failed for ${schedule.id.slice(0, 8)}: ${res.status} ${errText}`);
+        } else {
+          console.log(`[cron] Dispatched scan ${schedule.id.slice(0, 8)} successfully`);
+        }
+      } catch (e) {
+        console.error(`[cron] Dispatch error for ${schedule.id.slice(0, 8)}:`, e.message);
+        // Mark as error if dispatch itself failed
+        try {
+          await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+            method: 'PATCH',
+            body: { last_run_status: 'error', last_run_message: `Dispatch failed: ${e.message}`.slice(0, 200) },
+          });
+        } catch { /* best effort */ }
+      }
+    });
+
+    // Dispatch all scans (up to 5 concurrent)
+    await Promise.allSettled(dispatches);
   } catch (e) {
-    console.error('runDueScheduledScans error:', e.message, e.stack);
+    console.error('dispatchDueScheduledScans error:', e.message, e.stack);
   }
+}
+
+/**
+ * Internal endpoint handler: receives dispatched scheduled scans from the cron.
+ * Runs in its own fetch invocation with a fresh subrequest budget.
+ * Auth: X-Internal-Key must match SUPABASE_SERVICE_KEY (a secret env var).
+ */
+async function handleInternalScheduledScan(request, env, ctx) {
+  // Authenticate internal call
+  const internalKey = request.headers.get('X-Internal-Key');
+  if (!internalKey || internalKey !== env.SUPABASE_SERVICE_KEY) {
+    return corsJson({ error: 'Unauthorized' }, 401, env);
+  }
+
+  const { schedule_id } = await request.json();
+  if (!schedule_id) {
+    return corsJson({ error: 'Missing schedule_id' }, 400, env);
+  }
+
+  // Fetch the full schedule data
+  const rows = await supabaseQuery(env, `scheduled_scans?id=eq.${schedule_id}&select=*`);
+  const schedule = rows?.[0];
+  if (!schedule) {
+    return corsJson({ error: 'Schedule not found' }, 404, env);
+  }
+
+  console.log(`[internal] Running scheduled scan ${schedule_id.slice(0, 8)} (${schedule.label})`);
+
+  // Run the scan in the background (so we can return 200 quickly)
+  // The scan uses this invocation's subrequest budget
+  ctx.waitUntil(executeScheduledScan(env, ctx, schedule));
+
+  return corsJson({ ok: true, schedule_id }, 200, env);
 }
 
 // ============================================================================
