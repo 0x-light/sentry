@@ -34,7 +34,7 @@ const state = {
   schedulesLoading: false,
   nextScheduleLabel: '',
   scheduleInterval: null,
-  wasRunning: false,
+  _pendingScheduledScan: null,
 
   getAllAccounts() {
     const all = [...state.customAccounts];
@@ -468,39 +468,156 @@ function updateNextScheduleLabel() {
 
 let _visibilityHandler = null;
 
-function startSchedulePolling() {
-  if (state.scheduleInterval) clearInterval(state.scheduleInterval);
-
+function getSchedulePollInterval() {
   const hasRunning = state.schedules.some(s => s.last_run_status === 'running');
   const hasActive = state.schedules.some(s => s.enabled);
   const next = engine.getNextScheduleTime(state.schedules);
   const isImminent = next ? (next.date.getTime() - Date.now() < 3 * 60000) : false;
+  return hasRunning ? 5000 : isImminent ? 15000 : hasActive ? 60000 : 60000;
+}
 
-  const pollMs = hasRunning ? 5000 : isImminent ? 15000 : hasActive ? 60000 : 60000;
+function startSchedulePolling() {
+  if (state.scheduleInterval) clearTimeout(state.scheduleInterval);
 
-  state.scheduleInterval = setInterval(async () => {
-    updateNextScheduleLabel();
-    if (hasActive || hasRunning) {
-      const wasRunning = state.schedules.some(s => s.last_run_status === 'running');
-      await loadSchedules();
-      const nowRunning = state.schedules.some(s => s.last_run_status === 'running');
-      if (wasRunning && !nowRunning) loadServerHistory();
-      ui.renderTopbar();
-      if ($('modal').classList.contains('open')) {
-        ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+  let currentPollMs = getSchedulePollInterval();
+
+  function scheduleTick() {
+    state.scheduleInterval = setTimeout(async () => {
+      updateNextScheduleLabel();
+
+      // Always read current state — not stale closures
+      const hasActive = state.schedules.some(s => s.enabled);
+      const hasRunning = state.schedules.some(s => s.last_run_status === 'running');
+
+      if (hasActive || hasRunning) {
+        const wasRunning = hasRunning;
+        await loadSchedules();
+        const nowRunning = state.schedules.some(s => s.last_run_status === 'running');
+
+        // Scheduled scan just finished — show banner instead of auto-loading
+        if (wasRunning && !nowRunning) {
+          showScheduledScanBanner();
+        }
+
+        ui.renderTopbar();
+        if ($('modal').classList.contains('open')) {
+          ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+        }
       }
-    }
-  }, pollMs);
+
+      // Re-calculate interval — adapts to state changes (e.g. scan starts running)
+      const newPollMs = getSchedulePollInterval();
+      if (newPollMs !== currentPollMs) currentPollMs = newPollMs;
+      scheduleTick();
+    }, currentPollMs);
+  }
+
+  scheduleTick();
 
   // Remove previous listener before adding a new one
   if (_visibilityHandler) document.removeEventListener('visibilitychange', _visibilityHandler);
   _visibilityHandler = () => {
     if (document.visibilityState === 'visible' && auth.isAuthenticated()) {
       updateNextScheduleLabel();
-      loadSchedules().then(() => { ui.renderTopbar(); loadServerHistory(); });
+      loadSchedules().then(() => {
+        ui.renderTopbar();
+        // On tab re-focus: show banner if a new scheduled scan is available
+        checkForNewScheduledScan();
+      });
     }
   };
   document.addEventListener('visibilitychange', _visibilityHandler);
+}
+
+// Check if the latest server scan is a newer scheduled scan than what we're showing
+async function checkForNewScheduledScan() {
+  try {
+    const serverScans = await api.getScans();
+    if (!Array.isArray(serverScans) || !serverScans.length) return;
+    const latest = serverScans[0];
+    if (!latest) return;
+    const isScheduled = !!latest.scheduled || (latest.range_label || '').includes('scheduled');
+    const serverDate = new Date(latest.created_at).getTime();
+    const localDate = state.lastScanResult ? new Date(state.lastScanResult.date).getTime() : 0;
+    if (serverDate > localDate) {
+      if (isScheduled) {
+        showScheduledScanBanner(latest);
+      } else {
+        loadServerHistory();
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to check for scheduled scan:', e);
+  }
+}
+
+// Show a banner in the notices area for a completed scheduled scan
+function showScheduledScanBanner(scanData) {
+  if (scanData) {
+    renderScheduledBanner(scanData);
+  } else {
+    // No scan data passed — fetch it
+    api.getScans().then(serverScans => {
+      if (!Array.isArray(serverScans) || !serverScans.length) return;
+      const latest = serverScans[0];
+      if (!latest) return;
+      const isScheduled = !!latest.scheduled || (latest.range_label || '').includes('scheduled');
+      if (!isScheduled) { loadServerHistory(); return; }
+      const serverDate = new Date(latest.created_at).getTime();
+      const localDate = state.lastScanResult ? new Date(state.lastScanResult.date).getTime() : 0;
+      if (serverDate <= localDate) return;
+      renderScheduledBanner(latest);
+    }).catch(e => console.warn('Failed to prepare scheduled scan banner:', e));
+  }
+}
+
+function renderScheduledBanner(latest) {
+  state._pendingScheduledScan = latest;
+  const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
+  const d = new Date(latest.created_at);
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const notices = $('notices');
+  if (notices) {
+    notices.innerHTML = `<div class="notice scheduled-scan-banner" id="scheduledScanBanner">
+      <span>Scheduled scan available · ${timeStr} · ${signals.length} signal${signals.length !== 1 ? 's' : ''}</span>
+      <span style="display:flex;gap:6px;margin-left:auto">
+        <button class="resume-btn" id="loadScheduledScanBtn">View</button>
+        <button class="dismiss-btn" id="dismissScheduledBtn">✕</button>
+      </span>
+    </div>`;
+  }
+}
+
+// Load the pending scheduled scan into the main view
+function loadPendingScheduledScan() {
+  const latest = state._pendingScheduledScan;
+  if (!latest) return;
+  const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
+  const isScheduled = true;
+  state.lastScanResult = {
+    date: latest.created_at || new Date().toISOString(),
+    range: latest.range_label || '',
+    days: parseInt(latest.range_days) || 1,
+    accounts: Array.isArray(latest.accounts) ? latest.accounts : [],
+    totalTweets: parseInt(latest.total_tweets) || 0,
+    signals,
+    tweetMeta: (latest.tweet_meta && typeof latest.tweet_meta === 'object') ? latest.tweet_meta : {},
+    scheduled: isScheduled,
+  };
+  const idx = RANGES.findIndex(r => r.label === latest.range_label);
+  if (idx !== -1) { state.range = idx; ui.renderRanges(); }
+  const d = new Date(state.lastScanResult.date);
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const label = `${dateStr} · ${signals.length} signals (scheduled)`;
+  ui.setStatus(label, false, true);
+  ui.renderTickers(signals);
+  ui.renderSignals(signals);
+
+  // Also refresh history sidebar
+  loadServerHistory();
+  state._pendingScheduledScan = null;
+  $('notices').innerHTML = '';
 }
 
 async function addSchedule(time) {
@@ -872,6 +989,10 @@ function initEventDelegation() {
       case 'dlBtn': if (state.lastScanResult) engine.downloadScanAsMarkdown(state.lastScanResult); break;
       case 'scheduleIndicatorBtn': openSettingsModal('schedule'); break;
 
+      // Scheduled scan banner (clicking the banner itself or the View button loads it)
+      case 'scheduledScanBanner': case 'loadScheduledScanBtn': loadPendingScheduledScan(); break;
+      case 'dismissScheduledBtn': state._pendingScheduledScan = null; $('notices').innerHTML = ''; break;
+
       // Settings modal
       case 'closeSettingsBtn': case 'cancelSettingsBtn': closeModal('modal'); if (originalSettings.font) engine.setFont(originalSettings.font); if (originalSettings.fontSize) engine.setFontSize(originalSettings.fontSize); if (originalSettings.textCase) engine.setCase(originalSettings.textCase); break;
       case 'clearKeyBtn': localStorage.removeItem(LS_TW); localStorage.removeItem(LS_AN); localStorage.removeItem(LS_MODEL); $('twKeyInput').value = ''; $('keyInput').value = ''; populateModelSelector(null, engine.getModel()); closeModal('modal'); break;
@@ -1170,6 +1291,29 @@ function loadMockSignals() {
   ui.renderSignals(mockSignals);
 }
 
+function mockScheduledBanner() {
+  const now = new Date();
+  const mockScan = {
+    id: 'mock-scheduled-1',
+    created_at: new Date(now.getTime() + 1000).toISOString(), // slightly in the future so it's "newer"
+    range_label: 'Today (scheduled)',
+    range_days: 1,
+    scheduled: true,
+    accounts: ['CryptoCapo_', 'unusual_whales', 'zaborowskigz', 'DefiIgnas', 'gaborGurbacs', 'lookonchain'],
+    total_tweets: 42,
+    signal_count: 5,
+    signals: [
+      { title: 'BTC breaks above $100k resistance', summary: 'Bitcoin surged past $100,000.', category: 'Trade', source: 'CryptoCapo_', tickers: [{ symbol: '$BTC', action: 'buy' }], tweet_url: 'https://x.com/CryptoCapo_/status/1234567890', links: [], tweet_time: new Date(now.getTime() - 15 * 60000).toISOString() },
+      { title: 'NVIDIA announces next-gen AI chip', summary: 'NVIDIA unveiled Blackwell Ultra at GTC.', category: 'Trade', source: 'unusual_whales', tickers: [{ symbol: '$NVDA', action: 'buy' }], tweet_url: 'https://x.com/unusual_whales/status/1234567891', links: [], tweet_time: new Date(now.getTime() - 45 * 60000).toISOString() },
+      { title: 'Fed signals potential rate cut', summary: 'FOMC minutes reveal consensus for easing.', category: 'Insight', source: 'zaborowskigz', tickers: [{ symbol: '$SPY', action: 'watch' }], tweet_url: 'https://x.com/zaborowskigz/status/1234567892', links: [], tweet_time: new Date(now.getTime() - 2 * 3600000).toISOString() },
+      { title: 'Solana DeFi TVL hits new ATH', summary: 'TVL in Solana DeFi surpassed $20B.', category: 'Insight', source: 'DefiIgnas', tickers: [{ symbol: '$SOL', action: 'buy' }], tweet_url: 'https://x.com/DefiIgnas/status/1234567893', links: [], tweet_time: new Date(now.getTime() - 5 * 3600000).toISOString() },
+      { title: 'TSLA earnings beat expectations', summary: 'Tesla Q4 earnings above consensus.', category: 'Trade', source: 'gaborGurbacs', tickers: [{ symbol: '$TSLA', action: 'buy' }], tweet_url: 'https://x.com/gaborGurbacs/status/1234567897', links: [], tweet_time: new Date(now.getTime() - 30 * 60000).toISOString() },
+    ],
+    tweet_meta: {},
+  };
+  renderScheduledBanner(mockScan);
+}
+
 function initDevToolbar() {
   if (!IS_DEV) return;
   ui.renderDevToolbar();
@@ -1219,6 +1363,7 @@ function initDevToolbar() {
       return;
     }
     if (e.target.id === 'devMockSignals') { loadMockSignals(); return; }
+    if (e.target.id === 'devMockScheduledBanner') { mockScheduledBanner(); return; }
     if (e.target.id === 'devCollapse') { ui.collapseDevToolbar(); return; }
   });
 }

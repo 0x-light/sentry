@@ -233,6 +233,11 @@ body.modal-open { overflow: hidden; }
   font-size: var(--fs); font-family: inherit; cursor: pointer; line-height: 1;
 }
 .dismiss-btn:hover { color: var(--text-strong); }
+.notice.scheduled-scan-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  color: var(--green); background: var(--green-10); cursor: pointer;
+}
+.notice.scheduled-scan-banner:hover { opacity: 0.9; }
 
 .tweet-count { padding: 10px; font-size: var(--fs); color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .tweet-count:empty { display: none; }

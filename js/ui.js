@@ -935,6 +935,7 @@ export function renderDevToolbar() {
   // Mock data
   h += `<span style="color:#71717a">Data:</span>`;
   h += `<button id="devMockSignals" style="padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;border:none;cursor:pointer;background:#27272a;color:#fbbf24">Mock signals</button>`;
+  h += `<button id="devMockScheduledBanner" style="padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;border:none;cursor:pointer;background:#27272a;color:#4ade80">Mock scheduled</button>`;
 
   h += `<span style="width:1px;height:16px;background:#3f3f46"></span>`;
 
