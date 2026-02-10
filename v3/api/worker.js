@@ -104,6 +104,20 @@ export default {
     ctx.waitUntil(runDueScheduledScans(env, ctx));
   },
 
+  // ── Queue consumer: processes scan chunks in parallel ──────────────────
+  // Each message gets its own fresh 1000 subrequest budget
+  async queue(batch, env, ctx) {
+    for (const msg of batch.messages) {
+      try {
+        await handleQueueMessage(msg.body, env, ctx);
+        msg.ack();
+      } catch (e) {
+        console.error('[queue] Message failed:', e.message, e.stack);
+        msg.retry();
+      }
+    }
+  },
+
   async fetch(request, env, ctx) {
     // Resolve CORS origin: reflect request origin if it's in our allow-list
     const reqOrigin = request.headers.get('Origin') || '';
@@ -496,8 +510,421 @@ function djb2Hash(str) {
   return (h >>> 0).toString(16);
 }
 
+// ============================================================================
+// QUEUE-BASED SCHEDULED SCANS
+// ============================================================================
+// Each queue message gets its own fresh 1000-subrequest budget, allowing
+// scans to handle any number of accounts by splitting work into chunks.
+
+const QUEUE_CHUNK_SIZE = 30; // accounts per fetch-chunk message
+
 /**
- * Run a single scheduled scan server-side.
+ * Route incoming queue messages to the appropriate handler.
+ */
+async function handleQueueMessage(body, env, ctx) {
+  switch (body.type) {
+    case 'fetch-chunk':
+      return handleFetchChunkMessage(body, env, ctx);
+    case 'analyze':
+      return handleAnalyzeMessage(body, env, ctx);
+    default:
+      console.error(`[queue] Unknown message type: ${body.type}`);
+  }
+}
+
+/**
+ * Queue handler: Fetch tweets for a chunk of ~30 accounts.
+ * Each invocation gets a fresh 1000-subrequest budget.
+ */
+async function handleFetchChunkMessage({ scanId, chunkIndex, accounts, days }, env, ctx) {
+  const log = (msg) => console.log(`[queue:fetch-chunk:${scanId.slice(0, 8)}:${chunkIndex}] ${msg}`);
+  log(`Fetching ${accounts.length} accounts (days=${days})`);
+
+  // Verify scan is still active
+  const metaKey = `scan:${scanId}:meta`;
+  const meta = await env.TWEET_CACHE.get(metaKey, 'json');
+  if (!meta) {
+    log('Scan meta not found — scan may have been cancelled');
+    return;
+  }
+
+  // Fetch tweets with generous budget (this message has its own 1000 limit)
+  const budget = { used: 3, limit: 900 };
+  const accountData = [];
+  const failedAccounts = [];
+  const CONCURRENCY = 5;
+
+  for (let i = 0; i < accounts.length; i += CONCURRENCY) {
+    const remaining = budget.limit - budget.used;
+    if (remaining < CONCURRENCY * 2) {
+      log(`Budget low (${remaining} left) — stopping at ${i}/${accounts.length}`);
+      break;
+    }
+    const chunk = accounts.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map(async (account) => {
+        const tweets = await fetchTweetsLean(account, days, env, budget);
+        return { account, tweets: tweets || [] };
+      })
+    );
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === 'fulfilled') {
+        accountData.push(results[j].value);
+      } else {
+        failedAccounts.push(chunk[j]);
+        accountData.push({ account: chunk[j], tweets: [] });
+      }
+    }
+  }
+
+  const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
+  log(`Done: ${totalTweets} tweets from ${accountData.filter(a => a.tweets.length).length}/${accounts.length} accounts (${budget.used} subreqs)`);
+
+  // Store chunk results in KV (expires in 1 hour)
+  const chunkKey = `scan:${scanId}:chunk:${chunkIndex}`;
+  await env.TWEET_CACHE.put(chunkKey, JSON.stringify({
+    accountData,
+    failedAccounts,
+    totalTweets,
+  }), { expirationTtl: 3600 });
+
+  // Increment completed chunks counter in meta
+  // KV doesn't have atomic increments, so read-modify-write
+  const freshMeta = await env.TWEET_CACHE.get(metaKey, 'json');
+  if (freshMeta) {
+    freshMeta.completedChunks = (freshMeta.completedChunks || 0) + 1;
+    await env.TWEET_CACHE.put(metaKey, JSON.stringify(freshMeta), { expirationTtl: 3600 });
+    log(`Chunk complete (${freshMeta.completedChunks}/${freshMeta.totalChunks})`);
+  }
+}
+
+/**
+ * Queue handler: Once all fetch-chunks are done, analyze tweets and save results.
+ * Re-queues itself with delay if chunks aren't ready yet.
+ */
+async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
+  const log = (msg) => console.log(`[queue:analyze:${scanId.slice(0, 8)}] ${msg}`);
+  attempt = attempt || 1;
+  log(`Attempt ${attempt}`);
+
+  const metaKey = `scan:${scanId}:meta`;
+  const meta = await env.TWEET_CACHE.get(metaKey, 'json');
+  if (!meta) {
+    log('Scan meta not found — scan may have been cancelled or expired');
+    return;
+  }
+
+  const { totalChunks, completedChunks, scheduleId, userId, accounts, days,
+          model, prompt, promptHash, creditsNeeded, label } = meta;
+
+  // Check if all chunks are done
+  if ((completedChunks || 0) < totalChunks) {
+    if (attempt >= 20) {
+      log(`Giving up after ${attempt} attempts (${completedChunks}/${totalChunks} chunks complete)`);
+      await supabaseQuery(env, `scheduled_scans?id=eq.${scheduleId}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: `Timed out waiting for tweet fetching (${completedChunks}/${totalChunks} chunks)` },
+      });
+      await cleanupScanKV(env, scanId, totalChunks);
+      return;
+    }
+    log(`Waiting for chunks: ${completedChunks || 0}/${totalChunks} complete — re-queuing (attempt ${attempt})`);
+    await env.SCAN_QUEUE.send(
+      { type: 'analyze', scanId, attempt: attempt + 1 },
+      { delaySeconds: 15 }
+    );
+    return;
+  }
+
+  log(`All ${totalChunks} chunks complete — reading results`);
+
+  // Read all chunk data from KV
+  const allAccountData = [];
+  const allFailedAccounts = [];
+  let totalTweets = 0;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkKey = `scan:${scanId}:chunk:${i}`;
+    const chunkData = await env.TWEET_CACHE.get(chunkKey, 'json');
+    if (chunkData) {
+      allAccountData.push(...chunkData.accountData);
+      allFailedAccounts.push(...chunkData.failedAccounts);
+      totalTweets += chunkData.totalTweets;
+    } else {
+      log(`Warning: chunk ${i} data missing from KV`);
+    }
+  }
+
+  log(`Merged: ${totalTweets} tweets from ${allAccountData.filter(a => a.tweets.length > 0).length}/${accounts.length} accounts`);
+
+  if (totalTweets === 0) {
+    const detail = allFailedAccounts.length
+      ? `No tweets (${allFailedAccounts.length}/${accounts.length} accounts failed)`
+      : `No tweets found for ${accounts.length} accounts in the last ${days === 1 ? 'day' : days + ' days'}`;
+    await supabaseQuery(env, `scheduled_scans?id=eq.${scheduleId}`, {
+      method: 'PATCH',
+      body: { last_run_status: 'error', last_run_message: detail },
+    });
+    await cleanupScanKV(env, scanId, totalChunks);
+    return;
+  }
+
+  // Call Anthropic API — this message has its own fresh subrequest budget
+  let newSignals = [];
+  let batchesFailed = 0;
+  let batchesTotal = 0;
+  const resolvedModel = normalizeModelId(model) || model;
+
+  if (allAccountData.some(a => a.tweets.length > 0)) {
+    const batches = buildAnalysisBatches(allAccountData, prompt.length || 0);
+    batchesTotal = batches.length;
+    log(`Analyzing ${totalTweets} tweets in ${batchesTotal} batch${batchesTotal !== 1 ? 'es' : ''}`);
+
+    if (!env.ANTHROPIC_API_KEY) {
+      throw new Error('Anthropic API key not configured');
+    }
+
+    let batchIdx = 0;
+    for (const batch of batches) {
+      batchIdx++;
+      try {
+        log(`Batch ${batchIdx}/${batchesTotal} (${batch.accounts.length} accounts, ~${(batch.text.length / 1000).toFixed(0)}KB)`);
+
+        const anthropicBody = {
+          model: resolvedModel,
+          max_tokens: 16384,
+          system: [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: batch.text }],
+        };
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(anthropicBody),
+          signal: AbortSignal.timeout(120_000),
+        });
+
+        if (res.status === 429) throw new Error('Anthropic rate limited');
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message || `Anthropic error (${res.status})`);
+
+        if (data?.content) {
+          const text = extractText(data.content);
+          const batchSignals = safeParseSignals(text);
+          newSignals.push(...batchSignals);
+        }
+      } catch (e) {
+        batchesFailed++;
+        console.error(`[queue:analyze:${scanId.slice(0, 8)}] Batch ${batchIdx} failed:`, e.message);
+      }
+    }
+  }
+
+  // Dedup signals
+  const seen = new Set();
+  const dedupedSignals = newSignals.filter(s => {
+    const key = `${s.tweet_url || ''}::${s.title || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (dedupedSignals.length === 0 && batchesFailed > 0) {
+    await supabaseQuery(env, `scheduled_scans?id=eq.${scheduleId}`, {
+      method: 'PATCH',
+      body: { last_run_status: 'error', last_run_message: `Analysis failed (${batchesFailed}/${batchesTotal} batches failed)` },
+    });
+    await cleanupScanKV(env, scanId, totalChunks);
+    throw new Error(`Analysis failed (${batchesFailed}/${batchesTotal} batches failed)`);
+  }
+
+  // Save scan to DB + deduct credits
+  await saveScanToDb(env, ctx, userId, {
+    accounts, days, model, promptHash, creditsNeeded,
+    signals: dedupedSignals, totalTweets, label,
+  });
+
+  // Update schedule status
+  const parts = [`${dedupedSignals.length} signals from ${totalTweets} tweets`];
+  if (batchesFailed) parts.push(`(${batchesFailed} batch${batchesFailed > 1 ? 'es' : ''} failed)`);
+  if (allFailedAccounts.length) parts.push(`(${allFailedAccounts.length} unreachable)`);
+  await supabaseQuery(env, `scheduled_scans?id=eq.${scheduleId}`, {
+    method: 'PATCH',
+    body: { last_run_status: 'success', last_run_message: parts.join(' ') },
+  });
+
+  log(`Complete: ${parts[0]}`);
+
+  // Cleanup KV
+  await cleanupScanKV(env, scanId, totalChunks);
+}
+
+/**
+ * Clean up temporary KV keys for a completed/failed scan.
+ */
+async function cleanupScanKV(env, scanId, totalChunks) {
+  try {
+    const deletes = [`scan:${scanId}:meta`];
+    for (let i = 0; i < totalChunks; i++) {
+      deletes.push(`scan:${scanId}:chunk:${i}`);
+    }
+    // KV deletes are fire-and-forget (best effort)
+    await Promise.allSettled(deletes.map(k => env.TWEET_CACHE.delete(k)));
+  } catch (e) {
+    console.warn(`[cleanup] Failed to clean KV for scan ${scanId}:`, e.message);
+  }
+}
+
+/**
+ * Dispatch a scheduled scan via queue — splits accounts into chunks.
+ * Called from cron handler when SCAN_QUEUE is available.
+ */
+async function dispatchScheduledScanViaQueue(env, ctx, schedule) {
+  const sid = schedule.id;
+  const userId = schedule.user_id;
+  const log = (msg) => console.log(`[cron:dispatch:${sid.slice(0, 8)}] ${msg}`);
+
+  // Mark as running
+  await supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+    method: 'PATCH',
+    body: { last_run_status: 'running', last_run_at: new Date().toISOString() },
+  });
+
+  try {
+    // 1. Resolve accounts (same logic as executeScheduledScanInner)
+    let accounts = Array.isArray(schedule.accounts) ? [...schedule.accounts] : [];
+    let accountSource = 'schedule';
+
+    if (schedule.preset_id && !accounts.length) {
+      try {
+        const rows = await supabaseQuery(env, `presets?id=eq.${schedule.preset_id}&user_id=eq.${userId}&select=accounts`);
+        if (rows?.[0]?.accounts?.length) { accounts = rows[0].accounts; accountSource = 'preset'; }
+      } catch (e) { log(`Preset lookup failed: ${e.message}`); }
+    }
+
+    if (!accounts.length) {
+      try {
+        const userPresets = await supabaseQuery(env, `presets?user_id=eq.${userId}&select=accounts&order=updated_at.desc&limit=5`);
+        if (userPresets?.length) {
+          const all = new Set();
+          userPresets.forEach(p => (p.accounts || []).forEach(a => all.add(a)));
+          accounts = [...all];
+          accountSource = 'user_presets';
+        }
+      } catch (e) { log(`User presets lookup failed: ${e.message}`); }
+    }
+
+    if (!accounts.length) {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: 'No accounts — add lists/accounts to this schedule' },
+      });
+      return;
+    }
+
+    log(`${accounts.length} accounts (from ${accountSource})`);
+
+    // 2. Get analyst prompt + model
+    let prompt = DEFAULT_ANALYST_PROMPT;
+    let model = 'claude-sonnet-4-20250514';
+    try {
+      const [analysts, settings] = await Promise.all([
+        supabaseQuery(env, `analysts?user_id=eq.${userId}&is_active=eq.true&select=prompt&limit=1`),
+        supabaseQuery(env, `user_settings?user_id=eq.${userId}&select=model`),
+      ]);
+      if (analysts?.[0]?.prompt) prompt = analysts[0].prompt;
+      if (settings?.[0]?.model) model = settings[0].model;
+    } catch { /* use defaults */ }
+
+    // 3. Check credits
+    const days = Math.max(1, Math.min(30, schedule.range_days || 1));
+    const creditsNeeded = calculateScanCredits(accounts.length, days, model);
+    const profile = await getProfile(env, userId);
+
+    if (!profile || profile.credits_balance < creditsNeeded) {
+      await supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+        method: 'PATCH',
+        body: { last_run_status: 'error', last_run_message: `Insufficient credits (need ${creditsNeeded}, have ${profile?.credits_balance || 0})` },
+      });
+      return;
+    }
+
+    // 4. Check cross-user scan cache
+    const promptHash = djb2Hash(`${model}\n${prompt}`);
+    const scanKey = hashScanKey(accounts, days, promptHash);
+    if (env.TWEET_CACHE) {
+      try {
+        const cached = await env.TWEET_CACHE.get(scanKey, 'json');
+        if (cached?.signals?.length) {
+          await saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals: cached.signals, totalTweets: cached.total_tweets || 0, label: schedule.label });
+          await supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+            method: 'PATCH',
+            body: { last_run_status: 'success', last_run_message: `${cached.signals.length} signals (cached)` },
+          });
+          log('Served from scan cache');
+          return;
+        }
+      } catch (e) { log(`Scan cache check failed: ${e.message}`); }
+    }
+
+    // 5. Generate scan ID and split into chunks
+    const scanId = crypto.randomUUID();
+    const chunks = [];
+    for (let i = 0; i < accounts.length; i += QUEUE_CHUNK_SIZE) {
+      chunks.push(accounts.slice(i, i + QUEUE_CHUNK_SIZE));
+    }
+
+    // 6. Store scan metadata in KV
+    const metaKey = `scan:${scanId}:meta`;
+    await env.TWEET_CACHE.put(metaKey, JSON.stringify({
+      totalChunks: chunks.length,
+      completedChunks: 0,
+      scheduleId: sid,
+      userId,
+      accounts,
+      days,
+      model,
+      prompt,
+      promptHash,
+      creditsNeeded,
+      label: schedule.label,
+    }), { expirationTtl: 3600 });
+
+    // 7. Send fetch-chunk messages (processed in parallel by queue)
+    const messages = chunks.map((chunkAccounts, idx) => ({
+      body: { type: 'fetch-chunk', scanId, chunkIndex: idx, accounts: chunkAccounts, days },
+    }));
+
+    // Queue.sendBatch supports up to 100 messages per call
+    for (let i = 0; i < messages.length; i += 100) {
+      await env.SCAN_QUEUE.sendBatch(messages.slice(i, i + 100));
+    }
+
+    // 8. Send analyze message with delay (gives fetch-chunks time to complete)
+    const delaySeconds = Math.min(60, Math.max(15, chunks.length * 5));
+    await env.SCAN_QUEUE.send(
+      { type: 'analyze', scanId, attempt: 1 },
+      { delaySeconds }
+    );
+
+    log(`Dispatched: ${chunks.length} fetch-chunks + 1 analyze (delay=${delaySeconds}s) for ${accounts.length} accounts`);
+
+  } catch (e) {
+    console.error(`[cron:dispatch:${sid.slice(0, 8)}] Failed:`, e.message, e.stack);
+    await supabaseQuery(env, `scheduled_scans?id=eq.${sid}`, {
+      method: 'PATCH',
+      body: { last_run_status: 'error', last_run_message: e.message?.slice(0, 200) || 'Dispatch failed' },
+    });
+  }
+}
+
+/**
+ * Run a single scheduled scan server-side (LEGACY — inline execution).
+ * Used as fallback when SCAN_QUEUE is not configured.
  * Optimized to stay under the 1000 subrequest limit per Worker invocation.
  */
 async function executeScheduledScan(env, ctx, schedule) {
@@ -546,14 +973,11 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     }).catch(e => console.error(`[sched:${sid.slice(0, 8)}] Failed to set status:`, e.message));
 
   // ── SUBREQUEST BUDGET ──────────────────────────────────────────────────
-  // Cloudflare Workers limit: 1000 subrequests per invocation.
-  // EVERYTHING counts: KV reads/writes, Supabase fetch(), Twitter API, Anthropic API.
-  // We track usage and stop fetching before hitting the limit.
-  const SUBREQ_LIMIT = 950; // leave 50 margin for error handling / status updates
-  const RESERVED_FOR_POST_FETCH = 30; // analysis (2-4) + save (3) + cache writes + status + margin
-  // Shared mutable budget object — passed by reference to fetchTweetsLean
-  // limit = SUBREQ_LIMIT minus reserved for post-fetch (analysis, save, status update)
-  const budget = { used: 5, limit: SUBREQ_LIMIT - RESERVED_FOR_POST_FETCH }; // start at ~5 (cron already used some)
+  // Cloudflare Workers limit: 1000 per invocation. Everything counts: KV, Supabase, Twitter, Anthropic.
+  // Cloudflare counts more internally than we track (TLS, chunked reads, etc).
+  // The Anthropic API call alone can use 200-400+ internal subrequests.
+  // So we cap fetching at ~500 to leave plenty of room for analysis + save.
+  const budget = { used: 5, limit: 500 };
 
   // 1. Resolve accounts — schedule > preset > user's presets
   let accounts = Array.isArray(schedule.accounts) ? [...schedule.accounts] : [];
@@ -641,14 +1065,11 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
   const failedAccounts = [];
   const skippedAccounts = [];
   const fetchStart = Date.now();
-  // Budget for fetch phase: total limit minus what we've used minus reserved for post-fetch
-  const fetchBudgetLimit = SUBREQ_LIMIT - RESERVED_FOR_POST_FETCH;
-
-  log(`Fetch budget: ~${fetchBudgetLimit - budget.used} subrequests (used ${budget.used} so far)`);
+  log(`Fetch budget: ~${budget.limit - budget.used} subrequests (used ${budget.used} so far)`);
 
   for (let i = 0; i < accounts.length; i += CONCURRENCY) {
     // Check if we still have budget for fetching
-    const remaining = fetchBudgetLimit - budget.used;
+    const remaining = budget.limit - budget.used;
     if (remaining < CONCURRENCY * 2) {
       const skipped = accounts.slice(i);
       skippedAccounts.push(...skipped);
@@ -712,7 +1133,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     for (const batch of batches) {
       batchIdx++;
       // Budget check before each Anthropic call
-      if (budget.used >= SUBREQ_LIMIT - 10) {
+      if (budget.used >= 940) {
         log(`Budget exhausted before batch ${batchIdx} — stopping analysis`);
         batchesFailed += (batchesTotal - batchIdx + 1);
         break;
@@ -912,7 +1333,6 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
     signal_count: signals.length,
     signals: signals,
     tweet_meta: tweetMeta,
-    credits_used: creditsNeeded,
     scheduled: true,
   };
   await supabaseQuery(env, 'scans', { method: 'POST', body: scanData });
@@ -980,9 +1400,17 @@ async function runDueScheduledScans(env, ctx) {
     console.log(`[cron] Found ${dueSchedules.length} due scheduled scan(s):`,
       dueSchedules.map(s => `${s.label}@${s.time} (tz=${s.timezone}, accounts=${(s.accounts||[]).length})`).join(', '));
 
-    // Execute one scan at a time (to stay within subrequest budget)
-    for (const schedule of dueSchedules) {
-      await executeScheduledScan(env, ctx, schedule);
+    // Dispatch scans — use queue if available, otherwise fall back to inline
+    if (env.SCAN_QUEUE) {
+      console.log(`[cron] Using queue dispatch for ${dueSchedules.length} scan(s)`);
+      for (const schedule of dueSchedules) {
+        await dispatchScheduledScanViaQueue(env, ctx, schedule);
+      }
+    } else {
+      // Legacy: execute inline (limited by 1000 subrequest budget)
+      for (const schedule of dueSchedules) {
+        await executeScheduledScan(env, ctx, schedule);
+      }
     }
   } catch (e) {
     console.error('runDueScheduledScans error:', e.message, e.stack);

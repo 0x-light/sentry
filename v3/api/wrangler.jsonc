@@ -20,6 +20,20 @@
 	"observability": {
 		"enabled": true
 	},
+	// Queue for splitting scheduled scans into parallel chunks
+	// Each queue message gets its own fresh 1000-subrequest budget
+	"queues": {
+		"producers": [
+			{ "binding": "SCAN_QUEUE", "queue": "sentry-scan-tasks" }
+		],
+		"consumers": [
+			{
+				"queue": "sentry-scan-tasks",
+				"max_batch_size": 1,
+				"max_retries": 2
+			}
+		]
+	},
 	// Cron trigger: check for due scheduled scans every minute
 	"triggers": {
 		"crons": ["* * * * *"]
