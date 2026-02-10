@@ -501,7 +501,7 @@ function djb2Hash(str) {
  */
 async function executeScheduledScan(env, ctx, schedule) {
   const userId = schedule.user_id;
-  const SCAN_TIMEOUT_MS = 4 * 60_000; // 4 minute hard timeout
+  const SCAN_TIMEOUT_MS = 8 * 60_000; // 8 minute hard timeout (large account lists need time)
 
   // Mark as running
   await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
@@ -512,19 +512,26 @@ async function executeScheduledScan(env, ctx, schedule) {
   // Wrap entire scan in a timeout so we always update status
   const scanPromise = executeScheduledScanInner(env, ctx, schedule, userId);
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Scan timed out after 4 minutes')), SCAN_TIMEOUT_MS)
+    setTimeout(() => reject(new Error('Scan timed out')), SCAN_TIMEOUT_MS)
   );
 
   try {
     await Promise.race([scanPromise, timeoutPromise]);
   } catch (e) {
     console.error(`Scheduled scan failed for schedule ${schedule.id}:`, e.message, e.stack);
-    try {
-      await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
-        method: 'PATCH',
-        body: { last_run_status: 'error', last_run_message: e.message?.slice(0, 200) || 'Unknown error' },
-      });
-    } catch { /* best effort */ }
+    // Retry status update up to 3 times — critical that we don't leave status as 'running'
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await supabaseQuery(env, `scheduled_scans?id=eq.${schedule.id}`, {
+          method: 'PATCH',
+          body: { last_run_status: 'error', last_run_message: e.message?.slice(0, 200) || 'Unknown error' },
+        });
+        break;
+      } catch (statusErr) {
+        console.warn(`[sched:${schedule.id.slice(0,8)}] Status update attempt ${attempt + 1} failed:`, statusErr.message);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
   }
 }
 
@@ -608,14 +615,19 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
   }
 
   // 6. Fetch tweets (concurrency-limited, with error tracking)
-  const CONCURRENCY = 3; // conservative to avoid rate limits
+  const CONCURRENCY = 10; // higher concurrency — most calls hit KV cache
+  const PER_ACCOUNT_TIMEOUT = 30_000; // 30s max per account fetch
   const accountData = [];
   const failedAccounts = [];
   for (let i = 0; i < accounts.length; i += CONCURRENCY) {
     const chunk = accounts.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
       chunk.map(async (account) => {
-        const { tweets } = await fetchTweetsCoalesced(account, days, env, ctx);
+        const fetchPromise = fetchTweetsCoalesced(account, days, env, ctx);
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Account fetch timed out')), PER_ACCOUNT_TIMEOUT)
+        );
+        const { tweets } = await Promise.race([fetchPromise, timeout]);
         return { account, tweets: tweets || [] };
       })
     );
@@ -831,6 +843,7 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
     signals: signals,
     tweet_meta: tweetMeta,
     credits_used: creditsNeeded,
+    scheduled: true,
   };
   await supabaseQuery(env, 'scans', { method: 'POST', body: scanData });
 
@@ -860,10 +873,10 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
  */
 async function runDueScheduledScans(env, ctx) {
   try {
-    // Reset stale "running" scans (stuck for > 5 min = worker timed out/crashed)
+    // Reset stale "running" scans (stuck for > 10 min = worker timed out/crashed)
     // Only reset if last_run_at is old — avoids race with scans that just completed
     try {
-      const staleThreshold = new Date(Date.now() - 5 * 60_000).toISOString();
+      const staleThreshold = new Date(Date.now() - 10 * 60_000).toISOString();
       const stale = await supabaseQuery(env,
         `scheduled_scans?last_run_status=eq.running&last_run_at=lt.${staleThreshold}&select=id,label`
       );

@@ -1424,9 +1424,7 @@ export function formatScheduleTime(time) {
   if (!time) return '';
   const [h, m] = time.split(':').map(Number);
   if (isNaN(h) || isNaN(m)) return time;
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return m === 0 ? `${String(h).padStart(2, '0')}h` : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 export function getNextScheduleTime(schedules) {

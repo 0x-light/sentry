@@ -445,7 +445,7 @@ async function loadSchedules() {
   state.schedulesLoading = true;
   try {
     const data = await api.getSchedules();
-    const STALE_MS = 5 * 60000;
+    const STALE_MS = 10 * 60000;
     const now = Date.now();
     state.schedules = (data || []).map(s => {
       if (s.last_run_status === 'running' && s.last_run_at) {
@@ -490,13 +490,14 @@ function startSchedulePolling() {
       const hasRunning = state.schedules.some(s => s.last_run_status === 'running');
 
       if (hasActive || hasRunning) {
-        const wasRunning = hasRunning;
         await loadSchedules();
         const nowRunning = state.schedules.some(s => s.last_run_status === 'running');
 
-        // Scheduled scan just finished — show banner instead of auto-loading
-        if (wasRunning && !nowRunning) {
-          showScheduledScanBanner();
+        // Every tick: check if a new scan exists that we haven't shown yet.
+        // This catches all cases: fast scans that start+finish between ticks,
+        // normal running→done transitions, and scans we missed entirely.
+        if (!nowRunning && !state._pendingScheduledScan) {
+          await checkForNewScheduledScan();
         }
 
         ui.renderTopbar();
@@ -521,24 +522,31 @@ function startSchedulePolling() {
       updateNextScheduleLabel();
       loadSchedules().then(() => {
         ui.renderTopbar();
-        // On tab re-focus: show banner if a new scheduled scan is available
-        checkForNewScheduledScan();
+        if (!state._pendingScheduledScan) checkForNewScheduledScan();
       });
     }
   };
   document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
-// Check if the latest server scan is a newer scheduled scan than what we're showing
+// Check if the latest server scan is a newer scheduled scan than what we're showing.
+// Uses schedule last_run_at as a cheap check before fetching full scan data.
 async function checkForNewScheduledScan() {
   try {
+    // Quick check: did any schedule finish more recently than our current view?
+    const localDate = state.lastScanResult ? new Date(state.lastScanResult.date).getTime() : 0;
+    const hasNewerRun = state.schedules.some(s =>
+      s.last_run_at && s.last_run_status !== 'running' &&
+      new Date(s.last_run_at).getTime() > localDate
+    );
+    if (!hasNewerRun) return;
+
     const serverScans = await api.getScans();
     if (!Array.isArray(serverScans) || !serverScans.length) return;
     const latest = serverScans[0];
     if (!latest) return;
     const isScheduled = !!latest.scheduled || (latest.range_label || '').includes('scheduled');
     const serverDate = new Date(latest.created_at).getTime();
-    const localDate = state.lastScanResult ? new Date(state.lastScanResult.date).getTime() : 0;
     if (serverDate > localDate) {
       if (isScheduled) {
         showScheduledScanBanner(latest);

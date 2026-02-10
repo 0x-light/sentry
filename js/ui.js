@@ -158,8 +158,8 @@ export function renderTickers(signals) {
     const cached = engine.priceCache[sym];
     const priceStr = (showPrice && cached) ? engine.priceHtml(cached) : '';
     const isActive = activeTicker === t.s;
-    const activeStyle = isActive ? ';outline:1px solid currentColor;outline-offset:1px' : '';
-    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${activeStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${priceStr}</button>`;
+    const dimStyle = (activeTicker && !isActive) ? ';opacity:0.3' : '';
+    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${dimStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${priceStr}</button>`;
   }).join('');
   if (activeTicker) {
     el.innerHTML += `<button class="clear-btn" data-clear-ticker-filter>×</button>`;
