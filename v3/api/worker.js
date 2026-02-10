@@ -35,6 +35,33 @@
 const inflight = new Map();
 
 // ---------------------------------------------------------------------------
+// KV-BASED RATE LIMITER
+// Uses TWEET_CACHE KV (with short TTL) to track request counts per key.
+// Returns { ok, remaining, retryAfter } where ok=false means rate-limited.
+// ---------------------------------------------------------------------------
+async function checkRateLimit(env, key, maxRequests, windowSecs) {
+  if (!env.TWEET_CACHE) return { ok: true, remaining: maxRequests };
+  const kvKey = `rl:${key}`;
+  try {
+    const existing = await env.TWEET_CACHE.get(kvKey, 'json');
+    const now = Date.now();
+    if (existing && (now - existing.ts) < windowSecs * 1000) {
+      if (existing.count >= maxRequests) {
+        const retryAfter = Math.ceil((existing.ts + windowSecs * 1000 - now) / 1000);
+        return { ok: false, remaining: 0, retryAfter };
+      }
+      await env.TWEET_CACHE.put(kvKey, JSON.stringify({ ts: existing.ts, count: existing.count + 1 }), { expirationTtl: windowSecs });
+      return { ok: true, remaining: maxRequests - existing.count - 1 };
+    }
+    // New window
+    await env.TWEET_CACHE.put(kvKey, JSON.stringify({ ts: now, count: 1 }), { expirationTtl: windowSecs });
+    return { ok: true, remaining: maxRequests - 1 };
+  } catch {
+    return { ok: true, remaining: maxRequests }; // fail open
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ANTHROPIC MODELS CACHE (per isolate)
 // ---------------------------------------------------------------------------
 // We occasionally see model IDs change/deprecate. Use the Models API to
@@ -121,7 +148,7 @@ export default {
   async fetch(request, env, ctx) {
     // Resolve CORS origin: reflect request origin if it's in our allow-list
     const reqOrigin = request.headers.get('Origin') || '';
-    if (ALLOWED_ORIGINS.has(reqOrigin)) {
+    if (getAllowedOrigins(env).has(reqOrigin)) {
       env._cors_origin = reqOrigin;
     }
 
@@ -162,6 +189,12 @@ export default {
       const user = await authenticate(request, env);
       if (!user) {
         return corsJson({ error: 'Unauthorized' }, 401, env);
+      }
+
+      // Per-user rate limit: 120 requests per minute (generous but prevents abuse)
+      const userRl = await checkRateLimit(env, `user:${user.id}`, 120, 60);
+      if (!userRl.ok) {
+        return corsJson({ error: 'Too many requests. Please slow down.', code: 'RATE_LIMITED' }, 429, env);
       }
 
       // Tweet fetching
@@ -260,8 +293,12 @@ export default {
       return corsJson({ error: 'Not found' }, 404, env);
 
     } catch (e) {
-      console.error('Unhandled error:', e.message, e.stack);
-      return corsJson({ error: 'Internal server error' }, 500, env);
+      const status = e.status || 500;
+      if (status >= 500) {
+        console.error('Unhandled error:', e.message, e.stack);
+        return corsJson({ error: 'Internal server error' }, status, env);
+      }
+      return corsJson({ error: e.message || 'Request failed' }, status, env);
     }
   },
 };
@@ -580,22 +617,15 @@ async function handleFetchChunkMessage({ scanId, chunkIndex, accounts, days }, e
   const totalTweets = accountData.reduce((s, a) => s + a.tweets.length, 0);
   log(`Done: ${totalTweets} tweets from ${accountData.filter(a => a.tweets.length).length}/${accounts.length} accounts (${budget.used} subreqs)`);
 
-  // Store chunk results in KV (expires in 1 hour)
+  // Store chunk results in KV (expires in 2 hours)
   const chunkKey = `scan:${scanId}:chunk:${chunkIndex}`;
   await env.TWEET_CACHE.put(chunkKey, JSON.stringify({
     accountData,
     failedAccounts,
     totalTweets,
-  }), { expirationTtl: 3600 });
+  }), { expirationTtl: 7200 });
 
-  // Increment completed chunks counter in meta
-  // KV doesn't have atomic increments, so read-modify-write
-  const freshMeta = await env.TWEET_CACHE.get(metaKey, 'json');
-  if (freshMeta) {
-    freshMeta.completedChunks = (freshMeta.completedChunks || 0) + 1;
-    await env.TWEET_CACHE.put(metaKey, JSON.stringify(freshMeta), { expirationTtl: 3600 });
-    log(`Chunk complete (${freshMeta.completedChunks}/${freshMeta.totalChunks})`);
-  }
+  log(`Chunk ${chunkIndex} stored`);
 }
 
 /**
@@ -614,11 +644,17 @@ async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
     return;
   }
 
-  const { totalChunks, completedChunks, scheduleId, userId, accounts, days,
+  const { totalChunks, scheduleId, userId, accounts, days,
           model, prompt, promptHash, creditsNeeded, label } = meta;
 
-  // Check if all chunks are done
-  if ((completedChunks || 0) < totalChunks) {
+  // Check if all chunks are done by probing each chunk key (no counter race condition)
+  let completedChunks = 0;
+  for (let i = 0; i < totalChunks; i++) {
+    const exists = await env.TWEET_CACHE.get(`scan:${scanId}:chunk:${i}`, 'json');
+    if (exists) completedChunks++;
+  }
+
+  if (completedChunks < totalChunks) {
     if (attempt >= 20) {
       log(`Giving up after ${attempt} attempts (${completedChunks}/${totalChunks} chunks complete)`);
       await supabaseQuery(env, `scheduled_scans?id=eq.${scheduleId}`, {
@@ -628,7 +664,7 @@ async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
       await cleanupScanKV(env, scanId, totalChunks);
       return;
     }
-    log(`Waiting for chunks: ${completedChunks || 0}/${totalChunks} complete — re-queuing (attempt ${attempt})`);
+    log(`Waiting for chunks: ${completedChunks}/${totalChunks} complete — re-queuing (attempt ${attempt})`);
     await env.SCAN_QUEUE.send(
       { type: 'analyze', scanId, attempt: attempt + 1 },
       { delaySeconds: 15 }
@@ -742,10 +778,13 @@ async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
     throw new Error(`Analysis failed (${batchesFailed}/${batchesTotal} batches failed)`);
   }
 
+  // Enrich signals with tweet_time and expand t.co links
+  const enrichedSignals = enrichSignals(dedupedSignals, allAccountData);
+
   // Save scan to DB + deduct credits
   await saveScanToDb(env, ctx, userId, {
     accounts, days, model, promptHash, creditsNeeded,
-    signals: dedupedSignals, totalTweets, label,
+    signals: enrichedSignals, totalTweets, label,
   });
 
   // Update schedule status
@@ -761,6 +800,56 @@ async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
 
   // Cleanup KV
   await cleanupScanKV(env, scanId, totalChunks);
+}
+
+/**
+ * Enrich signals with tweet_time and expand t.co links.
+ * The frontend expects tweet_time for relative time display (e.g. "5m", "3h").
+ * Also resolves any t.co short links in the links array to full URLs.
+ */
+function enrichSignals(signals, accountData) {
+  // Build tweet_url → createdAt map
+  const tweetTimes = {};
+  // Build t.co → expanded URL map from tweet entities
+  const tcoMap = {};
+
+  for (const a of accountData) {
+    const author = a.account || '';
+    for (const tw of (a.tweets || [])) {
+      const tweetId = tw.id || '';
+      const tweetAuthor = tw.author?.userName || author;
+      const url = tweetId ? `https://x.com/${tweetAuthor}/status/${tweetId}` : '';
+      if (url && tw.createdAt) tweetTimes[url] = tw.createdAt;
+
+      // Collect t.co → expanded mappings from entities
+      if (Array.isArray(tw.entities?.urls)) {
+        for (const u of tw.entities.urls) {
+          if (u.url && u.expanded_url) {
+            tcoMap[u.url] = u.expanded_url;
+          }
+        }
+      }
+    }
+  }
+
+  return signals.map(s => {
+    const enriched = { ...s };
+
+    // Add tweet_time
+    if (s.tweet_url && tweetTimes[s.tweet_url]) {
+      enriched.tweet_time = tweetTimes[s.tweet_url];
+    }
+
+    // Expand t.co links in the links array
+    if (Array.isArray(s.links)) {
+      enriched.links = s.links.map(link => {
+        if (link.includes('t.co/')) return tcoMap[link] || link;
+        return link;
+      });
+    }
+
+    return enriched;
+  });
 }
 
 /**
@@ -892,7 +981,7 @@ async function dispatchScheduledScanViaQueue(env, ctx, schedule) {
       promptHash,
       creditsNeeded,
       label: schedule.label,
-    }), { expirationTtl: 3600 });
+    }), { expirationTtl: 7200 });
 
     // 7. Send fetch-chunk messages (processed in parallel by queue)
     const messages = chunks.map((chunkAccounts, idx) => ({
@@ -905,7 +994,7 @@ async function dispatchScheduledScanViaQueue(env, ctx, schedule) {
     }
 
     // 8. Send analyze message with delay (gives fetch-chunks time to complete)
-    const delaySeconds = Math.min(60, Math.max(15, chunks.length * 5));
+    const delaySeconds = Math.min(90, Math.max(20, chunks.length * 10));
     await env.SCAN_QUEUE.send(
       { type: 'analyze', scanId, attempt: 1 },
       { delaySeconds }
@@ -1191,10 +1280,13 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
     throw new Error(`Analysis failed (${batchesFailed}/${batchesTotal} batches failed)`);
   }
 
+  // Enrich signals with tweet_time and expand t.co links
+  const enrichedSignals = enrichSignals(dedupedSignals, accountData);
+
   budget.used += 3; // saveScanToDb: 1 Supabase POST + 1 RPC + 1 KV cache write
   await saveScanToDb(env, ctx, userId, {
     accounts, days, model, promptHash, creditsNeeded,
-    signals: dedupedSignals, totalTweets, label: schedule.label,
+    signals: enrichedSignals, totalTweets, label: schedule.label,
   });
 
   // ── 9. Success ─────────────────────────────────────────────────────────
@@ -1333,7 +1425,6 @@ async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHas
     signal_count: signals.length,
     signals: signals,
     tweet_meta: tweetMeta,
-    scheduled: true,
   };
   await supabaseQuery(env, 'scans', { method: 'POST', body: scanData });
 
@@ -1421,13 +1512,14 @@ async function runDueScheduledScans(env, ctx) {
 // HELPERS
 // ============================================================================
 
-// Allowed origins for CORS (production + local dev)
-const ALLOWED_ORIGINS = new Set([
-  'https://sentry.is',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:8888',
-]);
+// Allowed origins for CORS — localhost origins only in dev
+function getAllowedOrigins(env) {
+  const origins = ['https://sentry.is'];
+  if (env?.ENVIRONMENT !== 'production') {
+    origins.push('http://localhost:5173', 'http://localhost:5174', 'http://localhost:8888');
+  }
+  return new Set(origins);
+}
 
 function corsHeaders(env, originOverride) {
   const origin = originOverride || env?._cors_origin || env?.CORS_ORIGIN || '*';
@@ -1595,6 +1687,17 @@ async function authenticate(request, env) {
 // SUPABASE DB HELPERS
 // ============================================================================
 
+/**
+ * Safely parse request JSON body. Returns parsed object or throws a clean 400 error.
+ */
+async function safeJsonBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    throw Object.assign(new Error('Invalid JSON in request body'), { status: 400 });
+  }
+}
+
 async function supabaseQuery(env, path, options = {}) {
   const { method = 'GET', body, headers: extraHeaders = {}, token } = options;
   const headers = {
@@ -1613,7 +1716,7 @@ async function supabaseQuery(env, path, options = {}) {
   if (!res.ok) {
     const err = await res.text();
     console.error(`Supabase ${method} ${path} error:`, res.status, err);
-    throw new Error(`Database error: ${res.status}`);
+    throw new Error('Database error');
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
@@ -1633,7 +1736,7 @@ async function supabaseRpc(env, fn, args = {}) {
   if (!res.ok) {
     const err = await res.text();
     console.error(`Supabase RPC ${fn} error:`, res.status, err);
-    throw new Error(`RPC ${fn}: ${res.status} - ${err}`);
+    throw new Error('Database operation failed');
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
@@ -1647,15 +1750,17 @@ async function supabaseRpc(env, fn, args = {}) {
 
 // Tweet cache uses 4-hour buckets for better hit rates across users.
 // Stale-while-revalidate: return the previous bucket instantly + refresh in bg.
+// Bucket size is 4h but we use 8h intervals so boundary misses are halved.
 const TWEET_CACHE_HOURS = 4;
+const TWEET_CACHE_BUCKET_MS = 8 * 3600000; // 8-hour bucket intervals
 
 function tweetCacheKey(account, days) {
-  const bucket = Math.floor(Date.now() / (TWEET_CACHE_HOURS * 3600000));
+  const bucket = Math.floor(Date.now() / TWEET_CACHE_BUCKET_MS);
   return `tweets:${account.toLowerCase()}:${days}:${bucket}`;
 }
 
 function tweetCacheKeyStale(account, days) {
-  const bucket = Math.floor(Date.now() / (TWEET_CACHE_HOURS * 3600000));
+  const bucket = Math.floor(Date.now() / TWEET_CACHE_BUCKET_MS);
   return `tweets:${account.toLowerCase()}:${days}:${bucket - 1}`;
 }
 
@@ -1720,7 +1825,7 @@ async function fetchTweetsCoalesced(account, days, env, ctx) {
 }
 
 async function handleFetchTweets(request, env, user, ctx) {
-  const { account, days } = await request.json();
+  const { account, days } = await safeJsonBody(request);
   if (!account || !days) {
     return corsJson({ error: 'Missing account or days' }, 400, env);
   }
@@ -1759,7 +1864,7 @@ async function handleFetchTweets(request, env, user, ctx) {
 // Reduces round-trips from N sequential fetches to 1 batched request
 // ---------------------------------------------------------------------------
 async function handleFetchTweetsBatch(request, env, user, ctx) {
-  const { accounts, days } = await request.json();
+  const { accounts, days } = await safeJsonBody(request);
   if (!accounts?.length || !days) {
     return corsJson({ error: 'Missing accounts or days' }, 400, env);
   }
@@ -1887,7 +1992,7 @@ async function fetchTwitterTweetsRaw(env, account, days) {
 // ============================================================================
 
 async function handleAnalyze(request, env, user) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const { model, max_tokens, messages, prompt_hash, tweet_urls } = body;
   let resolvedModelInfo;
   try {
@@ -1960,7 +2065,7 @@ async function handleAnalyze(request, env, user) {
       try {
         data = await res.json();
       } catch {
-        throw new Error(`Anthropic returned non-JSON response (status ${res.status})`);
+        throw new Error('Analysis API returned an invalid response');
       }
       if (data.error) {
         const errType = data.error.type;
@@ -2005,7 +2110,7 @@ async function handleAnalyze(request, env, user) {
         }
         // Non-retryable errors
         if (['authentication_error', 'invalid_request_error', 'not_found_error'].includes(errType)) {
-          return corsJson({ error: data.error.message || 'Anthropic API error' }, res.status, env);
+          return corsJson({ error: 'Analysis API error' }, res.status, env);
         }
         // Retryable errors (rate limit, overloaded)
         if (attempt < 5) {
@@ -2041,7 +2146,7 @@ async function handleAnalyze(request, env, user) {
     }
   }
 
-  return corsJson({ error: lastError?.message || 'Anthropic API failed' }, 502, env);
+  return corsJson({ error: 'Analysis failed — please try again' }, 502, env);
 }
 
 function extractText(content) {
@@ -2096,7 +2201,7 @@ async function checkAnalysisCache(env, promptHash, tweetUrls) {
 // by ANY user with the same prompt. Returns cached signals + list of missing URLs.
 // ---------------------------------------------------------------------------
 async function handleCheckAnalysisCache(request, env, user) {
-  const { prompt_hash, tweet_urls } = await request.json();
+  const { prompt_hash, tweet_urls } = await safeJsonBody(request);
   if (!prompt_hash || !tweet_urls?.length) {
     return corsJson({ cached: {}, missing: tweet_urls || [] }, 200, env);
   }
@@ -2222,7 +2327,7 @@ async function handleGetSettings(env, user) {
 }
 
 async function handleUpdateSettings(request, env, user) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const allowed = ['theme', 'font', 'font_size', 'text_case', 'finance_provider', 'model', 'live_enabled'];
 
   // Validate field types and values
@@ -2271,7 +2376,7 @@ async function handleGetPresets(env, user) {
 }
 
 async function handleSavePreset(request, env, user) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const { id, name, accounts, is_public, sort_order } = body;
   if (!name || !accounts?.length) {
     return corsJson({ error: 'Name and accounts required' }, 400, env);
@@ -2282,10 +2387,14 @@ async function handleSavePreset(request, env, user) {
   if (!Array.isArray(accounts) || accounts.length > 200) {
     return corsJson({ error: 'Accounts must be an array with at most 200 entries' }, 400, env);
   }
+  // Validate each account name: Twitter username format
+  if (accounts.some(a => typeof a !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(a))) {
+    return corsJson({ error: 'Invalid account name(s) — use Twitter usernames only' }, 400, env);
+  }
 
   const data = {
     user_id: user.id,
-    name,
+    name: name.replace(/[\x00-\x1f]/g, '').trim(),
     accounts,
     is_public: is_public || false,
     sort_order: sort_order || 0,
@@ -2307,7 +2416,7 @@ async function handleSavePreset(request, env, user) {
 }
 
 async function handleDeletePreset(request, env, user) {
-  const { id } = await request.json();
+  const { id } = await safeJsonBody(request);
   if (!id) return corsJson({ error: 'Missing id' }, 400, env);
   await supabaseQuery(env, `presets?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
@@ -2325,7 +2434,7 @@ async function handleGetAnalysts(env, user) {
 }
 
 async function handleSaveAnalyst(request, env, user) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const { id, name, prompt, is_active } = body;
   if (!name || typeof name !== 'string') return corsJson({ error: 'Name required' }, 400, env);
   if (name.length > 100) return corsJson({ error: 'Name must be under 100 characters' }, 400, env);
@@ -2333,11 +2442,14 @@ async function handleSaveAnalyst(request, env, user) {
     return corsJson({ error: 'Prompt must be under 50,000 characters' }, 400, env);
   }
 
+  const cleanName = name.replace(/[\x00-\x1f]/g, '').trim();
+  if (!cleanName) return corsJson({ error: 'Name required' }, 400, env);
+
   const data = {
     id: id || 'a_' + crypto.randomUUID(),
     user_id: user.id,
-    name,
-    prompt: prompt || '',
+    name: cleanName,
+    prompt: prompt ? prompt.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '') : '',
     is_active: is_active || false,
     updated_at: new Date().toISOString(),
   };
@@ -2363,7 +2475,7 @@ async function handleSaveAnalyst(request, env, user) {
 }
 
 async function handleDeleteAnalyst(request, env, user) {
-  const { id } = await request.json();
+  const { id } = await safeJsonBody(request);
   if (!id || id === 'default') return corsJson({ error: 'Cannot delete default analyst' }, 400, env);
   await supabaseQuery(env, `analysts?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
@@ -2386,7 +2498,7 @@ async function handleGetSchedules(env, user) {
 }
 
 async function handleSaveSchedule(request, env, user) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const { id, label, time, timezone, days, range_days, preset_id, accounts, enabled } = body;
 
   if (!time || !label) {
@@ -2421,13 +2533,13 @@ async function handleSaveSchedule(request, env, user) {
   // Validate range_days
   const validRangeDays = [1, 7, 30].includes(range_days) ? range_days : 1;
 
-  // Sanitize accounts (lowercase, trimmed, deduped)
+  // Sanitize accounts (lowercase, trimmed, deduped, valid Twitter usernames only)
   const validAccounts = Array.isArray(accounts)
-    ? [...new Set(accounts.map(a => String(a).trim().toLowerCase().replace(/^@/, '')).filter(Boolean))]
+    ? [...new Set(accounts.map(a => String(a).trim().toLowerCase().replace(/^@/, '')).filter(a => /^[a-z0-9_]{1,15}$/.test(a)))]
     : [];
 
   // Sanitize label
-  const validLabel = String(label || 'Scan').trim().slice(0, 100);
+  const validLabel = String(label || 'Scan').replace(/[\x00-\x1f]/g, '').trim().slice(0, 100);
 
   const data = {
     user_id: user.id,
@@ -2470,7 +2582,7 @@ async function handleSaveSchedule(request, env, user) {
 }
 
 async function handleDeleteSchedule(request, env, user) {
-  const { id } = await request.json();
+  const { id } = await safeJsonBody(request);
   if (!id) return corsJson({ error: 'Missing id' }, 400, env);
   await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
@@ -2488,7 +2600,7 @@ async function handleGetScans(env, user) {
 }
 
 async function handleSaveScan(request, env, user, ctx) {
-  const body = await request.json();
+  const body = await safeJsonBody(request);
   const { accounts, range_label, range_days, total_tweets, signal_count, signals, tweet_meta, prompt_hash, byok, reservation_id, model } = body;
 
   // Validate inputs
@@ -2599,7 +2711,7 @@ async function handleSaveScan(request, env, user, ctx) {
 }
 
 async function handleDeleteScan(request, env, user) {
-  const { id } = await request.json();
+  const { id } = await safeJsonBody(request);
   if (!id) return corsJson({ error: 'Missing id' }, 400, env);
   await supabaseQuery(env, `scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
@@ -2623,7 +2735,7 @@ function hashScanKey(accounts, days, promptHash) {
 }
 
 async function handleCheckScanCache(request, env, user) {
-  const { accounts, days, prompt_hash } = await request.json();
+  const { accounts, days, prompt_hash } = await safeJsonBody(request);
   if (!accounts?.length || !days || !prompt_hash) {
     return corsJson({ cached: false }, 200, env);
   }
@@ -2662,7 +2774,7 @@ function cleanupReservations() {
 }
 
 async function handleReserveCredits(request, env, user) {
-  const { accounts_count, range_days, model } = await request.json();
+  const { accounts_count, range_days, model } = await safeJsonBody(request);
   if (!accounts_count || !range_days) {
     return corsJson({ error: 'Missing accounts_count or range_days' }, 400, env);
   }
@@ -2792,7 +2904,7 @@ function isAllowedRedirectUrl(url) {
 }
 
 async function handleCheckout(request, env, user) {
-  const { pack_id, recurring, success_url, cancel_url } = await request.json();
+  const { pack_id, recurring, success_url, cancel_url } = await safeJsonBody(request);
 
   const pack = CREDIT_PACKS[pack_id];
   if (!pack) {
@@ -2850,7 +2962,7 @@ async function handleCheckout(request, env, user) {
 
 async function handleBillingPortal(request, env, user) {
   const customerId = await getOrCreateStripeCustomer(env, user);
-  const { return_url } = await request.json();
+  const { return_url } = await safeJsonBody(request);
 
   // Sanitize return URL — only allow our own domain
   const safeReturnUrl = isAllowedRedirectUrl(return_url) ? return_url : 'https://sentry.is/v3/';
@@ -2973,7 +3085,8 @@ async function handleVerifyCheckout(request, env, user) {
 
   } catch (e) {
     console.error('handleVerifyCheckout error:', e.message, e.stack);
-    return corsJson({ error: 'Verification failed: ' + (e.message || 'unknown error') }, 500, env);
+    console.error('Billing verify error:', e.message);
+    return corsJson({ error: 'Verification failed' }, 500, env);
   }
 }
 
@@ -3162,10 +3275,17 @@ async function verifyStripeSignature(payload, header, secret) {
 async function handleAdminMonitoring(request, env) {
   // Admin endpoint allows any origin (protected by secret, not CORS)
   const anyOrigin = '*';
-  const url = new URL(request.url);
-  const secret = url.searchParams.get('secret') || request.headers.get('x-admin-secret');
+
+  // Rate limit: 10 requests per minute per IP (before auth check to prevent brute-force)
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const rl = await checkRateLimit(env, `admin:${ip}`, 10, 60);
+  if (!rl.ok) {
+    return corsJson({ error: 'Too many requests' }, 429, env, anyOrigin);
+  }
+
+  const secret = request.headers.get('x-admin-secret');
   if (!env.ADMIN_SECRET || !secret || secret !== env.ADMIN_SECRET) {
-    return corsJson({ error: 'Unauthorized. Pass ?secret=YOUR_ADMIN_SECRET' }, 401, env, anyOrigin);
+    return corsJson({ error: 'Unauthorized. Pass x-admin-secret header.' }, 401, env, anyOrigin);
   }
 
   try {
@@ -3366,7 +3486,7 @@ async function handleAdminMonitoring(request, env) {
 
   } catch (e) {
     console.error('Admin monitoring error:', e.message, e.stack);
-    return corsJson({ error: 'Failed to fetch monitoring data: ' + e.message }, 500, env, anyOrigin);
+    return corsJson({ error: 'Failed to fetch monitoring data' }, 500, env, anyOrigin);
   }
 }
 

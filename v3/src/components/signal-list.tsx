@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { useSentry } from '@/hooks/use-sentry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,7 @@ function formatTime(dateStr?: string): string | null {
   } catch { return null }
 }
 
-function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; index: number }) {
+const SignalCard = memo(function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; index: number }) {
   const { shareSignal, scanResult, priceCache, showTickerPrice, setTickerFilter } = useSentry()
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -182,7 +182,7 @@ function SignalCard({ signal, index }: { signal: import('@/lib/types').Signal; i
       </div>
     </div>
   )
-}
+})
 
 export function SignalList() {
   const { scanResult, filters, isSharedView, sharedSignal } = useSentry()

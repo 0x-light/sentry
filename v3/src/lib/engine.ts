@@ -70,7 +70,7 @@ function safeSetItem(key: string, value: string): boolean {
     return true;
   } catch (e) {
     // QuotaExceededError in most browsers, SecurityError in some private browsing modes
-    console.warn(`localStorage.setItem('${key}') failed:`, e instanceof Error ? e.message : e);
+    if (import.meta.env.DEV) console.warn(`localStorage.setItem('${key}') failed:`, e instanceof Error ? e.message : e);
     return false;
   }
 }
@@ -233,7 +233,7 @@ export async function fetchAvailableModels(apiKey: string) {
         return (TIER_ORDER[tierA ?? ''] ?? 9) - (TIER_ORDER[tierB ?? ''] ?? 9);
       });
   } catch (e: any) {
-    console.warn('Failed to fetch models:', e.message);
+    if (import.meta.env.DEV) console.warn('Failed to fetch models:', e.message);
     return null;
   }
 }
@@ -336,7 +336,7 @@ export function loadAnalysisCache(): AnalysisCache {
 
 export function saveAnalysisCache(cache: AnalysisCache) {
   try { localStorage.setItem(LS_ANALYSIS_CACHE, JSON.stringify(cache)); }
-  catch (e: any) { console.warn('Failed to save analysis cache:', e.message); }
+  catch (e: any) { if (import.meta.env.DEV) console.warn('Failed to save analysis cache:', e.message); }
 }
 
 function cacheKey(promptHash: string, tweetUrl: string): string {
@@ -1467,7 +1467,7 @@ export function saveScan(scan: ScanResult, skipHistory = false) {
     if (history.length > 5) history.pop();
     localStorage.setItem(LS_SCANS, JSON.stringify(history));
   } catch (e: any) {
-    console.warn('Failed to save scan:', e.message);
+    if (import.meta.env.DEV) console.warn('Failed to save scan:', e.message);
   }
 }
 

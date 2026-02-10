@@ -86,7 +86,7 @@ export function PricingDialog({ open, onOpenChange }: PricingDialogProps) {
         setError('No checkout URL returned. Please try again.')
       }
     } catch (err: any) {
-      console.error('Checkout error:', err)
+      if (import.meta.env.DEV) console.error('Checkout error:', err)
       setError(err.message || 'Failed to start checkout')
     } finally {
       setLoadingPack(null)

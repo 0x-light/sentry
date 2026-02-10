@@ -1,9 +1,11 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
 import type { Signal, Analyst, ScanResult, ScanHistoryEntry, Preset, ScheduledScan } from '@/lib/types'
 import { RANGES } from '@/lib/constants'
 import * as engine from '@/lib/engine'
 import { useAuth } from '@/hooks/use-auth'
 import * as api from '@/lib/api'
+
+const __DEV__ = import.meta.env.DEV
 
 interface Notice { type: 'error' | 'warning' | 'resume'; message: string; }
 interface Status { text: string; animate: boolean; showDownload: boolean; }
@@ -403,6 +405,8 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
   const [isLiveMode, setIsLiveMode] = useState(false)
   const liveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const seenTweetUrlsRef = useRef(new Set<string>())
+  const analystsRef = useRef(analysts)
+  analystsRef.current = analysts
 
   const toggleLive = useCallback(() => {
     if (!liveEnabled) { openSettings('data'); return; }
@@ -456,12 +460,13 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         if (!newTweets.length) return
 
         const cache = engine.loadAnalysisCache()
-        const promptHash = engine.getPromptHash(analysts)
+        const currentAnalysts = analystsRef.current
+        const promptHash = engine.getPromptHash(currentAnalysts)
         const newSignals = await engine.analyzeWithBatching(
           newTweets,
           newTweets.reduce((s, a) => s + a.tweets.length, 0),
           () => {},
-          promptHash, cache, null, analysts
+          promptHash, cache, null, currentAnalysts
         )
         if (newSignals.length) {
           setScanResult(prev => {
@@ -470,7 +475,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
           })
         }
       } catch (e) {
-        console.warn('Live poll error:', e)
+        if (__DEV__) console.warn('Live poll error:', e)
       }
     }
 
@@ -499,7 +504,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       await navigator.clipboard.writeText(url)
     } catch {
       // Clipboard API may not be available (e.g. HTTP context, iframe)
-      console.warn('Clipboard API unavailable')
+      if (__DEV__) console.warn('Clipboard API unavailable')
     }
   }, [scanResult])
 
@@ -558,7 +563,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(data.loadedPresets)) { engine.saveLoadedPresets(data.loadedPresets); setLoadedPresets(data.loadedPresets); }
       if (Array.isArray(data.recents)) { localStorage.setItem('signal_recent_accounts', JSON.stringify(data.recents)); setRecents(data.recents); }
     } catch (e) {
-      console.error('Import error while applying data:', e)
+      if (__DEV__) console.error('Import error while applying data:', e)
       throw new Error('Import partially failed — some settings may not have been restored')
     }
   }, [])
@@ -598,7 +603,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
         if (idx !== -1) setRange(idx)
       }
     } catch (e) {
-      console.warn('Failed to load server scan history:', e)
+      if (__DEV__) console.warn('Failed to load server scan history:', e)
     }
   }, [isAuthenticated])
 
@@ -745,7 +750,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
                 setNotices(prev => [...prev, { type: 'warning', message: `${bal.toLocaleString()} credits remaining. Consider topping up.` }])
               }
             }
-          }).catch(e => console.warn('Failed to save scan to server:', e))
+          }).catch(e => { if (__DEV__) console.warn('Failed to save scan to server:', e) })
         }
       }
     } catch (e: any) {
@@ -801,7 +806,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       const entry = prev[index]
       // Delete from server if it has a server ID
       if (entry?.id && isAuthenticated) {
-        api.deleteScanFromServer(entry.id).catch(e => console.warn('Failed to delete from server:', e))
+        api.deleteScanFromServer(entry.id).catch(e => { if (__DEV__) console.warn('Failed to delete from server:', e) })
       }
       // Remove from localStorage
       engine.deleteHistoryScan(index)
@@ -870,7 +875,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       })
       setSchedules(normalized)
     } catch (e) {
-      console.warn('Failed to load schedules:', e)
+      if (__DEV__) console.warn('Failed to load schedules:', e)
     } finally {
       setSchedulesLoading(false)
     }
@@ -885,7 +890,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       // Auto-populate accounts from user's current active accounts if none specified
       const accounts = data.accounts?.length ? data.accounts : getAllAccounts()
       if (!accounts.length) {
-        console.warn('Cannot create schedule: no accounts. Add accounts or presets first.')
+        if (__DEV__) console.warn('Cannot create schedule: no accounts. Add accounts or presets first.')
         return
       }
       await api.saveSchedule({
@@ -900,7 +905,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       })
       await loadSchedules()
     } catch (e: any) {
-      console.warn('Failed to add schedule:', e.message)
+      if (__DEV__) console.warn('Failed to add schedule:', e.message)
     }
   }, [isAuthenticated, loadSchedules, getAllAccounts])
 
@@ -930,7 +935,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       await api.saveSchedule(fullPayload)
       loadSchedules()
     } catch (e: any) {
-      console.warn('Failed to update schedule:', e.message)
+      if (__DEV__) console.warn('Failed to update schedule:', e.message)
       loadSchedules() // revert on error
     }
   }, [isAuthenticated, loadSchedules])
@@ -942,7 +947,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.deleteScheduleFromServer(id)
     } catch (e: any) {
-      console.warn('Failed to delete schedule:', e.message)
+      if (__DEV__) console.warn('Failed to delete schedule:', e.message)
       loadSchedules() // revert on error
     }
   }, [isAuthenticated, loadSchedules])
@@ -1189,7 +1194,7 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     setScanResult(mockScanResult)
   }, [])
 
-  const value: SentryStore = {
+  const value: SentryStore = useMemo(() => ({
     theme, toggleTheme,
     customAccounts, loadedPresets, presets,
     addAccount, removeAccount, togglePreset, clearAllAccounts,
@@ -1227,7 +1232,13 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     refreshSchedules: loadSchedules,
     nextScheduleLabel,
     loadMockSignals,
-  }
+  }), [
+    theme, customAccounts, loadedPresets, presets, recents, range, busy, scanResult, status, notices,
+    hasPendingScan, pendingScanInfo, filters, scanHistory, settingsOpen, settingsTab,
+    presetDialogOpen, editingPreset, analysts, activeAnalystId, financeProvider, font, fontSize,
+    showTickerPrice, iconSet, liveEnabled, isLiveMode, isSharedView, sharedSignal, cacheSize,
+    authDialogOpen, authDialogTab, pricingOpen, model, schedules, schedulesLoading, nextScheduleLabel, onboardingDone,
+  ])
 
   return <SentryContext.Provider value={value}>{children}</SentryContext.Provider>
 }

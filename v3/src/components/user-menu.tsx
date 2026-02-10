@@ -118,7 +118,7 @@ export function UserMenu({ open, onOpenChange, onOpenSettings, onOpenPricing }: 
                   try {
                     const { url } = await import('@/lib/api').then(m => m.getBillingPortalUrl())
                     if (url) window.location.href = url
-                  } catch (e) { console.error(e) }
+                  } catch (e) { if (import.meta.env.DEV) console.error(e) }
                 }}
               >
                 <span className="flex-1 text-left">Manage subscription</span>

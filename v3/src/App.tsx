@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { SentryProvider, useSentry } from '@/hooks/use-sentry'
 import { AuthProvider } from '@/hooks/use-auth'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -9,16 +9,18 @@ import { Controls } from '@/components/controls'
 import { TickerBar } from '@/components/ticker-bar'
 import { SignalList } from '@/components/signal-list'
 import { HistorySection } from '@/components/history-section'
-import { SettingsDialog } from '@/components/settings-dialog'
-import { PresetDialog } from '@/components/preset-dialog'
 import { Onboarding } from '@/components/onboarding'
-import { AuthDialog } from '@/components/auth-dialog'
-import { PricingDialog } from '@/components/pricing-dialog'
 import { DevToolbar } from '@/components/dev-toolbar'
 import { TosPage } from '@/components/tos-page'
 import { MonitoringPage } from '@/components/monitoring-page'
 import { Download } from '@/components/icons'
 import { IconSetProvider, type IconSet } from '@/components/icons'
+
+// Lazy-load dialogs — only imported when opened
+const SettingsDialog = lazy(() => import('@/components/settings-dialog').then(m => ({ default: m.SettingsDialog })))
+const PresetDialog = lazy(() => import('@/components/preset-dialog').then(m => ({ default: m.PresetDialog })))
+const AuthDialog = lazy(() => import('@/components/auth-dialog').then(m => ({ default: m.AuthDialog })))
+const PricingDialog = lazy(() => import('@/components/pricing-dialog').then(m => ({ default: m.PricingDialog })))
 
 const isDev = import.meta.env.DEV
 
@@ -169,17 +171,19 @@ function AppContent() {
         </Card>
       </div>
 
-      <SettingsDialog />
-      <PresetDialog />
-      <AuthDialog
-        open={authDialogOpen}
-        onOpenChange={setAuthDialogOpen}
-        defaultTab={authDialogTab}
-      />
-      <PricingDialog
-        open={pricingOpen}
-        onOpenChange={setPricingOpen}
-      />
+      <Suspense fallback={null}>
+        <SettingsDialog />
+        <PresetDialog />
+        <AuthDialog
+          open={authDialogOpen}
+          onOpenChange={setAuthDialogOpen}
+          defaultTab={authDialogTab}
+        />
+        <PricingDialog
+          open={pricingOpen}
+          onOpenChange={setPricingOpen}
+        />
+      </Suspense>
 
       {/* Dev toolbar — only in development */}
       {isDev && <DevToolbar />}

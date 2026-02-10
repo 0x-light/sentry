@@ -5,7 +5,7 @@
 import { supabase } from './supabase'
 import type { Analyst, UserProfile, ScheduledScan } from './types'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://sentry-api.tomaspalmeirim.workers.dev'
+const API_BASE = import.meta.env.VITE_API_URL || 'https://api.sentry.is'
 
 async function getToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession()

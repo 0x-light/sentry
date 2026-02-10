@@ -49,7 +49,7 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
       const p = await api.getProfile()
       setProfile(p)
     } catch (err) {
-      console.warn('Failed to fetch profile:', err)
+      if (import.meta.env.DEV) console.warn('Failed to fetch profile:', err)
       setProfile(null)
     }
   }, [user, mockMode])
@@ -113,7 +113,7 @@ export function AuthProvider({ children, mockMode = false }: AuthProviderProps) 
             return
           }
         } catch (e) {
-          console.warn('Checkout verify failed, falling back to polling:', e)
+          if (import.meta.env.DEV) console.warn('Checkout verify failed, falling back to polling:', e)
         }
       }
 
