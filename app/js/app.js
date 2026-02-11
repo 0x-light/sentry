@@ -1262,13 +1262,20 @@ function initInputListeners() {
 function checkSharedSignal() {
   const hash = location.hash;
 
+  function setupSharedView(bannerText) {
+    document.body.setAttribute('data-shared', '');
+    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">${bannerText}</span><a href="${location.pathname}">← back to sentry</a></div>`;
+    document.querySelector('.controls').style.display = 'none';
+    // Same topbar as logged-out state + wire up all handlers
+    ui.renderTopbar();
+    initEventDelegation();
+  }
+
   // Shared single signal: #s=<base64>
   if (hash.startsWith('#s=')) {
     const signal = engine.decodeSignal(hash.slice(3));
     if (!signal) return false;
-    document.body.setAttribute('data-shared', '');
-    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared signal</span><a href="${location.pathname}">← back to sentry</a></div>`;
-    document.querySelector('.controls').style.display = 'none';
+    setupSharedView('shared signal');
     ui.renderSharedSignal(signal);
     return true;
   }
@@ -1277,9 +1284,7 @@ function checkSharedSignal() {
   if (hash.startsWith('#scan=')) {
     const shareId = hash.slice(6);
     if (!shareId || shareId.length !== 8) return false;
-    document.body.setAttribute('data-shared', '');
-    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared scan</span><a href="${location.pathname}">← back to sentry</a></div>`;
-    document.querySelector('.controls').style.display = 'none';
+    setupSharedView('shared scan');
     ui.setStatus('Loading shared scan…', true);
     loadSharedScan(shareId);
     return true;

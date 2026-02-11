@@ -289,7 +289,7 @@ body.modal-open { overflow: hidden; }
 .ticker-tag:hover { opacity: .7; }
 .ticker-tag .a { display: none; }
 .sig-title { font-size: var(--fs-lg); color: var(--text-strong); font-weight: 500; margin-bottom: 6px; }
-.sig-summary { font-size: var(--fs); color: var(--text); }
+.sig-summary { font-size: var(--fs); color: var(--text); line-height: 1.5; }
 .sig-links { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ext-link { font-size: var(--fs); color: var(--text); text-decoration: none; background: var(--text-10); }
 .ext-link:hover { background: var(--text-20); }
