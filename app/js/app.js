@@ -357,7 +357,6 @@ async function run() {
 async function resumeScan() {
   const pending = engine.loadPendingScan();
   if (!pending || state.busy) return;
-  engine.clearPendingScan();
   $('notices').innerHTML = '';
   if (!engine.bothKeys() && !api.hasCredits()) { openSettingsModal('api'); return; }
 
