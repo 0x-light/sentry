@@ -218,6 +218,25 @@ async function run() {
   if (currentScanAbort) currentScanAbort.abort();
   currentScanAbort = new AbortController();
 
+  // Fold current scan into history before clearing
+  if (state.lastScanResult?.signals?.length) {
+    const prev = state.lastScanResult;
+    const prevEntry = {
+      date: prev.date || new Date().toISOString(),
+      range: prev.range || '',
+      accounts: Array.isArray(prev.accounts) ? prev.accounts.length : 0,
+      totalTweets: prev.totalTweets || 0,
+      signalCount: prev.signals.length,
+      signals: prev.signals,
+    };
+    const history = state._serverHistory || [];
+    const alreadyInHistory = history.length && history[0].date === prevEntry.date;
+    if (!alreadyInHistory) {
+      state._serverHistory = [prevEntry, ...history];
+      ui.renderHistory(state._serverHistory);
+    }
+  }
+
   state.busy = true;
   ui.setLoading(true);
   $('notices').innerHTML = '';

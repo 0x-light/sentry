@@ -176,7 +176,7 @@ body.modal-open { overflow: hidden; }
 .preset-list-item:last-child { border-bottom: none; }
 .preset-list-item span { color: var(--text-strong); }
 .preset-list-item small { color: var(--text-muted); margin-left: 8px; font-size: var(--fs-sm); }
-.preset-list-item.editing { background: var(--bg-alt); margin: 0 -8px; padding: 10px 8px; }
+.preset-list-item.editing { background: var(--bg-alt); margin: 0 -10px; padding: 10px; }
 .preset-list-actions { display: flex; gap: 8px; }
 .preset-list-item button { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); padding: 4px 0; }
 .preset-list-item button:hover { color: var(--text-strong); }
@@ -526,7 +526,8 @@ body.modal-open { overflow: hidden; }
    SCHEDULE TAB
    ============================================================================ */
 
-.sched-item { padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.sched-item { padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+.sched-item:first-child { padding-top: 0; }
 .sched-row { display: flex; align-items: center; justify-content: space-between; }
 .sched-check { accent-color: var(--green); width: 14px; height: 14px; cursor: pointer; }
 .sched-time { color: var(--text-muted); }
@@ -553,7 +554,7 @@ body.modal-open { overflow: hidden; }
 .acct-section { margin-bottom: 16px; }
 .acct-credit-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
 .acct-divider-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
-.acct-key-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.acct-key-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
 .acct-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .acct-signed-out { padding-bottom: 10px; }
 .acct-byok-label { font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; }
@@ -578,7 +579,7 @@ body.modal-open { overflow: hidden; }
 .pricing-savings { font-size: var(--fs-xs); color: var(--text-muted); }
 .pricing-details { margin-top: 12px; }
 .pricing-details summary { font-size: var(--fs-xs); color: var(--text-muted); cursor: pointer; }
-.pricing-details-body { font-size: var(--fs-xs); color: var(--text-muted); padding: 8px 0 0 8px; }
+.pricing-details-body { font-size: var(--fs-xs); color: var(--text-muted); padding: 10px 0 0 10px; }
 .pricing-details-body .example { opacity: 0.6; margin-top: 4px; }
 .pricing-footnote { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 12px; }
 .pricing-sign-in { font-size: var(--fs); color: var(--text-muted); margin-top: 12px; }
@@ -682,7 +683,7 @@ body.modal-open { overflow: hidden; }
 }
 .ob-analyst.selected .ob-analyst-check { border-color: var(--text-strong); background: var(--text-strong); }
 .ob-nav { display: flex; justify-content: space-between; margin-top: 16px; }
-.ob-summary-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ob-summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .ob-summary-row:last-child { border-bottom: none; }
 
 /* ============================================================================

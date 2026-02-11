@@ -615,8 +615,6 @@ export function renderScheduleTab(schedules, schedulesLoading) {
         if (isSelected) presetAccountsLower.forEach(a => coveredAccounts.add(a));
         h += `<button data-schedule-preset="${s.id}:${p.name}" class="sched-chip${isSelected ? ' selected' : ''}">${esc(p.name)} (${p.accounts.length})</button>`;
       });
-      const extraCount = [...schedAccounts].filter(a => !coveredAccounts.has(a.toLowerCase())).length;
-      if (extraCount > 0) h += `<span class="text-muted" style="margin-left:2px">+${extraCount}</span>`;
       h += `</div>`;
       h += `</div>`;
     });
