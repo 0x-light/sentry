@@ -153,11 +153,11 @@ function loadMockSignals(count) {
 function loadMockScheduledSignals() {
   const scan = createMockScanResult(7);
   scan.scheduled = true;
-  scan.range = 'Today (scheduled)';
+  scan.range = 'Today';
   state.lastScanResult = scan;
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  ui.setStatus(`${now.toLocaleDateString()} ${timeStr} · ${scan.accounts.length} accounts · ${scan.totalTweets} tweets · ${scan.signals.length} signals (scheduled)`, false, true);
+  ui.setStatus(`${now.toLocaleDateString()} ${timeStr} · ${scan.accounts.length} accounts · ${scan.totalTweets} tweets · ${scan.signals.length} signals`, false, true);
   ui.renderTickers(scan.signals);
   ui.renderSignals(scan.signals);
 }

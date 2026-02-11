@@ -13,6 +13,8 @@ import * as api from './api.js';
 
 const $ = id => document.getElementById(id);
 const esc = engine.esc;
+const PACK_SIZES = CREDIT_PACKS.map(p => p.credits).sort((a, b) => a - b);
+function creditBarMax(credits) { return PACK_SIZES.find(s => s >= credits) || credits; }
 
 // App state reference, set by app.js during init
 let appState = null;
@@ -122,6 +124,8 @@ export function render() { renderPresets(); renderSuggested(); renderRanges(); }
 
 export function setLoading(v) {
   $('dot').classList.toggle('loading', v);
+  const logo = document.querySelector('.logo-text');
+  if (logo) logo.textContent = v ? 'Scanning…' : 'Sentry';
   renderRanges();
 }
 
@@ -129,8 +133,8 @@ export function setStatus(t, animate = false, showDownload = false) {
   const el = $('tweetCount');
   if (!t) { el.innerHTML = ''; return; }
   const isAuth = auth.isAuthenticated();
-  const share = (showDownload && isAuth) ? `<button class="dl-btn" id="shareScanBtn">↑ <span class="hide-mobile">Share</span></button>` : '';
-  const dl = showDownload ? `<button class="dl-btn" id="dlBtn">↓ <span class="hide-mobile">Download</span></button>` : '';
+  const share = (showDownload && isAuth) ? `<button class="dl-btn" id="shareScanBtn">Share</button>` : '';
+  const dl = showDownload ? `<button class="dl-btn" id="dlBtn"><span class="hide-mobile">Download</span><span class="show-mobile">↓</span></button>` : '';
   const actions = (dl || share) ? `<span class="status-actions">${dl}${share}</span>` : '';
   el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${actions}</div>`;
 }
@@ -580,7 +584,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
         : s.last_run_status === 'error' ? 'failed' : '';
       const statusColor = s.last_run_status === 'success' ? 'var(--green)'
         : s.last_run_status === 'error' ? 'var(--red)'
-        : s.last_run_status === 'running' ? 'var(--text-muted)' : '';
+        : s.last_run_status === 'running' ? 'var(--green)' : '';
 
       const schedAccounts = new Set(s.accounts || []);
       const accountCount = schedAccounts.size;
@@ -618,10 +622,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
     });
 
     const nextLabel = engine.getNextScheduleLabel(schedules);
-    const anyRunning = schedules.some(s => s.last_run_status === 'running');
-    if (anyRunning) {
-      h += `<p class="sched-status running">Scan running…</p>`;
-    } else if (nextLabel) {
+    if (nextLabel) {
       h += `<p class="sched-status next">Next: ${nextLabel}</p>`;
     }
 
@@ -672,8 +673,9 @@ export function renderAccountTab() {
       // ── CREDITS MODE ──
       h += `<div class="acct-section">`;
       h += `<div class="acct-credit-row"><span class="section-label">Credits</span><span class="text-strong-bold">${credits.toLocaleString()}</span></div>`;
-      const barPercent = Math.min((credits / 15000) * 100, 100);
-      const barColor = credits > 5000 ? 'var(--green)' : credits > 1000 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
+      const barMax = creditBarMax(credits);
+      const barPercent = Math.min((credits / barMax) * 100, 100);
+      const barColor = barPercent > 50 ? 'var(--green)' : barPercent > 20 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
       h += `<div class="progress-track sm"><div class="progress-fill" style="width:${barPercent}%;background:${barColor}"></div></div>`;
       if (hasSub) h += `<div class="flex-between mb-12"><span class="badge-green">Auto-refill</span></div>`;
       h += `<button class="scan-btn" id="acctBuyCreditsBtn">Buy more credits</button>`;
@@ -878,8 +880,9 @@ export function renderUserMenuModal() {
 
   h += `<div class="user-credits-card">`;
   h += `<div class="user-credits-header"><span class="text-muted">Credits</span><span class="text-strong-bold">${credits.toLocaleString()}</span></div>`;
-  const barPercent = Math.min((credits / 15000) * 100, 100);
-  const barColor = credits > 5000 ? 'var(--green)' : credits > 1000 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
+  const barMax = creditBarMax(credits);
+  const barPercent = Math.min((credits / barMax) * 100, 100);
+  const barColor = barPercent > 50 ? 'var(--green)' : barPercent > 20 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
   h += `<div class="progress-track md"><div class="progress-fill" style="width:${barPercent}%;background:${barColor}"></div></div>`;
   h += `<div class="user-credits-detail">${hasCredits ? '' : 'No credits — BYOK mode'}${hasSub ? '<span class="status-green">Auto-refill</span>' : ''}</div>`;
   h += `<button class="modal-sm-btn" id="buyCreditsBtn">${hasCredits ? 'Buy more credits' : 'Buy credits'}</button>`;

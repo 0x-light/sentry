@@ -469,7 +469,7 @@ async function loadServerHistory() {
         if (idx !== -1) { state.range = idx; ui.renderRanges(); }
         const d = new Date(state.lastScanResult.date);
         const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        const label = isScheduled ? `${dateStr} · ${signals.length} signals (scheduled)` : `${dateStr} · ${signals.length} signals (synced)`;
+        const label = `${dateStr} · ${signals.length} signals`;
         ui.setStatus(label, false, true);
         ui.renderTickers(signals);
         ui.renderSignals(signals);
