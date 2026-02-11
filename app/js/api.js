@@ -256,6 +256,24 @@ export async function deleteScan(id) {
   return apiCall('/api/scans', { method: 'DELETE', body: { id } });
 }
 
+// --- Shared Scans ---
+
+export async function shareScan(scanData) {
+  if (!isBackendMode()) return null;
+  return apiCall('/api/scans/share', { method: 'POST', body: scanData });
+}
+
+export async function getSharedScan(shareId) {
+  const res = await fetch(`${API_BASE}/api/shared/${encodeURIComponent(shareId)}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error('Failed to load shared scan');
+  }
+  return res.json();
+}
+
 // --- Cross-user scan cache (whole-scan cache) ---
 
 export async function checkScanCache(accounts, days, promptHash) {

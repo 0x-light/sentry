@@ -128,8 +128,11 @@ export function setLoading(v) {
 export function setStatus(t, animate = false, showDownload = false) {
   const el = $('tweetCount');
   if (!t) { el.innerHTML = ''; return; }
+  const isAuth = auth.isAuthenticated();
+  const share = (showDownload && isAuth) ? `<button class="dl-btn" id="shareScanBtn">↑ <span class="hide-mobile">Share</span></button>` : '';
   const dl = showDownload ? `<button class="dl-btn" id="dlBtn">↓ <span class="hide-mobile">Download</span></button>` : '';
-  el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${dl}</div>`;
+  const actions = (dl || share) ? `<span class="status-actions">${dl}${share}</span>` : '';
+  el.innerHTML = `<div class="tweet-count">${t}${animate ? '<span class="dots"></span>' : ''}${actions}</div>`;
 }
 
 // ============================================================================
@@ -555,7 +558,7 @@ export function renderScheduleTab(schedules, schedulesLoading) {
 
   if (!isAuth) {
     container.innerHTML = `<p class="text-muted">Sign in to use scheduled scans.</p>
-      <button class="modal-sm-btn mt-8" id="scheduleSignInBtn">Sign in</button>`;
+      <button class="modal-sm-btn" id="scheduleSignInBtn">Sign in</button>`;
     return;
   }
 
@@ -672,16 +675,8 @@ export function renderAccountTab() {
       const barPercent = Math.min((credits / 15000) * 100, 100);
       const barColor = credits > 5000 ? 'var(--green)' : credits > 1000 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
       h += `<div class="progress-track sm"><div class="progress-fill" style="width:${barPercent}%;background:${barColor}"></div></div>`;
-      h += `<div class="flex-between mb-12">`;
-      h += `<span class="text-muted">Managed API keys active</span>`;
-      if (hasSub) h += `<span class="badge-green">Auto-refill</span>`;
-      h += `</div>`;
+      if (hasSub) h += `<div class="flex-between mb-12"><span class="badge-green">Auto-refill</span></div>`;
       h += `<button class="scan-btn" id="acctBuyCreditsBtn">Buy more credits</button>`;
-      h += `</div>`;
-
-      h += `<div class="acct-divider-row">`;
-      h += `<span class="text-muted">API keys</span>`;
-      h += `<span class="status-green">Managed (included)</span>`;
       h += `</div>`;
 
       if (hasSub) {
@@ -722,7 +717,7 @@ export function renderAccountTab() {
       }
 
       h += `<div class="acct-promo">`;
-      h += `<p class="text-muted mb-10" style="line-height:1.5">Buy credits for managed API keys — no setup needed, unlimited accounts, scheduled scans.</p>`;
+      h += `<p class="text-muted mb-10">Buy credits for managed API keys — no setup needed, unlimited accounts, scheduled scans.</p>`;
       h += `<button class="scan-btn" id="acctBuyCreditsBtn">Buy credits</button>`;
       h += `</div>`;
     }
@@ -736,7 +731,7 @@ export function renderAccountTab() {
     // Signed out state
     h += `<div class="acct-signed-out">`;
     h += `<p class="heading-lg">Not signed in</p>`;
-    h += `<p class="text-muted mb-16" style="line-height:1.6">Sign in to sync data across devices, get managed API keys, and purchase credits.</p>`;
+    h += `<p class="text-muted mb-16">Sign in to sync data across devices, get managed API keys, and purchase credits.</p>`;
     h += `<div class="flex-row">`;
     h += `<button class="scan-btn" id="acctSignInBtn">Sign in</button>`;
     h += `<button class="modal-sm-btn" id="acctBuyCreditsBtn2">Buy credits</button>`;
@@ -763,7 +758,7 @@ export function renderTopbar() {
   if (nextLabel || hasRunning) {
     h += `<button class="top-btn hide-mobile" id="scheduleIndicatorBtn" title="Scheduled scans">`;
     if (hasRunning) h += `<span class="schedule-running">Scanning…</span>`;
-    else h += `<span>${esc(nextLabel)}</span>`;
+    else h += `<span>next scan ${esc(nextLabel)}</span>`;
     h += `</button>`;
   }
 
@@ -824,7 +819,7 @@ export function renderPricingModal() {
   const credits = profile?.credits_balance || 0;
 
   let h = `<button class="modal-close" id="closePricingBtn">✕</button>`;
-  h += `<h3>Credits</h3>`;
+  h += `<h3>Buy credits</h3>`;
   h += `<p>${isAuth && profile ? `${credits.toLocaleString()} credits remaining` : '1 credit = 1 account scanned'}</p>`;
   h += `<div id="pricingError" class="msg-error"></div>`;
 
@@ -886,7 +881,7 @@ export function renderUserMenuModal() {
   const barPercent = Math.min((credits / 15000) * 100, 100);
   const barColor = credits > 5000 ? 'var(--green)' : credits > 1000 ? 'var(--amber)' : credits > 0 ? 'var(--red)' : 'var(--text-muted)';
   h += `<div class="progress-track md"><div class="progress-fill" style="width:${barPercent}%;background:${barColor}"></div></div>`;
-  h += `<div class="user-credits-detail">${hasCredits ? 'Managed API keys active' : 'No credits — BYOK mode'}${hasSub ? ' · <span class="status-green">Auto-refill</span>' : ''}</div>`;
+  h += `<div class="user-credits-detail">${hasCredits ? '' : 'No credits — BYOK mode'}${hasSub ? '<span class="status-green">Auto-refill</span>' : ''}</div>`;
   h += `<button class="modal-sm-btn" id="buyCreditsBtn">${hasCredits ? 'Buy more credits' : 'Buy credits'}</button>`;
   h += `</div>`;
 
@@ -905,83 +900,6 @@ export function renderUserMenuModal() {
   h += `</div>`;
 
   modal.querySelector('.modal').innerHTML = h;
-}
-
-// ============================================================================
-// DEV TOOLBAR
-// ============================================================================
-
-export function renderDevToolbar() {
-  let toolbar = $('devToolbar');
-  if (!toolbar) return;
-  const isAuth = auth.isAuthenticated();
-  const profile = api.getCachedProfile();
-  const credits = profile?.credits_balance || 0;
-
-  const CREDIT_PRESETS = [0, 100, 1000, 5000, 15000];
-
-  let h = `<span class="dev-brand">DEV</span>`;
-  h += `<span class="dev-divider"></span>`;
-
-  // Auth state
-  h += `<span class="dev-label">Auth:</span>`;
-  if (isAuth) {
-    h += `<span class="dev-auth ok"><span class="dev-auth-dot"></span>${esc(auth.getUserEmail())}</span>`;
-  } else {
-    h += `<span class="dev-label">signed out</span>`;
-  }
-
-  h += `<span class="dev-divider"></span>`;
-
-  // Credits switcher
-  h += `<span class="dev-label">Credits:</span>`;
-  CREDIT_PRESETS.forEach(c => {
-    const isActive = isAuth && credits === c;
-    h += `<button data-dev-credits="${c}" class="dev-btn${isActive ? ' active' : ''}">${c === 0 ? 'free' : c.toLocaleString()}</button>`;
-  });
-  if (isAuth) {
-    h += `<button id="devLogout" class="dev-btn danger">logout</button>`;
-  }
-
-  h += `<span class="dev-divider"></span>`;
-
-  // Mock data
-  h += `<span class="dev-label">Data:</span>`;
-  h += `<button id="devMockSignals" class="dev-btn warning">Mock signals</button>`;
-
-  h += `<span class="dev-divider"></span>`;
-
-  // Open dialogs
-  h += `<span class="dev-label">Open:</span>`;
-  h += `<button data-dev-open="auth" class="dev-btn neutral">Auth</button>`;
-  h += `<button data-dev-open="account" class="dev-btn neutral">Account</button>`;
-  h += `<button data-dev-open="pricing" class="dev-btn neutral">Credits</button>`;
-  h += `<button data-dev-open="settings" class="dev-btn neutral">Settings</button>`;
-  h += `<button data-dev-open="onboarding" class="dev-btn neutral">Onboarding</button>`;
-
-  // Collapse
-  h += `<button id="devCollapse" class="dev-close">✕</button>`;
-
-  toolbar.innerHTML = h;
-  toolbar.style.display = 'flex';
-}
-
-export function collapseDevToolbar() {
-  const toolbar = $('devToolbar');
-  if (toolbar) toolbar.style.display = 'none';
-  let fab = $('devFab');
-  if (!fab) {
-    fab = document.createElement('button');
-    fab.id = 'devFab';
-    fab.textContent = 'DEV';
-    fab.className = 'dev-fab';
-    fab.addEventListener('click', () => {
-      fab.style.display = 'none';
-      renderDevToolbar();
-    });
-    document.body.appendChild(fab);
-  }
-  fab.style.display = 'block';
 }
 
 // ============================================================================

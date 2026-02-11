@@ -384,6 +384,50 @@ async function resumeScan() {
 }
 
 // ============================================================================
+// SHARE SCAN
+// ============================================================================
+
+async function shareScan() {
+  const scan = state.lastScanResult;
+  if (!scan || !scan.signals?.length) return;
+  if (!auth.isAuthenticated()) return;
+
+  const btn = $('shareScanBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  try {
+    const result = await api.shareScan({
+      signals: scan.signals,
+      range_label: scan.range || '',
+      range_days: scan.days || 1,
+      accounts_count: Array.isArray(scan.accounts) ? scan.accounts.length : 0,
+      total_tweets: scan.totalTweets || 0,
+      signal_count: scan.signals.length,
+      tweet_meta: scan.tweetMeta || {},
+    });
+    if (result?.id) {
+      const url = `${location.origin}${location.pathname}#scan=${result.id}`;
+      await navigator.clipboard.writeText(url);
+      btn.innerHTML = '✓ <span class="hide-mobile">Copied</span>';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = '↑ <span class="hide-mobile">Share</span>';
+        btn.classList.remove('copied');
+        btn.disabled = false;
+      }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = 'Error';
+    setTimeout(() => {
+      btn.innerHTML = '↑ <span class="hide-mobile">Share</span>';
+      btn.disabled = false;
+    }, 2000);
+  }
+}
+
+// ============================================================================
 // SERVER HISTORY SYNC (with scan restoration)
 // ============================================================================
 
@@ -852,14 +896,14 @@ function initEventDelegation() {
     }
 
     // Analyst actions
-    const toggleAnalyst = e.target.closest('[data-toggle-analyst]');
-    if (toggleAnalyst) { e.preventDefault(); ui.saveAnalystsFromUI(); const item = document.querySelector(`.analyst-item[data-analyst-id="${toggleAnalyst.dataset.toggleAnalyst}"]`); if (item) item.classList.toggle('open'); return; }
     const useAnalyst = e.target.closest('[data-use-analyst]');
     if (useAnalyst) { e.stopPropagation(); ui.saveAnalystsFromUI(); engine.setActiveAnalystId(useAnalyst.dataset.useAnalyst); ui.renderAnalystList(); return; }
     const dupAnalyst = e.target.closest('[data-dup-analyst]');
     if (dupAnalyst) { e.stopPropagation(); ui.saveAnalystsFromUI(); const src = (engine.getAnalysts() || []).find(a => a.id === dupAnalyst.dataset.dupAnalyst); if (src) { const all = [...(engine.getAnalysts() || []), { id: engine.generateAnalystId(), name: src.name + ' (copy)', prompt: src.prompt, isDefault: false }]; engine.saveAnalysts(all); ui.renderAnalystList(); } return; }
     const delAnalyst = e.target.closest('[data-del-analyst]');
     if (delAnalyst) { e.stopPropagation(); const id = delAnalyst.dataset.delAnalyst; if (id === DEFAULT_ANALYST_ID) return; if (!confirm('Delete this analyst?')) return; engine.saveAnalysts((engine.getAnalysts() || []).filter(a => a.id !== id)); if (engine.getActiveAnalystId() === id) engine.setActiveAnalystId(DEFAULT_ANALYST_ID); ui.renderAnalystList(); return; }
+    const toggleAnalyst = e.target.closest('[data-toggle-analyst]');
+    if (toggleAnalyst) { e.preventDefault(); ui.saveAnalystsFromUI(); const item = document.querySelector(`.analyst-item[data-analyst-id="${toggleAnalyst.dataset.toggleAnalyst}"]`); if (item) item.classList.toggle('open'); return; }
     const resetPrompt = e.target.closest('[data-reset-prompt]');
     if (resetPrompt) { const analysts = engine.getAnalysts() || []; const def = analysts.find(a => a.id === DEFAULT_ANALYST_ID); if (def) { def.prompt = DEFAULT_PROMPT; engine.saveAnalysts(analysts); } ui.renderAnalystList(); return; }
 
@@ -932,6 +976,7 @@ function initEventDelegation() {
       case 'signInBtn': openAuthModal(); break;
       case 'userMenuBtn': openSettingsModal('account'); break;
       case 'dlBtn': if (state.lastScanResult) engine.downloadScanAsMarkdown(state.lastScanResult); break;
+      case 'shareScanBtn': shareScan(); break;
       case 'scheduleIndicatorBtn': openSettingsModal('schedule'); break;
 
       // Settings modal
@@ -1198,14 +1243,61 @@ function initInputListeners() {
 
 function checkSharedSignal() {
   const hash = location.hash;
-  if (!hash.startsWith('#s=')) return false;
-  const signal = engine.decodeSignal(hash.slice(3));
-  if (!signal) return false;
-  document.body.setAttribute('data-shared', '');
-  $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared signal</span><a href="${location.pathname}">← back to sentry</a></div>`;
-  document.querySelector('.controls').style.display = 'none';
-  ui.renderSharedSignal(signal);
-  return true;
+
+  // Shared single signal: #s=<base64>
+  if (hash.startsWith('#s=')) {
+    const signal = engine.decodeSignal(hash.slice(3));
+    if (!signal) return false;
+    document.body.setAttribute('data-shared', '');
+    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared signal</span><a href="${location.pathname}">← back to sentry</a></div>`;
+    document.querySelector('.controls').style.display = 'none';
+    ui.renderSharedSignal(signal);
+    return true;
+  }
+
+  // Shared full scan: #scan=<id>
+  if (hash.startsWith('#scan=')) {
+    const shareId = hash.slice(6);
+    if (!shareId || shareId.length !== 8) return false;
+    document.body.setAttribute('data-shared', '');
+    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared scan</span><a href="${location.pathname}">← back to sentry</a></div>`;
+    document.querySelector('.controls').style.display = 'none';
+    ui.setStatus('Loading shared scan…', true);
+    loadSharedScan(shareId);
+    return true;
+  }
+
+  return false;
+}
+
+async function loadSharedScan(shareId) {
+  try {
+    const scan = await api.getSharedScan(shareId);
+    if (!scan || !scan.signals?.length) {
+      ui.setStatus('');
+      $('results').innerHTML = '<div class="empty-state">Shared scan not found</div>';
+      return;
+    }
+    const signals = engine.normalizeSignals(scan.signals);
+    state.lastScanResult = {
+      date: scan.created_at || new Date().toISOString(),
+      range: scan.range_label || '',
+      days: scan.range_days || 1,
+      accounts: [],
+      totalTweets: scan.total_tweets || 0,
+      signals,
+      tweetMeta: scan.tweet_meta || {},
+    };
+    const d = new Date(scan.created_at);
+    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    ui.setStatus(`${dateStr} · ${scan.accounts_count || 0} accounts · ${scan.total_tweets || 0} tweets · ${signals.length} signals`);
+    ui.renderTickers(signals);
+    ui.renderSignals(signals);
+    $('footer').innerHTML = 'shared from <a href="' + location.pathname + '">sentry</a> · not financial advice';
+  } catch (e) {
+    ui.setStatus('');
+    $('results').innerHTML = '<div class="empty-state">Failed to load shared scan</div>';
+  }
 }
 
 // ============================================================================
@@ -1214,83 +1306,14 @@ function checkSharedSignal() {
 
 const IS_DEV = new URLSearchParams(window.location.search).has('dev');
 
-function loadMockSignals() {
-  const now = new Date();
-  const mockSignals = [
-    { title: 'BTC breaks above $100k resistance with strong volume', summary: 'Bitcoin surged past $100,000, driven by institutional inflows and ETF demand. Multiple analysts raising year-end targets.', category: 'Trade', source: 'CryptoCapo_', tickers: [{ symbol: '$BTC', action: 'buy' }, { symbol: '$ETH', action: 'watch' }], tweet_url: 'https://x.com/CryptoCapo_/status/1234567890', links: [], tweet_time: new Date(now.getTime() - 15 * 60000).toISOString() },
-    { title: 'NVIDIA announces next-gen AI chip, stock gaps up 8%', summary: 'NVIDIA unveiled Blackwell Ultra at GTC with 3x inference throughput. Supply constraints expected through Q3.', category: 'Trade', source: 'unusual_whales', tickers: [{ symbol: '$NVDA', action: 'buy' }, { symbol: '$AMD', action: 'buy' }, { symbol: '$INTC', action: 'sell' }], tweet_url: 'https://x.com/unusual_whales/status/1234567891', links: ['https://nvidia.com/gtc'], tweet_time: new Date(now.getTime() - 45 * 60000).toISOString() },
-    { title: 'Fed signals potential rate cut in March meeting minutes', summary: 'FOMC minutes reveal growing consensus for easing. Bond yields falling, growth stocks rally. 85% probability of 25bp cut.', category: 'Insight', source: 'zaborowskigz', tickers: [{ symbol: '$SPY', action: 'watch' }, { symbol: '$TLT', action: 'buy' }, { symbol: '$QQQ', action: 'buy' }], tweet_url: 'https://x.com/zaborowskigz/status/1234567892', links: [], tweet_time: new Date(now.getTime() - 2 * 3600000).toISOString() },
-    { title: 'Solana DeFi TVL hits new ATH as memecoin season heats up', summary: 'Total value locked in Solana DeFi surpassed $20B. Raydium and Jupiter seeing record volumes.', category: 'Insight', source: 'DefiIgnas', tickers: [{ symbol: '$SOL', action: 'buy' }, { symbol: '$JUP', action: 'hold' }], tweet_url: 'https://x.com/DefiIgnas/status/1234567893', links: ['https://defillama.com/chain/Solana'], tweet_time: new Date(now.getTime() - 5 * 3600000).toISOString() },
-    { title: 'Apple reportedly in talks to acquire AI startup for $6B', summary: 'Sources say Apple is negotiating to buy an enterprise AI company to bolster on-device ML capabilities.', category: 'Trade', source: 'gaborGurbacs', tickers: [{ symbol: '$AAPL', action: 'buy' }, { symbol: '$MSFT', action: 'hold' }], tweet_url: 'https://x.com/gaborGurbacs/status/1234567894', links: ['https://bloomberg.com/apple-ai-acquisition'], tweet_time: new Date(now.getTime() - 8 * 3600000).toISOString() },
-    { title: 'New on-chain analytics tool for tracking whale wallets', summary: 'Arkham Intelligence launched real-time whale tracking dashboard with alert capabilities. Free tier available.', category: 'Tool', source: 'lookonchain', tickers: [{ symbol: '$BTC', action: 'watch' }], tweet_url: 'https://x.com/lookonchain/status/1234567895', links: ['https://arkham.com/whale-tracker'], tweet_time: new Date(now.getTime() - 12 * 3600000).toISOString() },
-    { title: 'TSLA earnings beat expectations, robotaxi timeline moved up', summary: 'Tesla Q4 earnings above consensus with improved margins. Musk confirmed robotaxi launch in Austin by Q2.', category: 'Trade', source: 'gaborGurbacs', tickers: [{ symbol: '$TSLA', action: 'buy' }, { symbol: '$UBER', action: 'sell' }], tweet_url: 'https://x.com/gaborGurbacs/status/1234567897', links: [], tweet_time: new Date(now.getTime() - 30 * 60000).toISOString() },
-  ];
-  state.lastScanResult = {
-    date: now.toISOString(), range: 'Today (scheduled)', days: 1,
-    accounts: ['CryptoCapo_', 'unusual_whales', 'zaborowskigz', 'DefiIgnas', 'gaborGurbacs', 'lookonchain'],
-    totalTweets: 42, signals: mockSignals, tweetMeta: {},
-    scheduled: true,
-  };
-  const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  ui.setStatus(`${now.toLocaleDateString()} ${timeStr} · 6 accounts · 42 tweets · ${mockSignals.length} signals (scheduled)`, false, true);
-  ui.renderTickers(mockSignals);
-  ui.renderSignals(mockSignals);
-}
-
-function initDevToolbar() {
+async function initDevToolbar() {
   if (!IS_DEV) return;
-  ui.renderDevToolbar();
-
-  document.addEventListener('click', (e) => {
-    // Credits switcher — mocks full auth + profile locally
-    const creditsBtn = e.target.closest('[data-dev-credits]');
-    if (creditsBtn) {
-      const credits = parseInt(creditsBtn.dataset.devCredits);
-      // Mock sign-in first (sets user + token), then set profile
-      // _mockSignIn fires notifyAuthChange which is async, so we set profile
-      // and re-render synchronously after
-      auth._mockSignIn('dev@sentry.is');
-      api._setMockProfile({
-        _mock: true,
-        id: 'dev-user', email: 'dev@sentry.is', name: 'Dev User',
-        credits_balance: credits, has_credits: credits > 0,
-        free_scan_available: credits === 0, subscription_status: credits > 0 ? 'active' : null,
-      });
-      // Re-render everything after mock state is set
-      setTimeout(() => {
-        ui.renderDevToolbar();
-        ui.renderTopbar();
-      }, 10);
-      return;
-    }
-
-    // Dialog openers
-    const openBtn = e.target.closest('[data-dev-open]');
-    if (openBtn) {
-      const target = openBtn.dataset.devOpen;
-      // Hide onboarding when opening dev dialogs (except onboarding itself)
-      if (target !== 'onboarding') ui.hideOnboarding();
-      if (target === 'auth') openAuthModal();
-      else if (target === 'account') openSettingsModal('account');
-      else if (target === 'pricing') openPricingModal();
-      else if (target === 'settings') openSettingsModal('api');
-      else if (target === 'onboarding') startOnboarding();
-      return;
-    }
-
-    if (e.target.id === 'devLogout') {
-      auth._mockSignOut();
-      api._setMockProfile(null);
-      ui.renderDevToolbar();
-      ui.renderTopbar();
-      return;
-    }
-    if (e.target.id === 'devMockSignals') { loadMockSignals(); return; }
-    if (e.target.id === 'devCollapse') { ui.collapseDevToolbar(); return; }
+  const dev = await import('./dev.js');
+  dev.init(state, {
+    openSettingsModal, openAuthModal, openPricingModal,
+    openUserMenuModal, startOnboarding, openModal, closeModal,
   });
 }
-
-// api._setMockProfile is exported from api.js for dev mode
 
 // ============================================================================
 // ONBOARDING FLOW
@@ -1480,7 +1503,6 @@ async function init() {
       state.schedules = [];
     }
     ui.renderTopbar();
-    if (IS_DEV) ui.renderDevToolbar();
   });
 
   // Initialize auth (may fire onAuthChange synchronously if session exists)
@@ -1507,7 +1529,7 @@ async function init() {
   initInputListeners();
   ui.initChartPreview();
   initMobileDeepLinks();
-  initDevToolbar();
+  await initDevToolbar();
 
   ui.renderTopbar();
   ui.render();
@@ -1540,7 +1562,7 @@ async function init() {
       <span>Interrupted scan detected (${pendingScan.accounts.length} accounts · ${totalTweets} tweets · ${ago < 1 ? 'just now' : ago + 'm ago'})</span>
       <span style="display:flex;gap:6px;margin-left:auto">
         <button class="resume-btn" id="resumeBtn">Resume</button>
-        <button class="dismiss-btn" id="dismissBtn">✕</button>
+        <button class="dismiss-btn" id="dismissBtn">Dismiss</button>
       </span>
     </div>`;
     $('resumeBtn')?.addEventListener('click', resumeScan);

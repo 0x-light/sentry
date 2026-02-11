@@ -184,6 +184,10 @@ export default {
       if (path === '/api/admin/monitoring' && method === 'GET') {
         return handleAdminMonitoring(request, env);
       }
+      if (path.startsWith('/api/shared/') && method === 'GET') {
+        const shareId = path.slice('/api/shared/'.length);
+        return handleGetSharedScan(env, shareId);
+      }
 
       // --- Auth required routes ---
       const user = await authenticate(request, env);
@@ -263,6 +267,9 @@ export default {
       }
       if (path === '/api/scans/reserve' && method === 'POST') {
         return handleReserveCredits(request, env, user);
+      }
+      if (path === '/api/scans/share' && method === 'POST') {
+        return handleShareScan(request, env, user);
       }
 
       // Scheduled scans
@@ -2725,6 +2732,64 @@ async function handleDeleteScan(request, env, user) {
   if (!id) return corsJson({ error: 'Missing id' }, 400, env);
   await supabaseQuery(env, `scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
+}
+
+// ---------------------------------------------------------------------------
+// SHARED SCANS (public shareable links)
+// ---------------------------------------------------------------------------
+
+function generateShareId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  for (let i = 0; i < 8; i++) id += chars[bytes[i] % chars.length];
+  return id;
+}
+
+async function handleShareScan(request, env, user) {
+  const body = await safeJsonBody(request);
+  const { signals, range_label, range_days, accounts_count, total_tweets, signal_count, tweet_meta } = body;
+
+  if (!signals || !Array.isArray(signals) || signals.length === 0) {
+    return corsJson({ error: 'No signals to share' }, 400, env);
+  }
+  if (signals.length > 5000) {
+    return corsJson({ error: 'Too many signals' }, 400, env);
+  }
+
+  const id = generateShareId();
+
+  const data = {
+    id,
+    user_id: user.id,
+    range_label: typeof range_label === 'string' ? range_label.slice(0, 200) : '',
+    range_days: Math.max(1, Math.min(parseInt(range_days) || 1, 30)),
+    accounts_count: Math.max(0, parseInt(accounts_count) || 0),
+    total_tweets: Math.max(0, parseInt(total_tweets) || 0),
+    signal_count: signal_count || signals.length,
+    signals,
+    tweet_meta: tweet_meta || {},
+  };
+
+  await supabaseQuery(env, 'shared_scans', { method: 'POST', body: data });
+
+  return corsJson({ id }, 200, env);
+}
+
+async function handleGetSharedScan(env, shareId) {
+  if (!shareId || shareId.length !== 8 || !/^[a-z0-9]+$/.test(shareId)) {
+    return corsJson({ error: 'Invalid share ID' }, 400, env);
+  }
+
+  const rows = await supabaseQuery(env,
+    `shared_scans?id=eq.${shareId}&select=id,range_label,range_days,accounts_count,total_tweets,signal_count,signals,tweet_meta,created_at&limit=1`
+  );
+
+  if (!rows || !rows.length) {
+    return corsJson({ error: 'Shared scan not found' }, 404, env);
+  }
+
+  return corsJson(rows[0], 200, env);
 }
 
 // ---------------------------------------------------------------------------

@@ -381,3 +381,23 @@ create policy "Users can view own schedules"   on scheduled_scans for select usi
 create policy "Users can insert own schedules" on scheduled_scans for insert with check (auth.uid() = user_id);
 create policy "Users can update own schedules" on scheduled_scans for update using (auth.uid() = user_id);
 create policy "Users can delete own schedules" on scheduled_scans for delete using (auth.uid() = user_id);
+
+-- ============================================================================
+-- SHARED SCANS (public shareable links)
+-- ============================================================================
+
+create table shared_scans (
+  id text primary key,                          -- 8-char random alphanumeric ID
+  user_id uuid references profiles(id) on delete set null,
+  range_label text not null default '',
+  range_days int not null default 1,
+  accounts_count int not null default 0,
+  total_tweets int not null default 0,
+  signal_count int not null default 0,
+  signals jsonb not null default '[]',
+  tweet_meta jsonb default '{}',
+  created_at timestamptz not null default now()
+);
+
+-- No user-facing RLS policies — reads go through the worker with SUPABASE_SERVICE_KEY
+alter table shared_scans enable row level security;
