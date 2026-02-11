@@ -1266,9 +1266,6 @@ function checkSharedSignal() {
     document.body.setAttribute('data-shared', '');
     $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">${bannerText}</span><a href="${location.pathname}">← back to sentry</a></div>`;
     document.querySelector('.controls').style.display = 'none';
-    // Same topbar as logged-out state + wire up all handlers
-    ui.renderTopbar();
-    initEventDelegation();
   }
 
   // Shared single signal: #s=<base64>
@@ -1538,10 +1535,7 @@ async function init() {
 
   await handleBillingCallback();
 
-  if (checkSharedSignal()) {
-    console.log('Sentry initialized (shared view)');
-    return;
-  }
+  const isShared = checkSharedSignal();
 
   state.customAccounts = engine.loadStoredAccounts();
   state.loadedPresets = engine.loadStoredLoadedPresets();
@@ -1552,15 +1546,22 @@ async function init() {
   initInputListeners();
   ui.initChartPreview();
   initMobileDeepLinks();
-  await initDevToolbar();
+  if (!isShared) await initDevToolbar();
 
   ui.renderTopbar();
-  ui.render();
-  ui.renderHistory();
+  if (!isShared) {
+    ui.render();
+    ui.renderHistory();
+  }
 
   // Show onboarding for new users
-  if (!engine.isOnboardingDone()) {
+  if (!isShared && !engine.isOnboardingDone()) {
     startOnboarding();
+  }
+
+  if (isShared) {
+    console.log('Sentry initialized (shared view)');
+    return;
   }
 
   const savedScan = engine.loadCurrentScan();
