@@ -18,6 +18,7 @@ let accessToken = null;
 let refreshToken = null;
 let expiresAt = 0;
 let authChangeCallbacks = [];
+let pendingRecovery = false;
 let refreshTimer = null;
 
 // --- Core API ---
@@ -157,7 +158,10 @@ export async function init() {
       } catch (e) {
         console.warn('Failed to fetch user after OAuth:', e.message);
       }
-      history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (params.get('type') === 'recovery') {
+        pendingRecovery = true;
+      }
+      history.replaceState(null, '', window.location.pathname);
       notifyAuthChange();
       return;
     }
@@ -229,6 +233,14 @@ export async function signOut() {
   }
   clearSession();
   notifyAuthChange();
+}
+
+export function isPendingRecovery() { return pendingRecovery; }
+export function clearPendingRecovery() { pendingRecovery = false; }
+
+export async function updatePassword(newPassword) {
+  await supabaseAuth('/user', { password: newPassword }, 'PUT');
+  pendingRecovery = false;
 }
 
 export async function resetPassword(email) {

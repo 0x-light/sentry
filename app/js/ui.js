@@ -830,6 +830,24 @@ export function renderAuthModal(tab = 'login') {
   `;
 }
 
+export function renderPasswordReset() {
+  const modal = $('authModal');
+  modal.querySelector('.modal').innerHTML = `
+    <button class="modal-close" id="closeAuthBtn">✕</button>
+    <h3>Set new password</h3>
+    <div id="authError" class="msg-error"></div>
+    <div id="authMessage" class="msg-success"></div>
+    <label>New password</label>
+    <input type="password" id="newPassword" placeholder="Min 6 characters">
+    <label>Confirm password</label>
+    <input type="password" id="confirmPassword" placeholder="Min 6 characters">
+    <div class="auth-actions">
+      <span></span>
+      <button id="resetPasswordBtn">Update password</button>
+    </div>
+  `;
+}
+
 // ============================================================================
 // PRICING MODAL
 // ============================================================================

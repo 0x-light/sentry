@@ -610,7 +610,7 @@ body.modal-open { overflow: hidden; }
 
 .auth-divider { border-top: 1px solid var(--border); margin: 16px 0; padding-top: 16px; }
 .auth-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; }
-.auth-actions button#authSubmitBtn { background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: var(--fs); font-family: inherit; cursor: pointer; padding: 6px 18px; }
+.auth-actions button#authSubmitBtn { background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: var(--fs); font-family: inherit; cursor: pointer; }
 .auth-actions button#authSubmitBtn:hover { opacity: 0.9; }
 .auth-text-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; }
 .auth-footnote { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 12px; }

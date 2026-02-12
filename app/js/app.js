@@ -1877,6 +1877,12 @@ async function init() {
     await syncSettingsFromServer();
   }
 
+  // Password recovery flow
+  if (auth.isPendingRecovery()) {
+    ui.renderPasswordReset();
+    openModal('authModal');
+  }
+
   await handleBillingCallback();
 
   const isShared = checkSharedSignal();
