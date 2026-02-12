@@ -731,9 +731,9 @@ export function renderAccountTab() {
           h += `<span class="text-strong-bold">Unlimited scans</span>`;
           h += `<span class="text-muted"> — using your own API keys.</span>`;
         } else {
-          h += `<span class="text-muted">Free tier: </span><span class="text-strong-bold">1 scan per day</span><span class="text-muted">, up to 10 accounts.</span>`;
-          if (profile.free_scan_available) h += `<br><span class="status-green">✓ Free scan available today</span>`;
-          else h += `<br><span class="text-muted">✗ Free scan used — resets tomorrow</span>`;
+          h += `<span class="text-muted">Free tier: </span><span class="text-strong-bold">1 scan per week</span><span class="text-muted">, up to 150 accounts.</span>`;
+          if (profile.free_scan_available) h += `<br><span class="status-green">✓ Free scan available</span>`;
+          else h += `<br><span class="text-muted">✗ Free scan used — resets next week</span>`;
         }
         h += `</div>`;
       }
@@ -910,9 +910,9 @@ export function renderUserMenuModal() {
 
   if (!hasCredits) {
     h += `<div class="user-free-tier">`;
-    h += `Free tier: <strong>1 scan per day</strong>, up to 10 accounts.`;
-    if (profile?.free_scan_available) h += `<br><span class="status-green">✓ Free scan available today</span>`;
-    else h += `<br>✗ Free scan used today — resets tomorrow`;
+    h += `Free tier: <strong>1 scan per week</strong>, up to 150 accounts.`;
+    if (profile?.free_scan_available) h += `<br><span class="status-green">✓ Free scan available</span>`;
+    else h += `<br>✗ Free scan used — resets next week`;
     h += `</div>`;
   }
 
@@ -1020,7 +1020,7 @@ export function renderOnboarding(onStep, onComplete, onAction) {
     } else if (!onStep.path) {
       // Choose path
       h += `<div class="mb-24"><h2 class="heading-lg">How do you want to use Sentry?</h2><p class="text-muted">Sign in for the easiest experience, or bring your own API keys.</p></div>`;
-      h += `<button data-ob-path="signin" class="ob-choice recommended"><span class="badge-green mb-4" style="display:inline-block">Recommended</span><br>Sign in<br><span class="text-muted">Sign in and buy credits for managed API keys. Or use the free tier (1 scan/day, 10 accounts).</span></button>`;
+      h += `<button data-ob-path="signin" class="ob-choice recommended"><span class="badge-green mb-4" style="display:inline-block">Recommended</span><br>Sign in<br><span class="text-muted">Sign in and buy credits for managed API keys. Or use the free tier (1 scan/week, 150 accounts).</span></button>`;
       h += `<button data-ob-path="byok" class="ob-choice">Use your own API keys<br><span class="text-muted">Bring your own X/Twitter and Anthropic keys. Unlimited scans.</span></button>`;
       h += `<div class="ob-nav"><button class="modal-sm-btn" data-ob-back>Back</button></div>`;
     } else if (onStep.path === 'signin') {

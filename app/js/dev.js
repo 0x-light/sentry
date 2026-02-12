@@ -350,6 +350,8 @@ function renderPanel() {
     s += btn('devNoticeError', 'Error');
     s += btn('devNoticeWarn', 'Warning');
     s += btn('devNoticeLowCredits', 'Low credits');
+    s += btn('devNoticeCreditsRemaining', 'Credits remaining');
+    s += btn('devNoticeFreeScanUsed', 'Free scan used');
     s += btn('devNoticeResume', 'Resume');
     s += btn('devNoticeScheduled', 'Scheduled');
     s += `</div></div>`;
@@ -573,7 +575,13 @@ function handleClick(e) {
       $('notices').innerHTML += `<div class="notice warn">Errors: CryptoCapo_ (timeout), unusual_whales (rate limited)</div>`;
       break;
     case 'devNoticeLowCredits':
-      $('notices').innerHTML += `<div class="notice warn">Low credits: ~50 will remain after this scan.</div>`;
+      $('notices').innerHTML += `<div class="notice warn">~50 credits will remain after this scan. <button class="notice-btn" data-open-pricing>Top up</button></div>`;
+      break;
+    case 'devNoticeCreditsRemaining':
+      $('notices').innerHTML += `<div class="notice warn">149 credits remaining. <button class="notice-btn" data-open-pricing>Top up</button></div>`;
+      break;
+    case 'devNoticeFreeScanUsed':
+      $('notices').innerHTML += `<div class="notice err">Weekly free scan used. Come back next week or <button class="notice-btn" data-open-pricing>Get credits</button></div>`;
       break;
     case 'devNoticeResume':
       $('notices').innerHTML = `<div class="notice resume-banner">

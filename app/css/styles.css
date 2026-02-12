@@ -97,9 +97,9 @@ body.modal-open { overflow: hidden; }
 .modal p { font-size: var(--fs); color: var(--text-muted); margin-bottom: 10px; }
 .modal p a { color: var(--blue); text-decoration: none; }
 .modal p a:hover { text-decoration: underline; }
-.modal label { display: flex; align-items: center; font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 6px; margin-top: 10px; text-transform: uppercase; }
+.modal label { display: flex; align-items: center; font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 6px; margin-top: 10px; }
 .modal label:first-of-type, .tab-content > label:first-of-type, .tab-content > p + label { margin-top: 0; }
-.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; margin-left: auto; text-transform: lowercase; }
+.reset-prompt { background: none; border: none; color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer; margin-left: auto; }
 .reset-prompt:hover { color: var(--text-strong); }
 /* Analyst cards */
 .analyst-item { border-bottom: 1px solid var(--border-light); }
@@ -255,6 +255,12 @@ body.modal-open { overflow: hidden; }
 .notice.sched-banner .resume-btn { background: var(--green); }
 .notice.sched-banner .dismiss-btn { color: var(--green); }
 .notice.sched-banner > span:nth-child(2) { margin-left: auto; }
+.notice-btn {
+  background: var(--amber); border: none; color: var(--bg);
+  font-size: var(--fs); font-family: inherit; cursor: pointer;
+}
+.notice-btn:hover { opacity: 0.8; }
+.notice.err .notice-btn { background: var(--red); }
 
 .tweet-count { padding: 10px; font-size: var(--fs); color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .tweet-count:empty { display: none; }
@@ -404,7 +410,7 @@ body.modal-open { overflow: hidden; }
   .sug:hover, .rng:hover, .clear-btn:hover, .scan-btn:hover:not(:disabled), .cancel-btn:hover,
   .ticker-item:hover, .sig-top a:hover, .ticker-tag:hover, .ext-link:hover, .see-post:hover,
   .share-btn:hover, .tweet-expand-btn:hover, .shared-banner a:hover, .hist-toggle:hover,
-  .hist-actions button:hover, .dl-btn:hover, .footer a:hover, .resume-btn:hover, .dismiss-btn:hover {
+  .hist-actions button:hover, .dl-btn:hover, .footer a:hover, .resume-btn:hover, .dismiss-btn:hover, .notice-btn:hover {
     color: inherit; opacity: inherit; background: inherit; border-color: inherit;
   }
   .preset-chip:hover { color: var(--text-muted); background: var(--text-10); }
@@ -561,7 +567,7 @@ body.modal-open { overflow: hidden; }
 .acct-key-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
 .acct-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .acct-signed-out { padding-bottom: 10px; }
-.acct-byok-label { font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; }
+.acct-byok-label { font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: 10px; }
 .acct-promo { border-top: 1px solid var(--border); padding-top: 12px; }
 .key-status-ok { color: var(--green); font-size: var(--fs-sm); }
 .key-status-missing { color: var(--red); font-size: var(--fs-sm); }
@@ -672,7 +678,7 @@ body.modal-open { overflow: hidden; }
   color: var(--text-strong); font-family: inherit; font-size: inherit; outline: none;
 }
 .ob-field { margin-bottom: 12px; }
-.ob-field label { display: block; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; }
+.ob-field label { display: block; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text-muted); }
 .ob-field p { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 6px; }
 .ob-field p a { color: var(--blue); }
 .ob-analyst {

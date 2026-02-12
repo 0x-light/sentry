@@ -85,8 +85,8 @@ const CREDIT_PACKS = {
 };
 
 const FREE_TIER = {
-  max_accounts: 10,
-  scans_per_day: 1,
+  max_accounts: 150,
+  scans_per_week: 1,
 };
 
 const MAX_ACCOUNTS_PER_SCAN = 1000; // hard server-side cap
@@ -2431,9 +2431,9 @@ async function handleGetUser(env, user) {
     return corsJson({ error: 'Profile not found' }, 404, env);
   }
 
-  // Check free tier daily scan count
-  const canFreeScanToday = profile.credits_balance <= 0
-    ? await supabaseRpc(env, 'check_free_scan_today', { p_user_id: user.id })
+  // Check free tier weekly scan count
+  const canFreeScanThisWeek = profile.credits_balance <= 0
+    ? await supabaseRpc(env, 'check_free_scan_this_week', { p_user_id: user.id })
     : true;
 
   return corsJson({
@@ -2443,7 +2443,7 @@ async function handleGetUser(env, user) {
     avatar_url: profile.avatar_url,
     credits_balance: profile.credits_balance,
     has_credits: profile.credits_balance > 0,
-    free_scan_available: canFreeScanToday,
+    free_scan_available: canFreeScanThisWeek,
     subscription_status: profile.subscription_status,
   }, 200, env);
 }
@@ -3025,10 +3025,10 @@ async function handleReserveCredits(request, env, user) {
 
   // Free tier check
   if (profile.credits_balance <= 0) {
-    const canFree = await supabaseRpc(env, 'check_free_scan_today', { p_user_id: user.id });
+    const canFree = await supabaseRpc(env, 'check_free_scan_this_week', { p_user_id: user.id });
     if (!canFree) {
       return corsJson({
-        error: 'Daily free scan used. Buy credits or come back tomorrow.',
+        error: 'Weekly free scan used. Buy credits or come back next week.',
         code: 'NO_FREE_SCANS',
       }, 403, env);
     }

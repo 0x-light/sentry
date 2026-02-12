@@ -372,17 +372,17 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Check if free user can scan today (1 scan/day, 10 accounts max)
-create or replace function check_free_scan_today(p_user_id uuid)
+-- Check if free user can scan this week (1 scan/week, 150 accounts max)
+create or replace function check_free_scan_this_week(p_user_id uuid)
 returns boolean as $$
 declare
-  v_scans_today int;
+  v_scans_this_week int;
 begin
-  select count(*) into v_scans_today
+  select count(*) into v_scans_this_week
   from scans
   where user_id = p_user_id
-    and created_at >= date_trunc('day', now() at time zone 'UTC');
-  return v_scans_today < 1;
+    and created_at >= date_trunc('week', now() at time zone 'UTC');
+  return v_scans_this_week < 1;
 end;
 $$ language plpgsql security definer;
 

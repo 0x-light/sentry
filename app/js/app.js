@@ -358,12 +358,12 @@ async function run() {
   if (isAuth && profile) {
     if (!hasCredits && !profile.free_scan_available) {
       openPricingModal();
-      $('notices').innerHTML = `<div class="notice err">Daily free scan used. Buy credits or come back tomorrow.</div>`;
+      $('notices').innerHTML = `<div class="notice err">Weekly free scan used. Come back next week or <button class="notice-btn" data-open-pricing>Get credits</button></div>`;
       return;
     }
-    if (!hasCredits && accounts.length > 10) {
+    if (!hasCredits && accounts.length > 150) {
       openPricingModal();
-      $('notices').innerHTML = `<div class="notice err">Free tier allows up to 10 accounts. Buy credits for more.</div>`;
+      $('notices').innerHTML = `<div class="notice err">Free tier allows up to 150 accounts. Buy credits for more.</div>`;
       return;
     }
   }
@@ -412,7 +412,7 @@ async function run() {
       if (reservation.credits_balance && reservation.credits_needed) {
         const remaining = reservation.credits_balance - reservation.credits_needed;
         if (remaining > 0 && remaining < reservation.credits_balance * 0.2) {
-          $('notices').innerHTML += `<div class="notice warn">Low credits: ~${remaining.toLocaleString()} will remain after this scan.</div>`;
+          $('notices').innerHTML += `<div class="notice warn">~${remaining.toLocaleString()} credits will remain after this scan. <button class="notice-btn" data-open-pricing>Top up</button></div>`;
         }
       }
     } catch (e) {
@@ -475,9 +475,9 @@ async function run() {
           if (useManaged && saveResult?.credits_balance !== undefined) {
             const bal = saveResult.credits_balance;
             if (bal <= 0) {
-              $('notices').innerHTML += `<div class="notice err">Credits depleted. Buy more to keep scanning.</div>`;
+              $('notices').innerHTML += `<div class="notice err">Credits depleted. <button class="notice-btn" data-open-pricing>Get credits</button></div>`;
             } else if (bal < 500) {
-              $('notices').innerHTML += `<div class="notice warn">${bal.toLocaleString()} credits remaining. Consider topping up.</div>`;
+              $('notices').innerHTML += `<div class="notice warn">${bal.toLocaleString()} credits remaining. <button class="notice-btn" data-open-pricing>Top up</button></div>`;
             }
           }
         }).catch(e => console.warn('Failed to save scan to server:', e));
@@ -1148,6 +1148,10 @@ function initEventDelegation() {
     // Open settings from user menu / account tab
     const openSettings = e.target.closest('[data-open-settings]');
     if (openSettings) { closeModal('userMenuModal'); openSettingsModal(openSettings.dataset.openSettings); return; }
+
+    // Open pricing modal from anywhere
+    const openPricing = e.target.closest('[data-open-pricing]');
+    if (openPricing) { e.preventDefault(); openPricingModal(); return; }
 
     // Schedule — tap hour to toggle (add or remove)
     const quickSchedule = e.target.closest('[data-quick-schedule]');
