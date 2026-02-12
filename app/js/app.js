@@ -257,16 +257,14 @@ function closeModal(id) {
 }
 
 let lastSettingsTab = 'account';
-let originalSettings = {};
 
 function openSettingsModal(tab) {
-  originalSettings = { font: engine.getFont(), fontSize: engine.getFontSize(), textCase: engine.getCase() };
   $('twKeyInput').value = engine.getTwKey();
   $('keyInput').value = engine.getAnKey();
   $('financeProvider').value = engine.getFinanceProvider();
-  $('fontProvider').value = originalSettings.font;
-  $('fontSizeProvider').value = originalSettings.fontSize;
-  $('caseProvider').value = originalSettings.textCase;
+  $('fontProvider').value = engine.getFont();
+  $('fontSizeProvider').value = engine.getFontSize();
+  $('caseProvider').value = engine.getCase();
   $('liveEnabledToggle').checked = engine.isLiveEnabled();
   const stp = $('showTickerPriceToggle');
   if (stp) stp.checked = engine.getShowTickerPrice();
@@ -1204,7 +1202,7 @@ function initEventDelegation() {
       case 'scheduleIndicatorBtn': openSettingsModal('schedule'); break;
 
       // Settings modal
-      case 'closeSettingsBtn': case 'cancelSettingsBtn': closeModal('modal'); if (originalSettings.font) engine.setFont(originalSettings.font); if (originalSettings.fontSize) engine.setFontSize(originalSettings.fontSize); if (originalSettings.textCase) engine.setCase(originalSettings.textCase); break;
+      case 'closeSettingsBtn': case 'cancelSettingsBtn': closeModal('modal'); break;
       case 'clearKeyBtn': localStorage.removeItem(LS_TW); localStorage.removeItem(LS_AN); localStorage.removeItem(LS_MODEL); $('twKeyInput').value = ''; $('keyInput').value = ''; populateModelSelector(null, engine.getModel()); closeModal('modal'); break;
       case 'saveKeysBtn': saveSettings(); break;
 
@@ -1300,6 +1298,18 @@ function savePreset() {
   $('presetAccountsInput').value = '';
 }
 
+function syncDisplaySettings() {
+  if (auth.isAuthenticated()) {
+    api.saveSettings({
+      theme: engine.getTheme(),
+      font: engine.getFont(),
+      font_size: engine.getFontSize(),
+      text_case: engine.getCase(),
+      finance_provider: engine.getFinanceProvider(),
+    }).catch((e) => console.warn('Failed to sync display settings:', e.message));
+  }
+}
+
 function saveSettings() {
   const tw = $('twKeyInput').value.trim();
   const an = $('keyInput').value.trim();
@@ -1320,7 +1330,6 @@ function saveSettings() {
   } catch (e) {
     console.warn('localStorage save failed (quota may be exceeded):', e.message);
   }
-  originalSettings = { font, fontSize, textCase };
   engine.setFont(font);
   engine.setFontSize(fontSize);
   engine.setCase(textCase);
@@ -1426,10 +1435,15 @@ function initInputListeners() {
       ui.renderTickers(state.lastScanResult.signals);
       ui.renderSignals(state.lastScanResult.signals);
     }
+    syncDisplaySettings();
   });
-  $('fontProvider').addEventListener('change', e => engine.setFont(e.target.value));
-  $('fontSizeProvider').addEventListener('change', e => engine.setFontSize(e.target.value));
-  $('caseProvider').addEventListener('change', e => engine.setCase(e.target.value));
+  $('financeProvider').addEventListener('change', e => {
+    localStorage.setItem(LS_FINANCE, e.target.value);
+    syncDisplaySettings();
+  });
+  $('fontProvider').addEventListener('change', e => { engine.setFont(e.target.value); syncDisplaySettings(); });
+  $('fontSizeProvider').addEventListener('change', e => { engine.setFontSize(e.target.value); syncDisplaySettings(); });
+  $('caseProvider').addEventListener('change', e => { engine.setCase(e.target.value); syncDisplaySettings(); });
 
   // Modal backdrop clicks
   ['modal', 'presetModal', 'authModal', 'pricingModal', 'userMenuModal'].forEach(id => {
@@ -1438,11 +1452,6 @@ function initInputListeners() {
     $(id).addEventListener('click', e => {
       if (e.target === $(id) && mouseDownTarget === $(id)) {
         closeModal(id);
-        if (id === 'modal') {
-          if (originalSettings.font) engine.setFont(originalSettings.font);
-          if (originalSettings.fontSize) engine.setFontSize(originalSettings.fontSize);
-          if (originalSettings.textCase) engine.setCase(originalSettings.textCase);
-        }
       }
       mouseDownTarget = null;
     });
