@@ -57,7 +57,12 @@ async function supabaseAuth(path, body = null, method = 'POST') {
     }
   }
   if (!res.ok) {
-    throw new Error(data.error_description || data.msg || data.error || 'Auth error');
+    const err = new Error(data.error_description || data.msg || data.error || 'Auth error');
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get('retry-after') || '0', 10);
+      err.retryAfter = retryAfter || 60;
+    }
+    throw err;
   }
   return data;
 }

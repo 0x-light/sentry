@@ -1215,10 +1215,11 @@ function initEventDelegation() {
       case 'savePresetBtn': savePreset(); break;
 
       // Auth modal
-      case 'closeAuthBtn': closeModal('authModal'); break;
+      case 'closeAuthBtn': closeModal('authModal'); auth.clearPendingRecovery(); break;
       case 'authSubmitBtn': handleAuthSubmit(); break;
       case 'forgotPwBtn': handleForgotPassword(); break;
       case 'googleSignInBtn': auth.signInGoogle(); break;
+      case 'resetPasswordBtn': handlePasswordReset(); break;
 
       // Pricing modal
       case 'closePricingBtn': closeModal('pricingModal'); break;
@@ -1408,24 +1409,50 @@ async function handleForgotPassword() {
   } catch (e) {
     const msg = e.message || 'Failed to send reset email';
     const secMatch = msg.match(/after\s+(\d+)\s+second/);
-    if (secMatch) {
-      let remaining = parseInt(secMatch[1], 10);
+    let countdown = secMatch ? parseInt(secMatch[1], 10) : (e.retryAfter || 0);
+    if (countdown > 0) {
       const errEl = $('authError');
       errEl.style.display = 'block';
-      errEl.textContent = `Try again in ${remaining}s`;
+      errEl.textContent = `Try again in ${countdown}s`;
       const iv = setInterval(() => {
-        remaining--;
-        if (remaining <= 0) {
+        countdown--;
+        if (countdown <= 0) {
           clearInterval(iv);
           errEl.style.display = 'none';
         } else {
-          errEl.textContent = `Try again in ${remaining}s`;
+          errEl.textContent = `Try again in ${countdown}s`;
         }
       }, 1000);
     } else {
       $('authError').textContent = msg;
       $('authError').style.display = 'block';
     }
+  }
+}
+
+async function handlePasswordReset() {
+  const pw = $('newPassword').value;
+  const confirm = $('confirmPassword').value;
+  const errEl = $('authError');
+  const msgEl = $('authMessage');
+  errEl.style.display = 'none';
+  msgEl.style.display = 'none';
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters'; errEl.style.display = 'block'; return; }
+  if (pw !== confirm) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
+  const btn = $('resetPasswordBtn');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  try {
+    await auth.updatePassword(pw);
+    msgEl.textContent = 'Password updated!';
+    msgEl.style.display = 'block';
+    setTimeout(() => closeModal('authModal'), 1500);
+  } catch (e) {
+    errEl.textContent = e.message || 'Failed to update password';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Update password';
   }
 }
 
@@ -1474,6 +1501,7 @@ function initInputListeners() {
     $(id).addEventListener('click', e => {
       if (e.target === $(id) && mouseDownTarget === $(id)) {
         closeModal(id);
+        if (id === 'authModal') auth.clearPendingRecovery();
       }
       mouseDownTarget = null;
     });

@@ -333,6 +333,7 @@ function renderPanel() {
   h += section('modals', open, () => {
     let s = `<div class="dev-row"><div class="dev-toggle-group">`;
     s += btn('devOpenAuth', 'Auth');
+    s += btn('devOpenPasswordReset', 'Password reset');
     s += btn('devOpenPricing', 'Pricing');
     s += btn('devOpenPresets', 'Presets');
     s += `</div></div>`;
@@ -564,6 +565,7 @@ function handleClick(e) {
 
     // --- Modals ---
     case 'devOpenAuth': ui.hideOnboarding(); callbacks.openAuthModal(); break;
+    case 'devOpenPasswordReset': ui.hideOnboarding(); ui.renderPasswordReset(); callbacks.openModal('authModal'); break;
     case 'devOpenPricing': ui.hideOnboarding(); callbacks.openPricingModal(); break;
     case 'devOpenPresets': ui.hideOnboarding(); callbacks.openModal('presetModal'); break;
 
