@@ -122,7 +122,8 @@ Return a JSON array. Each signal:
 - "summary": 1-2 sentences — opinion, reasoning, implied positioning
 - "category": "Trade" (direct position idea with clear direction) | "Insight" (macro thesis, market structure, analytical observation) | "Tool" (product, platform, or technology for trading/research) | "Resource" (educational content, data source, reference)
 - "source": twitter handle (no @)
-- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch"}]
+- "tickers": [{symbol: "$TICKER", action: "buy"|"sell"|"hold"|"watch", type: "crypto"|"stock"}]
+  type: "crypto" for any cryptocurrency, token, or DeFi protocol. "stock" for equities, ETFs, indices, commodities, forex.
   Extract ALL tradeable assets. Convert:
   • Company → stock (Nvidia → $NVDA, Apple → $AAPL, Samsung → $005930.KS, TSMC → $TSM)
   • Index → ETF (S&P/SPX → $SPY, Nasdaq → $QQQ, Dow → $DIA, Russell → $IWM, VIX → $VIX)
@@ -137,7 +138,7 @@ Return ONLY valid JSON array. No markdown, no explanation.`;
 
 // API endpoints
 export const API_BASE = configValue('API_BASE', 'https://api.sentry.is');
-export const CORS_PROXY = configValue('CORS_PROXY', 'https://sentry.tomaspalmeirim.workers.dev/?url=');
+export const CORS_PROXY = configValue('CORS_PROXY', API_BASE + '/api/proxy?url=');
 
 // Supabase config
 export const SUPABASE_URL = configValue('SUPABASE_URL', 'https://mfbnbfpfjeetaejibvjy.supabase.co');

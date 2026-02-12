@@ -237,7 +237,10 @@ export default {
       if (path === '/api/billing/webhook' && method === 'POST') {
         return handleStripeWebhook(request, env);
       }
-      // /api/proxy moved to authenticated routes below
+      // CORS proxy — public (hostname allowlist prevents abuse)
+      if (path === '/api/proxy' && method === 'GET') {
+        return handleProxy(request, env, ctx);
+      }
       if (path === '/api/health') {
         return corsJson({ status: 'ok', version: 'v3' }, 200, env);
       }
@@ -356,11 +359,6 @@ export default {
       }
       if (path === '/api/billing/verify' && method === 'POST') {
         return handleVerifyCheckout(request, env, user);
-      }
-
-      // CORS proxy (requires auth to prevent open relay abuse)
-      if (path === '/api/proxy' && method === 'GET') {
-        return handleProxy(request, env, ctx);
       }
 
       return corsJson({ error: 'Not found' }, 404, env);
@@ -3834,7 +3832,10 @@ async function handleProxy(request, env, ctx) {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000); // 10s timeout
-    const response = await fetch(targetUrl.toString(), { signal: controller.signal });
+    const response = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SentryApp/1.0)' },
+    });
     clearTimeout(timeout);
 
     // Limit response size to 1MB
@@ -3845,11 +3846,16 @@ async function handleProxy(request, env, ctx) {
 
     const headers = new Headers(response.headers);
     Object.entries(corsHeaders(env)).forEach(([k, v]) => headers.set(k, v));
-    headers.set('Cache-Control', 'public, max-age=60, s-maxage=60');
-    const proxied = new Response(response.body, { status: response.status, headers });
 
-    ctx.waitUntil(cache.put(cacheUrl, proxied.clone()));
-    return proxied;
+    if (response.ok) {
+      headers.set('Cache-Control', 'public, max-age=60, s-maxage=60');
+      const proxied = new Response(response.body, { status: response.status, headers });
+      ctx.waitUntil(cache.put(cacheUrl, proxied.clone()));
+      return proxied;
+    }
+    // Don't cache error responses (429, 5xx, etc.)
+    headers.set('Cache-Control', 'no-store');
+    return new Response(response.body, { status: response.status, headers });
   } catch (e) {
     return corsJson({ error: 'Upstream request failed' }, 502, env); // Don't leak internal error details
   }

@@ -15,19 +15,23 @@ const $ = id => document.getElementById(id);
 const esc = engine.esc;
 let tickerRefreshTimer = null;
 const pendingTickerSymbols = new Set();
+const pendingCryptoHints = new Set();
 
-function queueTickerMetricsRefresh(symbols) {
+function queueTickerMetricsRefresh(symbols, cryptoHints) {
   symbols.forEach((sym) => {
     const clean = String(sym || '').replace(/^\$/, '').toUpperCase();
     if (clean) pendingTickerSymbols.add(clean);
   });
+  if (cryptoHints) cryptoHints.forEach(h => pendingCryptoHints.add(h));
   if (tickerRefreshTimer) return;
   tickerRefreshTimer = setTimeout(() => {
     tickerRefreshTimer = null;
     const toFetch = [...pendingTickerSymbols];
+    const hints = new Set(pendingCryptoHints);
     pendingTickerSymbols.clear();
+    pendingCryptoHints.clear();
     if (!toFetch.length) return;
-    engine.fetchAllPrices(toFetch).then(() => updateTickerPrices());
+    engine.fetchAllPrices(toFetch, hints).then(() => updateTickerPrices());
   }, 0);
 }
 
@@ -36,10 +40,10 @@ function tickerTagHtml(ticker, { showPrice = false } = {}) {
   const url = engine.tickerUrl(ticker.symbol || '');
   const sym = (ticker.symbol || '').replace(/^\$/, '').toUpperCase();
   const cached = engine.priceCache[sym];
-  const changeStr = engine.priceHtml(cached, { showPrice });
+  const priceStr = cached ? engine.priceHtml(cached, { showPrice }) : '';
   const color = ACT_C[ticker.action] || 'var(--text-muted)';
   const bg = ACT_BG[ticker.action] || 'var(--text-10)';
-  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${changeStr}</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${priceStr}</a>`;
 }
 const PACK_SIZES = CREDIT_PACKS.map(p => p.credits).sort((a, b) => a - b);
 function creditBarMax(credits) { return PACK_SIZES.find(s => s >= credits) || credits; }
@@ -174,11 +178,13 @@ export function setStatus(t, animate = false, showDownload = false) {
 export function renderTickers(signals) {
   const showPrice = engine.getShowTickerPrice();
   const map = {};
+  const cryptoHints = new Set();
   signals.forEach(r => (r.tickers || []).forEach(t => {
     const k = (t.symbol || '').toUpperCase();
     if (!k) return;
     if (!map[k]) map[k] = { s: k, acts: new Set(), n: 0 };
     map[k].acts.add(t.action); map[k].n++;
+    if (t.type === 'crypto') cryptoHints.add(k.replace(/^\$/, ''));
   }));
   const list = Object.values(map).sort((a, b) => b.n - a.n);
   const el = $('tickerBar');
@@ -191,16 +197,16 @@ export function renderTickers(signals) {
     const pa = (hasBuy && hasSell) ? 'mixed' : ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
     const sym = t.s.replace(/^\$/, '');
     const cached = engine.priceCache[sym];
-    const changeStr = engine.priceHtml(cached, { showPrice });
+    const priceStr = cached ? engine.priceHtml(cached, { showPrice }) : '';
     const isActive = activeTicker === t.s;
     const dimStyle = (activeTicker && !isActive) ? ';opacity:0.3' : '';
-    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${dimStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${changeStr}</button>`;
+    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${dimStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${priceStr}</button>`;
   }).join('');
   if (activeTicker) {
     el.innerHTML += `<button class="clear-btn" data-clear-ticker-filter>×</button>`;
   }
   const symbols = list.map(t => t.s.replace(/^\$/, ''));
-  queueTickerMetricsRefresh(symbols);
+  queueTickerMetricsRefresh(symbols, cryptoHints);
 }
 
 export function updateTickerPrices() {
@@ -209,10 +215,8 @@ export function updateTickerPrices() {
     const sym = el.dataset.sym;
     const cached = engine.priceCache[sym];
     if (!cached) return;
-    const html = engine.priceHtml(cached, { showPrice });
-    if (!html) return;
     el.querySelectorAll('.ticker-change').forEach(node => node.remove());
-    el.insertAdjacentHTML('beforeend', html);
+    el.insertAdjacentHTML('beforeend', engine.priceHtml(cached, { showPrice }));
   });
 }
 

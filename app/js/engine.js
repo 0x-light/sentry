@@ -1002,8 +1002,48 @@ export function loadPendingScan() {
 
 export const priceCache = {};
 const PRICE_CACHE_TTL = 60000;
-const STOCK_QUOTE_BATCH_SIZE = 50;
 const pendingPriceFetches = new Map();
+
+// Dynamic crypto slug resolution (for tokens not in static CRYPTO_SLUGS)
+const LS_DYNAMIC_CRYPTO = 'signal_dynamic_crypto_slugs';
+const dynamicCryptoSlugs = (() => {
+  try { return JSON.parse(localStorage.getItem(LS_DYNAMIC_CRYPTO)) || {}; } catch { return {}; }
+})();
+
+function saveDynamicSlugs() {
+  try { localStorage.setItem(LS_DYNAMIC_CRYPTO, JSON.stringify(dynamicCryptoSlugs)); } catch {}
+}
+
+const pendingSlugLookups = new Map();
+
+async function resolveCryptoSlug(symbol) {
+  const sym = symbol.replace(/^\$/, '').toUpperCase();
+  // Static map — instant
+  if (CRYPTO_SLUGS[sym]) return CRYPTO_SLUGS[sym];
+  // Dynamic cache — instant (null = known miss)
+  if (sym in dynamicCryptoSlugs) return dynamicCryptoSlugs[sym];
+  // Coalesce concurrent lookups for the same symbol
+  if (pendingSlugLookups.has(sym)) return pendingSlugLookups.get(sym);
+
+  const lookup = (async () => {
+    try {
+      const resp = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(sym)}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const match = (data.coins || []).find(c => c.symbol?.toUpperCase() === sym);
+      const slug = match?.id || null;
+      dynamicCryptoSlugs[sym] = slug;
+      saveDynamicSlugs();
+      return slug;
+    } catch {
+      return null;
+    } finally {
+      pendingSlugLookups.delete(sym);
+    }
+  })();
+  pendingSlugLookups.set(sym, lookup);
+  return lookup;
+}
 const STOCK_RETRY_BASE_MS = 15000;
 const STOCK_RETRY_MAX_MS = 10 * 60 * 1000;
 const STOCK_RATE_LIMIT_FALLBACK_MS = 60000;
@@ -1074,7 +1114,7 @@ export function normalizeSymbol(sym) {
   return INDEX_MAP[clean] || clean;
 }
 
-export function isCrypto(sym) { return !!CRYPTO_SLUGS[sym.replace(/^\$/, '').toUpperCase()]; }
+export function isCrypto(sym) { return !!knownCryptoSlug(sym.replace(/^\$/, '').toUpperCase()); }
 
 export function formatPrice(price) {
   if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -1096,25 +1136,31 @@ export function priceHtml(data, { showPrice = false } = {}) {
 
 async function fetchCryptoPrices(symbols) {
   const now = Date.now();
-  const needed = symbols.filter(s => {
-    return !hasFreshPriceChange(s, now);
-  });
+  const needed = symbols.filter(s => !hasFreshPriceChange(s, now));
   if (!needed.length) return;
-  const ids = needed.map(s => CRYPTO_SLUGS[s]).filter(Boolean);
+
+  // Build slug map: static CRYPTO_SLUGS + dynamicCryptoSlugs
+  const slugMap = {};
+  for (const sym of needed) {
+    const slug = CRYPTO_SLUGS[sym] || dynamicCryptoSlugs[sym];
+    if (slug) slugMap[sym] = slug;
+  }
+  const ids = Object.values(slugMap);
   if (!ids.length) return;
+
   try {
     const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`);
     if (!resp.ok) return;
     const data = await resp.json();
-    needed.forEach(sym => {
-      const slug = CRYPTO_SLUGS[sym];
+    for (const sym of needed) {
+      const slug = slugMap[sym];
       const row = data?.[slug];
-      if (!row) return;
+      if (!row) continue;
       const price = finiteNumber(row.usd);
       const change = finiteNumber(row.usd_24h_change);
-      if (price == null) return;
+      if (price == null) continue;
       priceCache[sym] = { price, change: change ?? 0, ts: now };
-    });
+    }
   } catch {}
 }
 
@@ -1164,96 +1210,39 @@ async function fetchStockPrice(sym, originalSym = null) {
 
 async function fetchStockQuoteBatch(stockSyms) {
   if (!stockSyms.length) return;
-  const now = Date.now();
-  if (now < stockRateLimitedUntil) return;
-  const queryToCacheKeys = new Map();
-  stockSyms.forEach((sym) => {
+  if (Date.now() < stockRateLimitedUntil) return;
+
+  // Yahoo v7/finance/quote now requires auth crumbs — use v8/finance/chart per symbol instead
+  const seen = new Set();
+  const promises = [];
+  for (const sym of stockSyms) {
     const clean = sym.replace(/^\$/, '').toUpperCase();
-    if (!clean) return;
-    if (shouldSkipStockRequest(clean, now)) return;
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
     const query = normalizeSymbol(clean).toUpperCase();
-    if (!queryToCacheKeys.has(query)) queryToCacheKeys.set(query, []);
-    queryToCacheKeys.get(query).push(clean);
-  });
-
-  const querySymbols = [...queryToCacheKeys.keys()];
-  if (!querySymbols.length) return;
-  const unresolved = new Set(querySymbols);
-  let rateLimited = false;
-
-  for (let i = 0; i < querySymbols.length; i += STOCK_QUOTE_BATCH_SIZE) {
-    if (Date.now() < stockRateLimitedUntil) { rateLimited = true; break; }
-    const batch = querySymbols.slice(i, i + STOCK_QUOTE_BATCH_SIZE);
-    const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(batch.join(','))}`;
-    const url = CORS_PROXY + encodeURIComponent(yahooUrl);
-    try {
-      const resp = await fetch(url);
-      if (resp.status === 429) {
-        const batchKeys = batch.flatMap(sym => queryToCacheKeys.get(sym) || []);
-        markStockRateLimited(batchKeys, resp.headers);
-        rateLimited = true;
-        break;
-      }
-      if (!resp.ok) {
-        batch.forEach((querySym) => {
-          const keys = queryToCacheKeys.get(querySym) || [];
-          keys.forEach(k => markStockFailure(k));
-          unresolved.delete(querySym);
-        });
-        continue;
-      }
-      const data = await resp.json();
-      const results = Array.isArray(data?.quoteResponse?.result) ? data.quoteResponse.result : [];
-      results.forEach((row) => {
-        const quoteSym = String(row?.symbol || '').toUpperCase();
-        const cacheKeys = queryToCacheKeys.get(quoteSym);
-        if (!cacheKeys?.length) return;
-
-        const price = finiteNumber(row.regularMarketPrice);
-        let change = finiteNumber(row.regularMarketChangePercent);
-        if (change == null) {
-          const prevClose = finiteNumber(row.regularMarketPreviousClose) ?? finiteNumber(row.previousClose);
-          if (price != null && prevClose != null && prevClose !== 0) {
-            change = ((price - prevClose) / prevClose) * 100;
-          }
-        }
-        if (price == null || change == null) return;
-
-        cacheKeys.forEach((cacheKey) => {
-          priceCache[cacheKey] = { price, change, ts: now };
-          clearStockFailure(cacheKey);
-        });
-        unresolved.delete(quoteSym);
-      });
-    } catch {
-      batch.forEach((querySym) => {
-        const keys = queryToCacheKeys.get(querySym) || [];
-        keys.forEach(k => markStockFailure(k));
-        unresolved.delete(querySym);
-      });
-    }
+    promises.push(fetchStockPrice(query, clean));
   }
-
-  if (rateLimited) return;
-
-  if (!unresolved.size) return;
-  const fallbackPromises = [];
-  unresolved.forEach((querySym) => {
-    const cacheKeys = queryToCacheKeys.get(querySym) || [];
-    cacheKeys.forEach((cacheKey) => {
-      fallbackPromises.push(fetchStockPrice(querySym, cacheKey));
-    });
-  });
-  await Promise.all(fallbackPromises);
+  await Promise.all(promises);
 }
 
-export async function fetchAllPrices(symbols) {
+export async function fetchAllPrices(symbols, cryptoHints) {
   const now = Date.now();
   const waiting = [];
   const cryptoSyms = [];
   const stockSyms = [];
   const seen = new Set();
+  const hints = cryptoHints || new Set();
 
+  // Phase 1: resolve dynamic crypto slugs for hinted symbols not in static map
+  const slugLookups = [];
+  symbols.forEach(s => {
+    const clean = s.replace(/^\$/, '').toUpperCase();
+    if (!clean || !hints.has(clean) || CRYPTO_SLUGS[clean] || (clean in dynamicCryptoSlugs)) return;
+    slugLookups.push(resolveCryptoSlug(clean));
+  });
+  if (slugLookups.length) await Promise.all(slugLookups);
+
+  // Phase 2: classify and fetch
   symbols.forEach(s => {
     const clean = s.replace(/^\$/, '').toUpperCase();
     if (!clean || seen.has(clean)) return;
@@ -1265,8 +1254,12 @@ export async function fetchAllPrices(symbols) {
       waiting.push(pending);
       return;
     }
-    if (CRYPTO_SLUGS[clean]) cryptoSyms.push(clean);
-    else if (!shouldSkipStockRequest(clean, now)) stockSyms.push(clean);
+    // Crypto: in static map, or hinted + resolved dynamic slug
+    if (CRYPTO_SLUGS[clean] || dynamicCryptoSlugs[clean]) {
+      cryptoSyms.push(clean);
+    } else if (!shouldSkipStockRequest(clean, now)) {
+      stockSyms.push(clean);
+    }
   });
 
   const launched = [];
@@ -1296,18 +1289,23 @@ export async function fetchAllPrices(symbols) {
 // TICKER URLS
 // ============================================================================
 
+function knownCryptoSlug(sym) {
+  return CRYPTO_SLUGS[sym] || dynamicCryptoSlugs[sym] || null;
+}
+
 export function tickerUrl(sym) {
   const s = sym.replace(/^\$/, '').toUpperCase();
+  const slug = knownCryptoSlug(s);
   const provider = getFinanceProvider();
   if (provider === 'tradingview') {
-    if (CRYPTO_SLUGS[s]) return `https://www.tradingview.com/chart/?symbol=${s}USDT`;
+    if (slug) return `https://www.tradingview.com/chart/?symbol=${s}USDT`;
     if (s.endsWith('.TW')) return `https://www.tradingview.com/chart/?symbol=TWSE:${s.replace('.TW', '')}`;
     if (s.endsWith('.HK')) return `https://www.tradingview.com/chart/?symbol=HKEX:${s.replace('.HK', '')}`;
     if (s.endsWith('.T')) return `https://www.tradingview.com/chart/?symbol=TSE:${s.replace('.T', '')}`;
     if (s.endsWith('.KS')) return `https://www.tradingview.com/chart/?symbol=KRX:${s.replace('.KS', '')}`;
     return `https://www.tradingview.com/chart/?symbol=${s}`;
   }
-  if (CRYPTO_SLUGS[s]) return `https://www.coingecko.com/en/coins/${CRYPTO_SLUGS[s]}`;
+  if (slug) return `https://www.coingecko.com/en/coins/${slug}`;
   if (provider === 'google') {
     if (s.endsWith('.TW')) return `https://www.google.com/finance/quote/${s.replace('.TW', '')}:TPE?window=6M`;
     if (s.endsWith('.HK')) return `https://www.google.com/finance/quote/${s.replace('.HK', '')}:HKG?window=6M`;
@@ -1429,7 +1427,7 @@ export function getTvSymbol(sym) {
   // Check override map first
   if (TV_SYMBOL_OVERRIDES[clean]) return TV_SYMBOL_OVERRIDES[clean];
   // Crypto → BINANCE:XUSDT
-  if (CRYPTO_SLUGS[clean]) return `BINANCE:${clean}USDT`;
+  if (knownCryptoSlug(clean)) return `BINANCE:${clean}USDT`;
   // Regional exchanges
   if (clean.endsWith('.TW')) return `TWSE:${clean.replace('.TW', '')}`;
   if (clean.endsWith('.HK')) return `HKEX:${clean.replace('.HK', '')}`;
@@ -1459,13 +1457,20 @@ function canonicalTickerSymbol(sym) {
   return TICKER_SYMBOL_ALIASES[clean] || clean;
 }
 
+function normalizeTickerType(type, symbol) {
+  if (type === 'crypto' || type === 'stock') return type;
+  // Fallback: use static CRYPTO_SLUGS lookup
+  const clean = stripDollar(symbol);
+  return CRYPTO_SLUGS[clean] ? 'crypto' : 'stock';
+}
+
 export function normalizeSignals(signals) {
   if (!signals || !Array.isArray(signals)) return [];
   return signals.filter(isValidSignal).map(s => {
-    const tickers = (s.tickers || []).filter(t => t && t.symbol).map(t => ({
-      symbol: '$' + canonicalTickerSymbol(t.symbol),
-      action: normalizeTickerAction(t.action),
-    }));
+    const tickers = (s.tickers || []).filter(t => t && t.symbol).map(t => {
+      const sym = '$' + canonicalTickerSymbol(t.symbol);
+      return { symbol: sym, action: normalizeTickerAction(t.action), type: normalizeTickerType(t.type, sym) };
+    });
     // Deduplicate tickers by symbol, merge conflicting actions to 'mixed'
     const tickerMap = new Map();
     for (const t of tickers) {
