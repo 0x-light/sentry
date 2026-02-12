@@ -109,7 +109,6 @@ function showScheduledScanNotice(scan) {
   banner.innerHTML = `<span>${engine.esc(msg)}</span>
     <span style="display:flex;gap:6px;margin-left:auto">
       <button class="resume-btn" type="button">View results</button>
-      <button class="dismiss-btn" type="button">Dismiss</button>
     </span>`;
 
   banner.querySelector('.resume-btn')?.addEventListener('click', () => {
@@ -122,12 +121,6 @@ function showScheduledScanNotice(scan) {
     if (!resultsEl) return;
     const top = Math.max(resultsEl.getBoundingClientRect().top + window.scrollY - 12, 0);
     window.scrollTo({ top, behavior: 'smooth' });
-  });
-  banner.querySelector('.dismiss-btn')?.addEventListener('click', () => {
-    state.lastScheduledNoticeKey = key;
-    saveScheduledNoticeKey(key);
-    clearPendingScheduledScan();
-    banner.remove();
   });
 
   notices.querySelector('.notice.sched-banner')?.remove();
