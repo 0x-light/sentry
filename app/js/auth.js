@@ -12,7 +12,6 @@ const LS_ACCESS_TOKEN = 'sentry_access_token';
 const LS_REFRESH_TOKEN = 'sentry_refresh_token';
 const LS_USER = 'sentry_user';
 const LS_EXPIRES_AT = 'sentry_token_expires';
-const OAUTH_STATE_KEY = 'sentry_oauth_state';
 
 let currentUser = null;
 let accessToken = null;
@@ -119,18 +118,6 @@ function scheduleRefresh() {
   }, refreshIn);
 }
 
-function hasExpectedOAuthState() {
-  return !!sessionStorage.getItem(OAUTH_STATE_KEY);
-}
-
-function validateOAuthState(params) {
-  const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY);
-  if (!expectedState) return true;
-  sessionStorage.removeItem(OAUTH_STATE_KEY);
-  const returnedState = params.get('state');
-  return !!returnedState && returnedState === expectedState;
-}
-
 async function refreshSession() {
   if (!refreshToken) throw new Error('No refresh token');
   const data = await supabaseAuth('/token?grant_type=refresh_token', {
@@ -145,15 +132,17 @@ async function refreshSession() {
 export async function init() {
   loadSession();
 
+  // Check for OAuth error in query params (e.g. bad_oauth_state from Supabase)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('error')) {
+    console.warn('OAuth error:', urlParams.get('error_description') || urlParams.get('error'));
+    history.replaceState(null, '', window.location.pathname);
+  }
+
   // Check for OAuth callback in URL hash (implicit flow)
   const hash = window.location.hash;
   if (hash.includes('access_token=')) {
     const params = new URLSearchParams(hash.substring(1));
-    if (hasExpectedOAuthState() && !validateOAuthState(params)) {
-      console.warn('OAuth state mismatch in hash callback');
-      history.replaceState(null, '', window.location.pathname + window.location.search);
-      return;
-    }
     const session = {
       access_token: params.get('access_token'),
       refresh_token: params.get('refresh_token'),
@@ -175,14 +164,8 @@ export async function init() {
   }
 
   // Check for PKCE code in query params
-  const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
   if (code) {
-    if (hasExpectedOAuthState() && !validateOAuthState(urlParams)) {
-      console.warn('OAuth state mismatch in code callback');
-      history.replaceState(null, '', window.location.pathname);
-      return;
-    }
     // Always clean up the code from the URL to prevent replay and stale bookmarks
     history.replaceState(null, '', window.location.pathname);
     try {
@@ -215,11 +198,8 @@ export async function init() {
 }
 
 export async function signInGoogle() {
-  // Generate a random state parameter to prevent CSRF attacks on the OAuth callback
-  const state = crypto.randomUUID();
-  sessionStorage.setItem(OAUTH_STATE_KEY, state);
   const redirectUrl = window.location.origin + window.location.pathname;
-  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}&state=${encodeURIComponent(state)}`;
+  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
   window.location.href = url;
 }
 
