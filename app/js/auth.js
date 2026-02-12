@@ -12,6 +12,7 @@ const LS_ACCESS_TOKEN = 'sentry_access_token';
 const LS_REFRESH_TOKEN = 'sentry_refresh_token';
 const LS_USER = 'sentry_user';
 const LS_EXPIRES_AT = 'sentry_token_expires';
+const OAUTH_STATE_KEY = 'sentry_oauth_state';
 
 let currentUser = null;
 let accessToken = null;
@@ -30,12 +31,31 @@ async function supabaseAuth(path, body = null, method = 'POST') {
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
-  const res = await fetch(`${SUPABASE_URL}/auth/v1${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/auth/v1${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Auth request timed out');
+    throw new Error('Unable to reach auth service');
+  } finally {
+    clearTimeout(timeout);
+  }
+  const rawText = await res.text();
+  let data = {};
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error('Auth service returned an invalid response');
+    }
+  }
   if (!res.ok) {
     throw new Error(data.error_description || data.msg || data.error || 'Auth error');
   }
@@ -99,6 +119,18 @@ function scheduleRefresh() {
   }, refreshIn);
 }
 
+function hasExpectedOAuthState() {
+  return !!sessionStorage.getItem(OAUTH_STATE_KEY);
+}
+
+function validateOAuthState(params) {
+  const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY);
+  if (!expectedState) return true;
+  sessionStorage.removeItem(OAUTH_STATE_KEY);
+  const returnedState = params.get('state');
+  return !!returnedState && returnedState === expectedState;
+}
+
 async function refreshSession() {
   if (!refreshToken) throw new Error('No refresh token');
   const data = await supabaseAuth('/token?grant_type=refresh_token', {
@@ -117,6 +149,11 @@ export async function init() {
   const hash = window.location.hash;
   if (hash.includes('access_token=')) {
     const params = new URLSearchParams(hash.substring(1));
+    if (hasExpectedOAuthState() && !validateOAuthState(params)) {
+      console.warn('OAuth state mismatch in hash callback');
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      return;
+    }
     const session = {
       access_token: params.get('access_token'),
       refresh_token: params.get('refresh_token'),
@@ -141,10 +178,16 @@ export async function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
   if (code) {
+    if (hasExpectedOAuthState() && !validateOAuthState(urlParams)) {
+      console.warn('OAuth state mismatch in code callback');
+      history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+    // Always clean up the code from the URL to prevent replay and stale bookmarks
+    history.replaceState(null, '', window.location.pathname);
     try {
       const data = await supabaseAuth('/token?grant_type=authorization_code', { code });
       saveSession(data);
-      history.replaceState(null, '', window.location.pathname);
       notifyAuthChange();
       return;
     } catch (e) {
@@ -172,8 +215,11 @@ export async function init() {
 }
 
 export async function signInGoogle() {
+  // Generate a random state parameter to prevent CSRF attacks on the OAuth callback
+  const state = crypto.randomUUID();
+  sessionStorage.setItem(OAUTH_STATE_KEY, state);
   const redirectUrl = window.location.origin + window.location.pathname;
-  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}&state=${encodeURIComponent(state)}`;
   window.location.href = url;
 }
 

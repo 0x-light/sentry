@@ -23,6 +23,29 @@
 <link rel="preconnect" href="https://api.anthropic.com">
 <link rel="preconnect" href="https://api.coingecko.com">
 <link rel="preconnect" href="https://sentry.tomaspalmeirim.workers.dev">
+<meta name="sentry-api-base" content="">
+<meta name="sentry-cors-proxy" content="">
+<meta name="sentry-supabase-url" content="">
+<meta name="sentry-supabase-anon-key" content="">
+<script>
+  (function () {
+    function readMeta(name) {
+      var el = document.querySelector('meta[name="' + name + '"]');
+      var val = el && el.content ? el.content.trim() : '';
+      return val || null;
+    }
+    var cfg = {
+      API_BASE: readMeta('sentry-api-base'),
+      CORS_PROXY: readMeta('sentry-cors-proxy'),
+      SUPABASE_URL: readMeta('sentry-supabase-url'),
+      SUPABASE_ANON_KEY: readMeta('sentry-supabase-anon-key'),
+    };
+    Object.keys(cfg).forEach(function (k) {
+      if (!cfg[k]) delete cfg[k];
+    });
+    window.__SENTRY_CONFIG__ = cfg;
+  })();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app/css/styles.css">
 </head>

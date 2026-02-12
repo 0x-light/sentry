@@ -11,8 +11,14 @@ import * as auth from './auth.js';
 import * as api from './api.js';
 import * as engine from './engine.js';
 import * as ui from './ui.js';
+import { normalizeAccountHandle, normalizeAccountList } from './validation.js';
 
 const $ = id => document.getElementById(id);
+
+function renderNotice(message, type = 'error') {
+  const cls = type === 'warning' ? 'warn' : 'err';
+  $('notices').innerHTML = `<div class="notice ${cls}">${engine.esc(message)}</div>`;
+}
 
 // ============================================================================
 // APP STATE
@@ -47,8 +53,12 @@ const state = {
   },
 
   addAccount(h) {
-    const c = h.trim().replace(/^@/, '').toLowerCase();
-    if (c && !state.customAccounts.includes(c)) state.customAccounts.push(c);
+    const c = normalizeAccountHandle(h);
+    if (!c) {
+      renderNotice('Invalid account name. Use Twitter handles only (letters, numbers, underscore, max 15).');
+      return;
+    }
+    if (!state.customAccounts.includes(c)) state.customAccounts.push(c);
     $('acctInput').value = '';
     $('addBtn').classList.remove('vis');
     engine.saveAccounts(state.customAccounts);
@@ -298,9 +308,14 @@ async function run() {
       state.lastScanResult = engine.loadCurrentScan() || result;
       engine.clearPendingScan();
 
-      // Update seen tweet URLs for live mode
+      // Update seen tweet URLs for live mode (bounded to prevent unbounded growth)
       if (result.rawTweets) {
         result.rawTweets.forEach(a => (a.tweets || []).forEach(tw => state.seenTweetUrls.add(engine.getTweetUrl(tw))));
+        // Cap seenTweetUrls to prevent memory leaks during long-running live sessions
+        if (state.seenTweetUrls.size > 50000) {
+          const arr = [...state.seenTweetUrls];
+          state.seenTweetUrls = new Set(arr.slice(-25000));
+        }
       }
 
       const d = new Date();
@@ -498,6 +513,30 @@ async function loadServerHistory() {
   }
 }
 
+function mapServerTextCase(value) {
+  if (value === 'lower' || value === 'sentence') return value;
+  if (value === 'lowercase') return 'lower';
+  return 'sentence';
+}
+
+async function syncSettingsFromServer() {
+  if (!auth.isAuthenticated()) return;
+  try {
+    const settings = await api.getSettings();
+    if (!settings || typeof settings !== 'object') return;
+
+    if (typeof settings.theme === 'string') engine.setTheme(settings.theme);
+    if (typeof settings.font === 'string') engine.setFont(settings.font);
+    if (typeof settings.font_size === 'string') engine.setFontSize(settings.font_size);
+    if (typeof settings.text_case === 'string') engine.setCase(mapServerTextCase(settings.text_case));
+    if (typeof settings.finance_provider === 'string') localStorage.setItem(LS_FINANCE, settings.finance_provider);
+    if (typeof settings.model === 'string') localStorage.setItem(LS_MODEL, settings.model);
+    if (typeof settings.live_enabled === 'boolean') engine.setLiveEnabled(settings.live_enabled);
+  } catch (e) {
+    console.warn('Failed to load server settings:', e.message);
+  }
+}
+
 // ============================================================================
 // SCHEDULE MANAGEMENT
 // ============================================================================
@@ -544,6 +583,17 @@ function updateNextScheduleLabel() {
 }
 
 let _visibilityHandler = null;
+
+function stopSchedulePolling() {
+  if (state.scheduleInterval) {
+    clearInterval(state.scheduleInterval);
+    state.scheduleInterval = null;
+  }
+  if (_visibilityHandler) {
+    document.removeEventListener('visibilitychange', _visibilityHandler);
+    _visibilityHandler = null;
+  }
+}
 
 function startSchedulePolling() {
   if (state.scheduleInterval) clearInterval(state.scheduleInterval);
@@ -1063,8 +1113,22 @@ function editPresetUI(name) {
 
 function savePreset() {
   const name = $('presetNameInput').value.trim();
-  const accts = $('presetAccountsInput').value.split(',').map(a => a.trim().replace(/^@/, '').toLowerCase()).filter(a => a);
-  if (!name || !accts.length) return;
+  if (name.length > 100) {
+    renderNotice('Preset name must be 100 characters or fewer.');
+    return;
+  }
+  const rawAccounts = $('presetAccountsInput').value.split(',');
+  const { accounts: accts, invalidCount, truncated } = normalizeAccountList(rawAccounts, { max: 200 });
+  if (!name || !accts.length) {
+    renderNotice('Preset name and at least one valid account are required.');
+    return;
+  }
+  if (invalidCount) {
+    $('notices').innerHTML += `<div class="notice warn">${invalidCount} invalid account${invalidCount > 1 ? 's were' : ' was'} skipped.</div>`;
+  }
+  if (truncated) {
+    $('notices').innerHTML += `<div class="notice warn">Preset capped at 200 accounts.</div>`;
+  }
   let presets = engine.getPresets();
   if (state.editingPresetName) presets = presets.filter(p => p.name !== state.editingPresetName);
   presets = presets.filter(p => p.name !== name);
@@ -1092,16 +1156,31 @@ function saveSettings() {
   const stp = $('showTickerPriceToggle');
   if (stp) engine.setShowTickerPrice(stp.checked);
 
-  if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
-  if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
-  localStorage.setItem(LS_FINANCE, fp);
-  if (model) localStorage.setItem(LS_MODEL, model);
+  try {
+    if (tw) localStorage.setItem(LS_TW, tw); else localStorage.removeItem(LS_TW);
+    if (an) localStorage.setItem(LS_AN, an); else localStorage.removeItem(LS_AN);
+    localStorage.setItem(LS_FINANCE, fp);
+    if (model) localStorage.setItem(LS_MODEL, model);
+  } catch (e) {
+    console.warn('localStorage save failed (quota may be exceeded):', e.message);
+  }
   originalSettings = { font, fontSize, textCase };
   engine.setFont(font);
   engine.setFontSize(fontSize);
   engine.setCase(textCase);
   engine.setLiveEnabled(liveEnabled);
   ui.saveAnalystsFromUI();
+  if (auth.isAuthenticated()) {
+    api.saveSettings({
+      theme: engine.getTheme(),
+      font,
+      font_size: fontSize,
+      text_case: textCase,
+      finance_provider: fp,
+      model,
+      live_enabled: liveEnabled,
+    }).catch((e) => console.warn('Failed to sync settings:', e.message));
+  }
   closeModal('modal');
   $('liveBtn').style.display = liveEnabled ? 'flex' : 'none';
   if (state.lastScanResult?.signals) {
@@ -1236,8 +1315,18 @@ function initInputListeners() {
       if (data.analysts) { engine.saveAnalysts(data.analysts); if (data.activeAnalyst) engine.setActiveAnalystId(data.activeAnalyst); }
       if (data.keys) { if (data.keys.twitter) localStorage.setItem('signal_twitter_key', data.keys.twitter); if (data.keys.anthropic) localStorage.setItem('signal_anthropic_key', data.keys.anthropic); }
       if (data.presets) engine.savePresetsData(data.presets);
-      if (data.accounts) { state.customAccounts = data.accounts; engine.saveAccounts(data.accounts); }
-      if (data.loadedPresets) { state.loadedPresets = data.loadedPresets; engine.saveLoadedPresets(data.loadedPresets); }
+      if (data.accounts) {
+        const normalized = normalizeAccountList(data.accounts, { max: 500 });
+        state.customAccounts = normalized.accounts;
+        engine.saveAccounts(normalized.accounts);
+      }
+      if (data.loadedPresets) {
+        const safeLoaded = Array.isArray(data.loadedPresets)
+          ? [...new Set(data.loadedPresets.filter(v => typeof v === 'string'))]
+          : [];
+        state.loadedPresets = safeLoaded;
+        engine.saveLoadedPresets(safeLoaded);
+      }
       if (data.recents) localStorage.setItem('signal_recent_accounts', JSON.stringify(data.recents));
       ui.render();
       this.textContent = 'Success'; this.style.color = 'var(--green)';
@@ -1440,8 +1529,12 @@ function initOnboardingListeners() {
     }
     if (e.target.id === 'obAddAccountBtn') {
       const input = $('obAccountInput');
-      const val = input?.value?.trim()?.replace(/^@/, '')?.toLowerCase();
-      if (val && !state.customAccounts.includes(val)) {
+      const val = normalizeAccountHandle(input?.value || '');
+      if (!val) {
+        renderNotice('Invalid account name. Use Twitter handles only.');
+        return;
+      }
+      if (!state.customAccounts.includes(val)) {
         state.customAccounts.push(val);
         engine.saveAccounts(state.customAccounts);
         input.value = '';
@@ -1513,6 +1606,7 @@ async function init() {
   auth.onAuthChange(async ({ authenticated }) => {
     if (authenticated) {
       await api.init();
+      await syncSettingsFromServer();
       loadServerHistory();
       loadSchedules().then(() => {
         updateNextScheduleLabel();
@@ -1520,6 +1614,7 @@ async function init() {
         ui.renderTopbar();
       });
     } else {
+      stopSchedulePolling();
       state.schedules = [];
     }
     ui.renderTopbar();
@@ -1531,6 +1626,7 @@ async function init() {
   // If already authenticated after init (session was restored), ensure API is ready
   if (auth.isAuthenticated()) {
     await api.init();
+    await syncSettingsFromServer();
   }
 
   await handleBillingCallback();

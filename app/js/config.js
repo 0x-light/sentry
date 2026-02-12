@@ -2,24 +2,38 @@
 // SENTRY — Configuration & Constants
 // ============================================================================
 
+function readRuntimeConfig() {
+  if (typeof window === 'undefined') return {};
+  const runtime = window.__SENTRY_CONFIG__;
+  if (!runtime || typeof runtime !== 'object') return {};
+  return runtime;
+}
+
+function configValue(key, fallback) {
+  const runtime = readRuntimeConfig();
+  const value = runtime[key];
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return fallback;
+}
+
 // --- Default presets (matches v3) ---
 export const DEFAULT_PRESETS = [
   { name: 'tradfi', accounts: [
-    'abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'MartinShkreli', 'nicholastreece', 'zephyr_z9',
-    'biancoresearch', 'LynAldenContact', 'LizAnnSonders', 'charliebilello', 'NorthmanTrader', 'globalmacro',
-    'MacroCharts', 'DTAPCAP', 'BobEUnlimited', 'MacroAlf', 'elerianm', 'zerohedge',
-    'RayDalio', 'IanBremmer', 'PeterZeihan', 'Brad_Setser', 'RobinBrooksII', 'BaldingsWorld', 'GeorgeGammon',
-    'KobeissiLetter', 'Nouriel', 'paulkrugman', 'adam_tooze', 'minxinpei', 'KoriSchake', 'EurasiaGroup',
-    'CFR_org', 'BrookingsInst', 'carnegieendow', 'stratfor', 'MichaelEvery', 'SentimenTrader', 'hedgeye', 'RealVision',
+    'abcampbell', 'apralky', 'ayz_yzyz', 'citrini7', 'jukan05', 'martinshkreli', 'nicholastreece', 'zephyr_z9',
+    'biancoresearch', 'lynaldencontact', 'lizannsonders', 'charliebilello', 'northmantrader', 'globalmacro',
+    'macrocharts', 'dtapcap', 'bobeunlimited', 'macroalf', 'elerianm', 'zerohedge',
+    'raydalio', 'ianbremmer', 'peterzeihan', 'brad_setser', 'robinbrooksii', 'baldingsworld', 'georgegammon',
+    'kobeissiletter', 'nouriel', 'paulkrugman', 'adam_tooze', 'minxinpei', 'korischake', 'eurasiagroup',
+    'cfr_org', 'brookingsinst', 'carnegieendow', 'stratfor', 'michaelevery', 'sentimentrader', 'hedgeye', 'realvision',
   ] },
-  { name: 'crypto', accounts: ['0xaporia', '0xGeeGee', '0xkinnif', '0xkyle__', '0xNairolf', '0xSisyphus', '0xsmac', '0xWangarian', '0x_Kun', '33b345', '__bleeker', 'abetrade', 'AggrNews', 'ahboyash', 'awawat', 'BambouClub', 'based16z', 'bit_hedge', 'blknoiz06', 'Bluntz_Capital', 'BobLoukas', 'burstingbagel', 'c0xswain', 'Cbb0fe', 'Cheshire_Cap', 'choffstein', 'chortly', 'chrisgrx_', 'CL207', 'cobie', 'cryptoluffyy', 'Cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'DeFiyst', 'definalist', 'DefiSquared', 'DegenPing', 'delucinator', 'Dogetoshi', 'DonAlt', 'Evan_ss6', 'fejau_inc', 'FoftyPawlow', 'gametheorizing', 'gammichan', 'GCRClassic', 'goodalexander', 'hansolar21', 'HsakaTrades', 'HumaCapital', 'Husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'jimtalbot', 'kwaker_oats_', 'lBattleRhino', 'lightcrypto', 'LSDinmycoffee', 'LuckyXBT__', 'maruushae', 'mert', 'MisakaTrades', 'mlmabc', 'NachoTrades', 'NyuuRoe', 'paoloardoino', 'PaperFlow8', 'pet3rpan_', 'PineAnalytics', 'pk79z', 'QwQiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'RunnerXBT', 'saliencexbt', 'salveboccaccio', 'sershokunin', 'SMtrades_', 'TangTrades', 'Techno_Revenant', 'tetra_gamma', 'TheCryptoNexus', 'TheOtherParker_', 'thiccyth0t', 'ThinkingUSD', 'tier10k', 'timelessbeing', 'TraderMercury', 'trading_axe', 'TreeNewsFeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'ZeMirch', 'zoomerfied', 'Rewkang'] },
+  { name: 'crypto', accounts: ['0xaporia', '0xgeegee', '0xkinnif', '0xkyle__', '0xnairolf', '0xsisyphus', '0xsmac', '0xwangarian', '0x_kun', '33b345', '__bleeker', 'abetrade', 'aggrnews', 'ahboyash', 'awawat', 'bambouclub', 'based16z', 'bit_hedge', 'blknoiz06', 'bluntz_capital', 'bobloukas', 'burstingbagel', 'c0xswain', 'cbb0fe', 'cheshire_cap', 'choffstein', 'chortly', 'chrisgrx_', 'cl207', 'cobie', 'cryptoluffyy', 'cryptopathic', 'cuntycakes123', 'danny_xbt', 'deaftrader1', 'defi_monk', 'defiyst', 'definalist', 'defisquared', 'degenping', 'delucinator', 'dogetoshi', 'donalt', 'evan_ss6', 'fejau_inc', 'foftypawlow', 'gametheorizing', 'gammichan', 'gcrclassic', 'goodalexander', 'hansolar21', 'hsakatrades', 'humacapital', 'husslin_', 'ieaturfoods', 'insiliconot', 'inversebrah', 'jeff_w1098', 'jimcattu', 'jimtalbot', 'kwaker_oats_', 'lbattlerhino', 'lightcrypto', 'lsdinmycoffee', 'luckyxbt__', 'maruushae', 'mert', 'misakatrades', 'mlmabc', 'nachotrades', 'nyuuroe', 'paoloardoino', 'paperflow8', 'pet3rpan_', 'pineanalytics', 'pk79z', 'qwqiao', 'redphonecrypto', 'riddle245', 'rodeo_crypro', 'runnerxbt', 'saliencexbt', 'salveboccaccio', 'sershokunin', 'smtrades_', 'tangtrades', 'techno_revenant', 'tetra_gamma', 'thecryptonexus', 'theotherparker_', 'thiccyth0t', 'thinkingusd', 'tier10k', 'timelessbeing', 'tradermercury', 'trading_axe', 'treenewsfeed', 'trippingvols', 'tzedonn', 'uttamsangwan', 'velo_xyz', 'xmgnr', 'zemirch', 'zoomerfied', 'rewkang'] },
   { name: 'tech', accounts: [
-    'sama', 'karpathy', 'ylecun', 'AndrewYNg', 'gdb', 'kaifulee', 'demishassabis', 'JeffDean', 'arthurmensch', 'ID_AA_Carmack',
+    'sama', 'karpathy', 'ylecun', 'andrewynng', 'gdb', 'kaifulee', 'demishassabis', 'jeffdean', 'arthurmensch', 'id_aa_carmack',
     'rowancheung', 'lexfridman', 'emollick', 'goodside', 'swyx', 'mattshumer_', 'alliekmiller',
     'simonw', 'natfriedman', 'levelsio', 'steipete', 'bindureddy',
     'tbpn', 'johncoogan', 'jordihays',
     'paulg', 'balajis', 'pmarca', 'cdixon', 'a16z',
-    'HuggingFace', 'lmsysorg', 'AnthropicAI', 'StabilityAI', 'techreview', 'Aider',
+    'huggingface', 'lmsysorg', 'anthropicai', 'stabilityai', 'techreview', 'aider',
   ] },
 ];
 
@@ -120,12 +134,12 @@ Return a JSON array. Each signal:
 Return ONLY valid JSON array. No markdown, no explanation.`;
 
 // API endpoints
-export const API_BASE = 'https://api.sentry.is';
-export const CORS_PROXY = 'https://sentry.tomaspalmeirim.workers.dev/?url=';
+export const API_BASE = configValue('API_BASE', 'https://api.sentry.is');
+export const CORS_PROXY = configValue('CORS_PROXY', 'https://sentry.tomaspalmeirim.workers.dev/?url=');
 
 // Supabase config
-export const SUPABASE_URL = 'https://mfbnbfpfjeetaejibvjy.supabase.co';
-export const SUPABASE_ANON_KEY = 'sb_publishable_aXJZySxABS2lOW_WQS-OOQ_RNSymyfn';
+export const SUPABASE_URL = configValue('SUPABASE_URL', 'https://mfbnbfpfjeetaejibvjy.supabase.co');
+export const SUPABASE_ANON_KEY = configValue('SUPABASE_ANON_KEY', 'sb_publishable_aXJZySxABS2lOW_WQS-OOQ_RNSymyfn');
 
 // Model pricing (per million tokens)
 export const MODEL_PRICING = {

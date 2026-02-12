@@ -15,7 +15,7 @@ create table profiles (
   email text,
   name text,
   avatar_url text,
-  credits_balance int not null default 0,        -- current credit balance
+  credits_balance int not null default 0 check (credits_balance >= 0), -- current credit balance
   stripe_customer_id text unique,
   stripe_subscription_id text,                   -- for recurring credit packs
   subscription_status text,                      -- 'active', 'canceled', etc.
@@ -71,6 +71,23 @@ create trigger on_profile_created
   after insert on profiles
   for each row execute function handle_new_profile();
 
+-- Generic trigger to keep updated_at in sync
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trg_profiles_updated_at
+  before update on profiles
+  for each row execute function set_updated_at();
+
+create trigger trg_user_settings_updated_at
+  before update on user_settings
+  for each row execute function set_updated_at();
+
 -- ============================================================================
 -- CREDIT TRANSACTIONS (audit trail for all credit changes)
 -- ============================================================================
@@ -78,11 +95,11 @@ create trigger on_profile_created
 create table credit_transactions (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references profiles(id) on delete cascade,
-  type text not null,                            -- 'purchase', 'recurring', 'scan', 'refund', 'bonus'
-  amount int not null,                           -- positive = add, negative = deduct
+  type text not null check (type in ('purchase', 'recurring', 'scan', 'refund', 'bonus', 'adjustment')),
+  amount int not null check (amount <> 0),       -- positive = add, negative = deduct
   balance_after int not null,                    -- balance after this transaction
   description text,                              -- e.g. "Standard pack (5,000 credits)", "Scan: 200 accounts × 1d"
-  metadata jsonb default '{}',                   -- stripe_session_id, scan details, etc.
+  metadata jsonb not null default '{}',          -- stripe_session_id, scan details, etc.
   created_at timestamptz not null default now()
 );
 
@@ -106,6 +123,10 @@ create table presets (
 
 create index idx_presets_user on presets(user_id);
 
+create trigger trg_presets_updated_at
+  before update on presets
+  for each row execute function set_updated_at();
+
 -- ============================================================================
 -- ANALYSTS (Custom AI Prompts)
 -- ============================================================================
@@ -125,6 +146,10 @@ create table analysts (
 
 create index idx_analysts_user on analysts(user_id);
 
+create trigger trg_analysts_updated_at
+  before update on analysts
+  for each row execute function set_updated_at();
+
 -- ============================================================================
 -- SCAN HISTORY
 -- ============================================================================
@@ -134,12 +159,12 @@ create table scans (
   user_id uuid not null references profiles(id) on delete cascade,
   accounts text[] not null,
   range_label text not null,
-  range_days int not null,
-  total_tweets int not null default 0,
-  signal_count int not null default 0,
+  range_days int not null check (range_days >= 1 and range_days <= 30),
+  total_tweets int not null default 0 check (total_tweets >= 0),
+  signal_count int not null default 0 check (signal_count >= 0),
   signals jsonb not null default '[]',
   tweet_meta jsonb default '{}',
-  credits_used int not null default 0,
+  credits_used int not null default 0 check (credits_used >= 0),
   created_at timestamptz not null default now()
 );
 
@@ -286,9 +311,16 @@ returns int as $$
 declare
   v_balance int;
 begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'p_amount must be greater than 0';
+  end if;
+
   -- Lock the row to prevent race conditions
   select credits_balance into v_balance
   from profiles where id = p_user_id for update;
+  if not found then
+    raise exception 'Profile not found for user %', p_user_id;
+  end if;
 
   if v_balance < p_amount then
     return -1;  -- insufficient credits
@@ -313,10 +345,24 @@ returns int as $$
 declare
   v_balance int;
 begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'p_amount must be greater than 0';
+  end if;
+  if p_type is null or length(trim(p_type)) = 0 then
+    raise exception 'p_type is required';
+  end if;
+
+  -- Lock row explicitly so concurrent grants are serialized.
+  select credits_balance into v_balance
+  from profiles where id = p_user_id for update;
+  if not found then
+    raise exception 'Profile not found for user %', p_user_id;
+  end if;
+
+  v_balance := v_balance + p_amount;
   update profiles
-  set credits_balance = credits_balance + p_amount, updated_at = now()
-  where id = p_user_id
-  returning credits_balance into v_balance;
+  set credits_balance = v_balance, updated_at = now()
+  where id = p_user_id;
 
   insert into credit_transactions (user_id, type, amount, balance_after, description, metadata)
   values (p_user_id, p_type, p_amount, v_balance, p_description, p_metadata);
@@ -356,10 +402,10 @@ create table scheduled_scans (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references profiles(id) on delete cascade,
   label text not null default 'Morning',
-  time text not null default '07:00',         -- "HH:MM" 24-hour format
+  time text not null default '07:00' check (time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   timezone text not null default 'UTC',       -- IANA timezone (e.g. "America/New_York")
   days int[] not null default '{}',           -- 0-6 (Sun-Sat), empty = every day
-  range_days int not null default 1,          -- 1, 7, or 30
+  range_days int not null default 1 check (range_days in (1, 7, 30)),
   preset_id uuid references presets(id) on delete set null,  -- which preset to scan
   preset_names text[] not null default '{}',  -- selected preset names (source of truth for UI)
   accounts text[] not null default '{}',      -- explicit accounts (fallback if no preset)
@@ -373,6 +419,11 @@ create table scheduled_scans (
 
 create index idx_scheduled_scans_user on scheduled_scans(user_id);
 create index idx_scheduled_scans_enabled on scheduled_scans(enabled) where enabled = true;
+create index idx_scheduled_scans_user_enabled_time on scheduled_scans(user_id, enabled, time);
+
+create trigger trg_scheduled_scans_updated_at
+  before update on scheduled_scans
+  for each row execute function set_updated_at();
 
 -- RLS
 alter table scheduled_scans enable row level security;
@@ -387,13 +438,13 @@ create policy "Users can delete own schedules" on scheduled_scans for delete usi
 -- ============================================================================
 
 create table shared_scans (
-  id text primary key,                          -- 8-char random alphanumeric ID
+  id text primary key check (id ~ '^[a-z0-9]{8}$'),
   user_id uuid references profiles(id) on delete set null,
   range_label text not null default '',
-  range_days int not null default 1,
-  accounts_count int not null default 0,
-  total_tweets int not null default 0,
-  signal_count int not null default 0,
+  range_days int not null default 1 check (range_days >= 1 and range_days <= 30),
+  accounts_count int not null default 0 check (accounts_count >= 0),
+  total_tweets int not null default 0 check (total_tweets >= 0),
+  signal_count int not null default 0 check (signal_count >= 0),
   signals jsonb not null default '[]',
   tweet_meta jsonb default '{}',
   created_at timestamptz not null default now()
@@ -401,3 +452,4 @@ create table shared_scans (
 
 -- No user-facing RLS policies — reads go through the worker with SUPABASE_SERVICE_KEY
 alter table shared_scans enable row level security;
+create index idx_shared_scans_created_at on shared_scans(created_at desc);

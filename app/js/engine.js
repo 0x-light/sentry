@@ -57,7 +57,15 @@ export function sanitizeText(str) {
   return result;
 }
 
-export const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+// Reuse a single element for HTML escaping (avoids creating a throwaway DOM element per call)
+const _escEl = document.createElement('div');
+export const esc = s => { _escEl.textContent = s; return _escEl.innerHTML; };
+
+// Safe localStorage write — swallows quota errors instead of crashing
+function safeLsSet(key, value) {
+  try { localStorage.setItem(key, value); }
+  catch (e) { console.warn('localStorage write failed:', key, e.message); }
+}
 export function normCat(c) { return CAT_MIGRATE[c] || c; }
 
 // ============================================================================
@@ -174,7 +182,7 @@ export function getPresets() {
   return JSON.parse(stored);
 }
 
-export function savePresetsData(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
+export function savePresetsData(p) { safeLsSet(LS_PRESETS, JSON.stringify(p)); }
 
 // ============================================================================
 // ACCOUNTS
@@ -185,14 +193,14 @@ export function loadStoredAccounts() {
   return saved ? JSON.parse(saved) : [];
 }
 
-export function saveAccounts(accounts) { localStorage.setItem(LS_ACCOUNTS, JSON.stringify(accounts)); }
+export function saveAccounts(accounts) { safeLsSet(LS_ACCOUNTS, JSON.stringify(accounts)); }
 
 export function loadStoredLoadedPresets() {
   const saved = localStorage.getItem(LS_LOADED_PRESETS);
   return saved ? JSON.parse(saved) : [];
 }
 
-export function saveLoadedPresets(presets) { localStorage.setItem(LS_LOADED_PRESETS, JSON.stringify(presets)); }
+export function saveLoadedPresets(presets) { safeLsSet(LS_LOADED_PRESETS, JSON.stringify(presets)); }
 
 // ============================================================================
 // RECENTS
@@ -228,7 +236,7 @@ export function getAnalysts() {
   return null;
 }
 
-export function saveAnalysts(analysts) { localStorage.setItem(LS_ANALYSTS, JSON.stringify(analysts)); }
+export function saveAnalysts(analysts) { safeLsSet(LS_ANALYSTS, JSON.stringify(analysts)); }
 export function getActiveAnalystId() { return localStorage.getItem(LS_ACTIVE_ANALYST) || DEFAULT_ANALYST_ID; }
 export function setActiveAnalystId(id) { localStorage.setItem(LS_ACTIVE_ANALYST, id); }
 
@@ -848,7 +856,6 @@ export async function analyzeWithBatching(accountData, totalTweets, onProgress, 
           (progress) => { Object.assign(streamState, progress); },
           (msg, animate) => onProgress?.(msg)
         );
-        clearInterval(elapsedTimer);
 
         const txt = extractText(data.content);
         const batchSignals = safeParseSignals(txt);
@@ -859,9 +866,8 @@ export async function analyzeWithBatching(accountData, totalTweets, onProgress, 
           setCachedSignals(cache, promptHash, url, grouped.get(url) || []);
         });
         saveAnalysisCache(cache);
-      } catch (e) {
+      } finally {
         clearInterval(elapsedTimer);
-        throw e;
       }
     }
   }
@@ -1034,7 +1040,7 @@ async function fetchStockPrice(sym, originalSym = null) {
   try {
     const yahooSym = normalizeSymbol(sym);
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=2d`;
-    const url = `https://proxy.sentry.is/?url=${encodeURIComponent(yahooUrl)}`;
+    const url = CORS_PROXY + encodeURIComponent(yahooUrl);
     const resp = await fetch(url);
     if (!resp.ok) return;
     const data = await resp.json();
@@ -1051,14 +1057,19 @@ async function fetchStockPrice(sym, originalSym = null) {
 export async function fetchAllPrices(symbols) {
   const cryptoSyms = [];
   const stockSyms = [];
+  const now = Date.now();
   symbols.forEach(s => {
     const clean = s.replace(/^\$/, '').toUpperCase();
     if (CRYPTO_SLUGS[clean]) cryptoSyms.push(clean);
-    else stockSyms.push(clean);
+    else if (!priceCache[clean] || (now - priceCache[clean].ts >= PRICE_CACHE_TTL)) stockSyms.push(clean);
   });
   const promises = [];
   if (cryptoSyms.length) promises.push(fetchCryptoPrices(cryptoSyms));
-  stockSyms.forEach(s => promises.push(fetchStockPrice(s, s)));
+  // Batch stock fetches in groups of 5 to limit concurrent requests
+  for (let i = 0; i < stockSyms.length; i += 5) {
+    const batch = stockSyms.slice(i, i + 5);
+    promises.push(Promise.all(batch.map(s => fetchStockPrice(s, s))));
+  }
   await Promise.all(promises);
 }
 

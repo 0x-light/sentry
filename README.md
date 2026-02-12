@@ -39,10 +39,12 @@ open `http://localhost:8000`, go to settings, enter your own twitter api key (tw
 
 1. set up supabase — create a project and run `api/schema.sql` in the sql editor
 2. deploy the api worker (see below)
-3. update `app/js/config.js` if your urls differ:
-   - `API_BASE` — your worker url
-   - `CORS_PROXY` — your cors proxy url
-   - `SUPABASE_URL` / `SUPABASE_ANON_KEY` — your supabase project
+3. configure frontend runtime values in `index.html` (and/or `app/index.html`) via meta tags:
+   - `sentry-api-base` — API worker URL
+   - `sentry-cors-proxy` — CORS proxy URL
+   - `sentry-supabase-url` / `sentry-supabase-anon-key` — Supabase public config
+
+if those meta tags are empty, the app falls back to defaults from `app/js/config.js`.
 
 ### running the api worker locally
 

@@ -13,6 +13,17 @@ import * as api from './api.js';
 
 const $ = id => document.getElementById(id);
 const esc = engine.esc;
+
+// Shared helper: render a ticker tag as an <a> element
+function tickerTagHtml(ticker, { showPrice = false } = {}) {
+  const url = engine.tickerUrl(ticker.symbol || '');
+  const sym = (ticker.symbol || '').replace(/^\$/, '').toUpperCase();
+  const cached = engine.priceCache[sym];
+  const priceStr = (showPrice && cached) ? engine.priceHtml(cached) : '';
+  const color = ACT_C[ticker.action] || 'var(--text-muted)';
+  const bg = ACT_BG[ticker.action] || 'var(--text-10)';
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${priceStr}</a>`;
+}
 const PACK_SIZES = CREDIT_PACKS.map(p => p.credits).sort((a, b) => a - b);
 function creditBarMax(credits) { return PACK_SIZES.find(s => s >= credits) || credits; }
 
@@ -263,7 +274,8 @@ function hideChartPreview() {
 
 export function renderSignals(signals) {
   const el = $('results');
-  appState.filters = { category: null, ticker: null };
+  // Preserve existing filters on re-render (don't reset user's selection)
+  if (!appState.filters) appState.filters = { category: null, ticker: null };
   if (!signals.length) { el.innerHTML = '<div class="empty-state">No signals extracted</div>'; renderFilters(); $('footer').innerHTML = ''; return; }
 
   const tweetMap = buildTweetMap();
@@ -322,13 +334,7 @@ export function renderSignalCard(item, i, tweetMap, isNew = false) {
   const source = (item.source || '').replace(/^@/, '');
   const time = tweetInfo.time || '';
   const tickers = (item.tickers && item.tickers.length)
-    ? item.tickers.map(t => {
-        const url = engine.tickerUrl(t.symbol || '');
-        const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-        const cached = engine.priceCache[sym];
-        const priceStr = (showPrice && cached) ? engine.priceHtml(cached) : '';
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}${priceStr}</a>`;
-      }).join('') : '';
+    ? item.tickers.map(t => tickerTagHtml(t, { showPrice })).join('') : '';
   const extLinks = (item.links && item.links.length)
     ? item.links.map(l => {
         try {
@@ -387,7 +393,10 @@ export function applyFilters() {
   const { category, ticker } = appState.filters;
   document.querySelectorAll('#results .signal').forEach(row => {
     const cat = row.dataset.category;
-    const tickers = row.dataset.tickers || '';
+    const tickers = (row.dataset.tickers || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
     const catMatch = !category || cat === category;
     const tickerMatch = !ticker || tickers.includes(ticker);
     row.classList.toggle('hidden', !(catMatch && tickerMatch));
@@ -416,11 +425,7 @@ export function renderHistory(scanHistory) {
       ? scan.signals.map(item => {
           const cat = engine.normCat(item.category);
           const tickers = (item.tickers && item.tickers.length)
-            ? item.tickers.map(t => {
-                const url = engine.tickerUrl(t.symbol || '');
-                const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-                return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}</a>`;
-              }).join('') : '';
+            ? item.tickers.map(t => tickerTagHtml(t)).join('') : '';
           const source = (item.source || '').replace(/^@/, '');
           const sourceLink = item.tweet_url
             ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
@@ -472,11 +477,7 @@ export function renderSharedSignal(signal) {
   const cat = engine.normCat(signal.category)?.toLowerCase();
   const source = (signal.source || '').replace(/^@/, '');
   const tickers = (signal.tickers?.length)
-    ? signal.tickers.map(t => {
-        const url = engine.tickerUrl(t.symbol || '');
-        const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${ACT_C[t.action] || 'var(--text-muted)'};background:${ACT_BG[t.action] || 'var(--text-10)'}">${esc(t.symbol)}</a>`;
-      }).join('') : '';
+    ? signal.tickers.map(t => tickerTagHtml(t)).join('') : '';
   const extLinks = (signal.links?.length)
     ? signal.links.map(l => {
         try { return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(l).hostname.replace('www.',''))}</a>`; }
@@ -582,12 +583,8 @@ export function renderScheduleTab(schedules, schedulesLoading) {
       const statusText = s.last_run_status === 'running' ? 'running'
         : s.last_run_status === 'success' ? 'done'
         : s.last_run_status === 'error' ? 'failed' : '';
-      const statusColor = s.last_run_status === 'success' ? 'var(--green)'
-        : s.last_run_status === 'error' ? 'var(--red)'
-        : s.last_run_status === 'running' ? 'var(--green)' : '';
 
       const schedAccounts = new Set(s.accounts || []);
-      const accountCount = schedAccounts.size;
 
       h += `<div class="sched-item">`;
       // Top row: checkbox, time, status, delete
@@ -605,14 +602,12 @@ export function renderScheduleTab(schedules, schedulesLoading) {
       // Preset chips row
       h += `<div class="sched-presets">`;
       const selectedNames = new Set(s.preset_names || []);
-      const coveredAccounts = new Set();
       presets.forEach(p => {
         const presetAccountsLower = p.accounts.map(a => a.toLowerCase());
         // Use stored preset_names if available, otherwise fall back to account matching
         const isSelected = selectedNames.size > 0
           ? selectedNames.has(p.name)
           : presetAccountsLower.every(a => schedAccounts.has(a));
-        if (isSelected) presetAccountsLower.forEach(a => coveredAccounts.add(a));
         h += `<button data-schedule-preset="${s.id}:${p.name}" class="sched-chip${isSelected ? ' selected' : ''}">${esc(p.name)} (${p.accounts.length})</button>`;
       });
       h += `</div>`;

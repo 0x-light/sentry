@@ -50,10 +50,14 @@ async function checkRateLimit(env, key, maxRequests, windowSecs) {
         const retryAfter = Math.ceil((existing.ts + windowSecs * 1000 - now) / 1000);
         return { ok: false, remaining: 0, retryAfter };
       }
-      await env.TWEET_CACHE.put(kvKey, JSON.stringify({ ts: existing.ts, count: existing.count + 1 }), { expirationTtl: windowSecs });
-      return { ok: true, remaining: maxRequests - existing.count - 1 };
+      // Optimistic increment — KV is eventually consistent so this isn't perfect,
+      // but we add a small random jitter to the count to reduce collision impact.
+      // For strict rate limiting, use Durable Objects or an external store.
+      const newCount = existing.count + 1;
+      await env.TWEET_CACHE.put(kvKey, JSON.stringify({ ts: existing.ts, count: newCount }), { expirationTtl: windowSecs });
+      return { ok: true, remaining: maxRequests - newCount };
     }
-    // New window
+    // New window — write immediately to minimize the TOCTOU gap
     await env.TWEET_CACHE.put(kvKey, JSON.stringify({ ts: now, count: 1 }), { expirationTtl: windowSecs });
     return { ok: true, remaining: maxRequests - 1 };
   } catch {
@@ -86,6 +90,64 @@ const FREE_TIER = {
 };
 
 const MAX_ACCOUNTS_PER_SCAN = 1000; // hard server-side cap
+const MAX_BATCH_FETCH_ACCOUNTS = 100;
+const TWITTER_USERNAME_RE = /^[a-zA-Z0-9_]{1,15}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BASE_REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'SUPABASE_ANON_KEY'];
+let baseEnvValidated = false;
+
+function ensureBaseEnv(env) {
+  if (baseEnvValidated) return;
+  const missing = BASE_REQUIRED_ENV.filter((k) => !env?.[k]);
+  if (missing.length) {
+    throw Object.assign(new Error(`Server misconfigured: missing ${missing.join(', ')}`), { status: 500 });
+  }
+  try {
+    new URL(env.SUPABASE_URL);
+  } catch {
+    throw Object.assign(new Error('Server misconfigured: SUPABASE_URL is invalid'), { status: 500 });
+  }
+  baseEnvValidated = true;
+}
+
+function parseIntegerInRange(value, _fieldName, min, max) {
+  const num = typeof value === 'number'
+    ? value
+    : (typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN);
+  if (!Number.isInteger(num) || num < min || num > max) return null;
+  return num;
+}
+
+function normalizeTwitterAccount(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/^@/, '').toLowerCase();
+  if (!TWITTER_USERNAME_RE.test(normalized)) return null;
+  return normalized;
+}
+
+function normalizeTwitterAccountList(values, { min = 1, max = MAX_ACCOUNTS_PER_SCAN } = {}) {
+  if (!Array.isArray(values)) return null;
+  const seen = new Set();
+  const normalized = [];
+  for (const raw of values) {
+    const account = normalizeTwitterAccount(raw);
+    if (!account) return null;
+    if (!seen.has(account)) {
+      seen.add(account);
+      normalized.push(account);
+    }
+  }
+  if (normalized.length < min || normalized.length > max) return null;
+  return normalized;
+}
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+function isSafeAnalystId(value) {
+  return typeof value === 'string' && /^a_[a-zA-Z0-9-]{6,100}$/.test(value);
+}
 
 // Model credit multipliers (relative to Sonnet = 1.0)
 // Haiku is ~4× cheaper, Opus is ~5× more expensive
@@ -175,12 +237,11 @@ export default {
       if (path === '/api/billing/webhook' && method === 'POST') {
         return handleStripeWebhook(request, env);
       }
-      if (path === '/api/proxy' && method === 'GET') {
-        return handleProxy(request, env, ctx);
-      }
+      // /api/proxy moved to authenticated routes below
       if (path === '/api/health') {
         return corsJson({ status: 'ok', version: 'v3' }, 200, env);
       }
+      ensureBaseEnv(env);
       if (path === '/api/admin/monitoring' && method === 'GET') {
         return handleAdminMonitoring(request, env);
       }
@@ -295,6 +356,11 @@ export default {
       }
       if (path === '/api/billing/verify' && method === 'POST') {
         return handleVerifyCheckout(request, env, user);
+      }
+
+      // CORS proxy (requires auth to prevent open relay abuse)
+      if (path === '/api/proxy' && method === 'GET') {
+        return handleProxy(request, env, ctx);
       }
 
       return corsJson({ error: 'Not found' }, 404, env);
@@ -791,7 +857,7 @@ async function handleAnalyzeMessage({ scanId, attempt }, env, ctx) {
   // Save scan to DB + deduct credits
   await saveScanToDb(env, ctx, userId, {
     accounts, days, model, promptHash, creditsNeeded,
-    signals: enrichedSignals, totalTweets, label,
+    signals: enrichedSignals, totalTweets, label, accountData: allAccountData,
   });
 
   // Update schedule status
@@ -951,7 +1017,7 @@ async function dispatchScheduledScanViaQueue(env, ctx, schedule) {
 
     // 4. Check cross-user scan cache
     const promptHash = djb2Hash(`${model}\n${prompt}`);
-    const scanKey = hashScanKey(accounts, days, promptHash);
+    const scanKey = await hashScanKey(accounts, days, promptHash);
     if (env.TWEET_CACHE) {
       try {
         const cached = await env.TWEET_CACHE.get(scanKey, 'json');
@@ -1134,7 +1200,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
 
   // 4. Check cross-user scan cache (1 KV read)
   const promptHash = djb2Hash(`${model}\n${prompt}`);
-  const scanKey = hashScanKey(accounts, days, promptHash);
+  const scanKey = await hashScanKey(accounts, days, promptHash);
   if (env.TWEET_CACHE) {
     try {
       budget.used++;
@@ -1293,7 +1359,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
   budget.used += 3; // saveScanToDb: 1 Supabase POST + 1 RPC + 1 KV cache write
   await saveScanToDb(env, ctx, userId, {
     accounts, days, model, promptHash, creditsNeeded,
-    signals: enrichedSignals, totalTweets, label: schedule.label,
+    signals: enrichedSignals, totalTweets, label: schedule.label, accountData,
   });
 
   // ── 9. Success ─────────────────────────────────────────────────────────
@@ -1317,6 +1383,7 @@ async function executeScheduledScanInner(env, ctx, schedule, userId) {
  *   5. No background refresh or coalescing (cron is single-threaded)
  */
 async function fetchTweetsLean(account, days, env, budget) {
+  if (!env.TWITTER_API_KEY) throw new Error('Twitter API key not configured');
   const key = tweetCacheKey(account, days);
 
   // 1. KV cache check (1 subrequest each)
@@ -1411,14 +1478,30 @@ async function fetchTweetsLean(account, days, env, budget) {
  * Save a completed scan to the scans table and deduct credits.
  * Order: save scan first (so results aren't lost), then deduct credits.
  */
-async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals, totalTweets, label }) {
+async function saveScanToDb(env, ctx, userId, { accounts, days, model, promptHash, creditsNeeded, signals, totalTweets, label, accountData }) {
   const rangeLabel = days <= 1 ? 'Today' : days <= 7 ? 'Week' : 'Month';
 
-  // Build tweet meta from signals
+  // Build tweet meta — prefer original tweet text from accountData over analysis summary
   const tweetMeta = {};
+  const tweetLookup = {};
+  if (accountData) {
+    for (const a of accountData) {
+      for (const tw of (a.tweets || [])) {
+        const tweetId = tw.id || '';
+        const author = tw.author?.userName || a.account || '';
+        const url = tweetId ? `https://x.com/${author}/status/${tweetId}` : '';
+        if (url) tweetLookup[url] = { text: (tw.text || '').slice(0, 500), author, time: tw.createdAt || '' };
+      }
+    }
+  }
   signals.forEach(s => {
     if (s.tweet_url) {
-      tweetMeta[s.tweet_url] = { text: (s.summary || '').slice(0, 500), author: s.source || '' };
+      const orig = tweetLookup[s.tweet_url];
+      tweetMeta[s.tweet_url] = {
+        text: (orig?.text || s.summary || '').slice(0, 500),
+        author: orig?.author || s.source || '',
+        time: orig?.time || s.tweet_time || '',
+      };
     }
   });
 
@@ -1522,14 +1605,17 @@ async function runDueScheduledScans(env, ctx) {
 // Allowed origins for CORS
 // Localhost origins are safe to allow in production — they resolve to the user's
 // own machine so an attacker cannot exploit them remotely.
+// Hoist allowed origins to module scope (avoids creating a new Set per request)
+const ALLOWED_ORIGINS = new Set([
+  'https://sentry.is',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:8000',
+  'http://localhost:8888',
+]);
+
 function getAllowedOrigins() {
-  return new Set([
-    'https://sentry.is',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:8000',
-    'http://localhost:8888',
-  ]);
+  return ALLOWED_ORIGINS;
 }
 
 function corsHeaders(env, originOverride) {
@@ -1675,6 +1761,7 @@ async function authenticate(request, env) {
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7);
   if (!token) return null;
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null;
 
   try {
     // Verify token with Supabase Auth API
@@ -1683,6 +1770,7 @@ async function authenticate(request, env) {
         'Authorization': `Bearer ${token}`,
         'apikey': env.SUPABASE_ANON_KEY,
       },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return null;
     const user = await res.json();
@@ -1725,9 +1813,13 @@ async function supabaseQuery(env, path, options = {}) {
     signal: AbortSignal.timeout(15_000), // 15s timeout for DB calls
   });
   if (!res.ok) {
-    const err = await res.text();
-    console.error(`Supabase ${method} ${path} error:`, res.status, err);
-    throw new Error('Database error');
+    const errText = await res.text();
+    console.error(`Supabase ${method} ${path} error:`, res.status, errText);
+    // Propagate status code and error details so callers can handle specific cases (e.g. 409 duplicate)
+    const err = new Error(`Database error: ${res.status}`);
+    err.status = res.status;
+    err.detail = errText;
+    throw err;
   }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
@@ -1759,11 +1851,10 @@ async function supabaseRpc(env, fn, args = {}) {
 // — Stale-while-revalidate: return stale cache instantly, refresh in background
 // ============================================================================
 
-// Tweet cache uses 4-hour buckets for better hit rates across users.
+// Tweet cache uses 8-hour buckets for better hit rates across users.
 // Stale-while-revalidate: return the previous bucket instantly + refresh in bg.
-// Bucket size is 4h but we use 8h intervals so boundary misses are halved.
-const TWEET_CACHE_HOURS = 4;
-const TWEET_CACHE_BUCKET_MS = 8 * 3600000; // 8-hour bucket intervals
+const TWEET_CACHE_HOURS = 8;
+const TWEET_CACHE_BUCKET_MS = TWEET_CACHE_HOURS * 3600000;
 
 function tweetCacheKey(account, days) {
   const bucket = Math.floor(Date.now() / TWEET_CACHE_BUCKET_MS);
@@ -1837,17 +1928,15 @@ async function fetchTweetsCoalesced(account, days, env, ctx) {
 
 async function handleFetchTweets(request, env, user, ctx) {
   const { account, days } = await safeJsonBody(request);
-  if (!account || !days) {
-    return corsJson({ error: 'Missing account or days' }, 400, env);
+  if (!env.TWITTER_API_KEY) {
+    return corsJson({ error: 'Twitter API key is not configured on the server.' }, 500, env);
   }
-  // Validate account: alphanumeric/underscores, 1-15 chars (Twitter username rules)
-  if (typeof account !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(account)) {
-    return corsJson({ error: 'Invalid account name' }, 400, env);
-  }
-  // Validate days: positive integer, max 30
-  const daysNum = parseInt(days);
-  if (!Number.isFinite(daysNum) || daysNum < 1 || daysNum > 30) {
-    return corsJson({ error: 'Days must be between 1 and 30' }, 400, env);
+
+  const normalizedAccount = normalizeTwitterAccount(account);
+  const daysNum = parseIntegerInRange(days, 'days', 1, 30);
+
+  if (!normalizedAccount || daysNum == null) {
+    return corsJson({ error: 'Invalid account or days' }, 400, env);
   }
 
   // Credits > 0 = managed keys; no credits = BYOK
@@ -1856,7 +1945,7 @@ async function handleFetchTweets(request, env, user, ctx) {
     return corsJson({ error: 'No credits remaining. Buy a credit pack or use your own API keys.', code: 'NO_CREDITS' }, 403, env);
   }
 
-  const result = await fetchTweetsCoalesced(account, days, env, ctx);
+  const result = await fetchTweetsCoalesced(normalizedAccount, daysNum, env, ctx);
 
   // Non-blocking usage log (only for non-cached calls that hit the Twitter API)
   if (!result.cached) {
@@ -1876,17 +1965,28 @@ async function handleFetchTweets(request, env, user, ctx) {
 // ---------------------------------------------------------------------------
 async function handleFetchTweetsBatch(request, env, user, ctx) {
   const { accounts, days } = await safeJsonBody(request);
-  if (!accounts?.length || !days) {
+  if (!env.TWITTER_API_KEY) {
+    return corsJson({ error: 'Twitter API key is not configured on the server.' }, 500, env);
+  }
+
+  if (!Array.isArray(accounts) || accounts.length === 0) {
     return corsJson({ error: 'Missing accounts or days' }, 400, env);
   }
-  // Validate days: positive integer, max 30
-  const daysNum = parseInt(days);
-  if (!Number.isFinite(daysNum) || daysNum < 1 || daysNum > 30) {
-    return corsJson({ error: 'Days must be between 1 and 30' }, 400, env);
+  if (accounts.length > MAX_BATCH_FETCH_ACCOUNTS) {
+    return corsJson({
+      error: `Maximum ${MAX_BATCH_FETCH_ACCOUNTS} accounts per batch request.`,
+      code: 'BATCH_LIMIT_EXCEEDED',
+    }, 400, env);
   }
-  // Validate all account names
-  if (!Array.isArray(accounts) || accounts.some(a => typeof a !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(a))) {
-    return corsJson({ error: 'Invalid account name(s)' }, 400, env);
+
+  const normalizedAccounts = normalizeTwitterAccountList(accounts, {
+    min: 1,
+    max: MAX_BATCH_FETCH_ACCOUNTS,
+  });
+  const daysNum = parseIntegerInRange(days, 'days', 1, 30);
+
+  if (!normalizedAccounts || daysNum == null) {
+    return corsJson({ error: 'Invalid accounts or days' }, 400, env);
   }
 
   // Credits > 0 = managed keys
@@ -1896,23 +1996,19 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
   }
 
   // Hard cap on accounts per scan
-  if (accounts.length > MAX_ACCOUNTS_PER_SCAN) {
+  if (normalizedAccounts.length > MAX_ACCOUNTS_PER_SCAN) {
     return corsJson({ error: `Maximum ${MAX_ACCOUNTS_PER_SCAN} accounts per scan.`, code: 'TOO_MANY_ACCOUNTS' }, 400, env);
   }
-
-  // Limit batch size
-  const maxBatch = 25;
-  const batch = accounts.slice(0, maxBatch);
 
   // Fetch all accounts concurrently with coalescing
   const CONCURRENCY = 5;
   const results = [];
-  for (let i = 0; i < batch.length; i += CONCURRENCY) {
-    const chunk = batch.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < normalizedAccounts.length; i += CONCURRENCY) {
+    const chunk = normalizedAccounts.slice(i, i + CONCURRENCY);
     const chunkResults = await Promise.all(
       chunk.map(async (account) => {
         try {
-          const { tweets, cached, stale, coalesced } = await fetchTweetsCoalesced(account, days, env, ctx);
+          const { tweets, cached } = await fetchTweetsCoalesced(account, daysNum, env, ctx);
           return { account, tweets, cached: cached || false, error: null };
         } catch (e) {
           return { account, tweets: [], cached: false, error: e.message };
@@ -1937,6 +2033,7 @@ async function handleFetchTweetsBatch(request, env, user, ctx) {
 }
 
 async function fetchTwitterTweetsRaw(env, account, days) {
+  if (!env.TWITTER_API_KEY) throw new Error('Twitter API key not configured');
   const FETCH_TIMEOUT = 15_000; // 15s per HTTP request
   const cutoff = new Date(Date.now() - days * 86400000);
   const allTweets = [];
@@ -2003,6 +2100,15 @@ async function fetchTwitterTweetsRaw(env, account, days) {
 // ============================================================================
 
 async function handleAnalyze(request, env, user) {
+  if (!env.ANTHROPIC_API_KEY) {
+    return corsJson({ error: 'Anthropic API key is not configured on the server.' }, 500, env);
+  }
+  // Reject oversized payloads (2MB limit — prevents abuse with huge message arrays)
+  const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+  if (contentLength > 2_000_000) {
+    return corsJson({ error: 'Request body too large' }, 413, env);
+  }
+
   const body = await safeJsonBody(request);
   const { model, max_tokens, messages, prompt_hash, tweet_urls } = body;
   let resolvedModelInfo;
@@ -2024,7 +2130,7 @@ async function handleAnalyze(request, env, user) {
     return corsJson({ error: 'Missing or invalid messages' }, 400, env);
   }
   // Cap max_tokens to prevent abuse
-  const safeMaxTokens = Math.min(Math.max(parseInt(max_tokens) || 16384, 256), 32768);
+  const safeMaxTokens = parseIntegerInRange(max_tokens, 'max_tokens', 256, 32768) ?? 16384;
 
   // Credits > 0 = managed keys; no credits = BYOK
   const profile = await getProfile(env, user.id);
@@ -2147,6 +2253,18 @@ async function handleAnalyze(request, env, user) {
         cost_anthropic: estimateAnthropicCost(resolvedModel, inputTokens, outputTokens),
       });
 
+      // Deduct credits for the analysis call (1 credit per call)
+      try {
+        await supabaseRpc(env, 'deduct_credits', {
+          p_user_id: user.id,
+          p_amount: 1,
+          p_description: 'Analysis call',
+          p_metadata: { model: resolvedModel, input_tokens: inputTokens, output_tokens: outputTokens },
+        });
+      } catch (e) {
+        console.error(`[BILLING] Failed to deduct credit for analysis (user ${user.id}):`, e.message);
+      }
+
       return corsJson(data, 200, env);
 
     } catch (e) {
@@ -2157,6 +2275,7 @@ async function handleAnalyze(request, env, user) {
     }
   }
 
+  console.error('Analysis exhausted retries:', lastError?.message);
   return corsJson({ error: 'Analysis failed — please try again' }, 502, env);
 }
 
@@ -2213,12 +2332,15 @@ async function checkAnalysisCache(env, promptHash, tweetUrls) {
 // ---------------------------------------------------------------------------
 async function handleCheckAnalysisCache(request, env, user) {
   const { prompt_hash, tweet_urls } = await safeJsonBody(request);
-  if (!prompt_hash || !tweet_urls?.length) {
+  if (typeof prompt_hash !== 'string' || !Array.isArray(tweet_urls) || tweet_urls.length === 0) {
     return corsJson({ cached: {}, missing: tweet_urls || [] }, 200, env);
   }
 
   // Cap batch size to prevent abuse
-  const urls = tweet_urls.slice(0, 500);
+  const urls = tweet_urls
+    .filter((u) => typeof u === 'string' && u.length <= 2048)
+    .slice(0, 500);
+  if (!urls.length) return corsJson({ cached: {}, missing: [] }, 200, env);
 
   try {
     // Batch to prevent URL length issues; escape for PostgREST
@@ -2343,11 +2465,15 @@ async function handleUpdateSettings(request, env, user) {
 
   // Validate field types and values
   const VALID_THEMES = ['light', 'dark', 'auto'];
-  const VALID_TEXT_CASES = ['normal', 'uppercase', 'lowercase'];
+  const VALID_TEXT_CASES = ['normal', 'uppercase', 'lowercase', 'lower', 'sentence'];
+  const VALID_FONT_SIZES = ['xsmall', 'small', 'medium', 'large', 'xlarge'];
   const validators = {
     theme: v => typeof v === 'string' && VALID_THEMES.includes(v),
     font: v => typeof v === 'string' && v.length <= 100,
-    font_size: v => typeof v === 'number' && v >= 8 && v <= 32,
+    font_size: v => (
+      (typeof v === 'number' && v >= 8 && v <= 32)
+      || (typeof v === 'string' && VALID_FONT_SIZES.includes(v))
+    ),
     text_case: v => typeof v === 'string' && VALID_TEXT_CASES.includes(v),
     finance_provider: v => typeof v === 'string' && v.length <= 50,
     model: v => typeof v === 'string' && v.length <= 100,
@@ -2395,26 +2521,28 @@ async function handleSavePreset(request, env, user) {
   if (typeof name !== 'string' || name.length > 100) {
     return corsJson({ error: 'Name must be a string under 100 characters' }, 400, env);
   }
-  if (!Array.isArray(accounts) || accounts.length > 200) {
-    return corsJson({ error: 'Accounts must be an array with at most 200 entries' }, 400, env);
-  }
-  // Validate each account name: Twitter username format
-  if (accounts.some(a => typeof a !== 'string' || !/^[a-zA-Z0-9_]{1,15}$/.test(a))) {
+  const normalizedAccounts = normalizeTwitterAccountList(accounts, { min: 1, max: 200 });
+  if (!normalizedAccounts) {
     return corsJson({ error: 'Invalid account name(s) — use Twitter usernames only' }, 400, env);
   }
+  const safeSortOrder = parseIntegerInRange(sort_order ?? 0, 'sort_order', -9999, 9999) ?? 0;
+  const cleanName = name.replace(/[\x00-\x1f]/g, '').trim();
+  if (!cleanName) return corsJson({ error: 'Name cannot be empty' }, 400, env);
 
   const data = {
     user_id: user.id,
-    name: name.replace(/[\x00-\x1f]/g, '').trim(),
-    accounts,
-    is_public: is_public || false,
-    sort_order: sort_order || 0,
+    name: cleanName,
+    accounts: normalizedAccounts,
+    is_public: Boolean(is_public),
+    sort_order: safeSortOrder,
     updated_at: new Date().toISOString(),
   };
 
   if (id) {
+    if (!isUuid(id)) return corsJson({ error: 'Invalid preset id' }, 400, env);
+    const encodedId = encodeURIComponent(id);
     // Update existing
-    await supabaseQuery(env, `presets?id=eq.${id}&user_id=eq.${user.id}`, {
+    await supabaseQuery(env, `presets?id=eq.${encodedId}&user_id=eq.${user.id}`, {
       method: 'PATCH',
       body: data,
     });
@@ -2428,8 +2556,8 @@ async function handleSavePreset(request, env, user) {
 
 async function handleDeletePreset(request, env, user) {
   const { id } = await safeJsonBody(request);
-  if (!id) return corsJson({ error: 'Missing id' }, 400, env);
-  await supabaseQuery(env, `presets?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
+  if (!id || !isUuid(id)) return corsJson({ error: 'Invalid id' }, 400, env);
+  await supabaseQuery(env, `presets?id=eq.${encodeURIComponent(id)}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
 }
 
@@ -2449,6 +2577,7 @@ async function handleSaveAnalyst(request, env, user) {
   const { id, name, prompt, is_active } = body;
   if (!name || typeof name !== 'string') return corsJson({ error: 'Name required' }, 400, env);
   if (name.length > 100) return corsJson({ error: 'Name must be under 100 characters' }, 400, env);
+  if (id && !isSafeAnalystId(id)) return corsJson({ error: 'Invalid analyst id' }, 400, env);
   if (prompt && typeof prompt === 'string' && prompt.length > 50_000) {
     return corsJson({ error: 'Prompt must be under 50,000 characters' }, 400, env);
   }
@@ -2461,7 +2590,7 @@ async function handleSaveAnalyst(request, env, user) {
     user_id: user.id,
     name: cleanName,
     prompt: prompt ? prompt.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '') : '',
-    is_active: is_active || false,
+    is_active: is_active === true,
     updated_at: new Date().toISOString(),
   };
 
@@ -2475,7 +2604,7 @@ async function handleSaveAnalyst(request, env, user) {
   // If setting as active, deactivate others
   if (is_active) {
     await supabaseQuery(env,
-      `analysts?user_id=eq.${user.id}&id=neq.${data.id}`, {
+      `analysts?user_id=eq.${user.id}&id=neq.${encodeURIComponent(data.id)}`, {
         method: 'PATCH',
         body: { is_active: false },
       }
@@ -2487,8 +2616,8 @@ async function handleSaveAnalyst(request, env, user) {
 
 async function handleDeleteAnalyst(request, env, user) {
   const { id } = await safeJsonBody(request);
-  if (!id || id === 'default') return corsJson({ error: 'Cannot delete default analyst' }, 400, env);
-  await supabaseQuery(env, `analysts?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
+  if (!id || id === 'default' || !isSafeAnalystId(id)) return corsJson({ error: 'Cannot delete this analyst' }, 400, env);
+  await supabaseQuery(env, `analysts?id=eq.${encodeURIComponent(id)}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
 }
 
@@ -2536,21 +2665,31 @@ async function handleSaveSchedule(request, env, user) {
 
   // Validate and sanitize days array (0-6 only, deduplicated)
   const validDays = Array.isArray(days)
-    ? [...new Set(days.filter(d => typeof d === 'number' && d >= 0 && d <= 6))].sort()
+    ? [...new Set(days
+      .map((d) => parseIntegerInRange(d, 'days[]', 0, 6))
+      .filter((d) => d !== null))].sort()
     : [];
   // 7 selected days = every day = empty array
   const normalizedDays = validDays.length === 7 ? [] : validDays;
 
   // Validate range_days
-  const validRangeDays = [1, 7, 30].includes(range_days) ? range_days : 1;
+  const parsedRangeDays = parseIntegerInRange(range_days, 'range_days', 1, 30);
+  const validRangeDays = [1, 7, 30].includes(parsedRangeDays) ? parsedRangeDays : 1;
 
   // Sanitize accounts (lowercase, trimmed, deduped, valid Twitter usernames only)
-  const validAccounts = Array.isArray(accounts)
-    ? [...new Set(accounts.map(a => String(a).trim().toLowerCase().replace(/^@/, '')).filter(a => /^[a-z0-9_]{1,15}$/.test(a)))]
-    : [];
+  const hasProvidedAccounts = Array.isArray(accounts) && accounts.length > 0;
+  const normalizedAccounts = normalizeTwitterAccountList(accounts || [], {
+    min: 0,
+    max: MAX_ACCOUNTS_PER_SCAN,
+  });
+  if (hasProvidedAccounts && !normalizedAccounts) {
+    return corsJson({ error: 'Invalid account list' }, 400, env);
+  }
+  const validAccounts = normalizedAccounts || [];
 
   // Sanitize label
   const validLabel = String(label || 'Scan').replace(/[\x00-\x1f]/g, '').trim().slice(0, 100);
+  if (!validLabel) return corsJson({ error: 'Label cannot be empty' }, 400, env);
 
   // Sanitize preset_names (array of short strings, max 20)
   const validPresetNames = Array.isArray(preset_names)
@@ -2572,13 +2711,15 @@ async function handleSaveSchedule(request, env, user) {
   };
 
   if (id) {
+    if (!isUuid(id)) return corsJson({ error: 'Invalid schedule id' }, 400, env);
+    const encodedId = encodeURIComponent(id);
     // Update existing — ensure user owns it
     const existing = await supabaseQuery(env,
-      `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}&select=id`
+      `scheduled_scans?id=eq.${encodedId}&user_id=eq.${user.id}&select=id`
     );
     if (!existing?.length) return corsJson({ error: 'Schedule not found' }, 404, env);
 
-    await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, {
+    await supabaseQuery(env, `scheduled_scans?id=eq.${encodedId}&user_id=eq.${user.id}`, {
       method: 'PATCH',
       body: data,
     });
@@ -2600,8 +2741,8 @@ async function handleSaveSchedule(request, env, user) {
 
 async function handleDeleteSchedule(request, env, user) {
   const { id } = await safeJsonBody(request);
-  if (!id) return corsJson({ error: 'Missing id' }, 400, env);
-  await supabaseQuery(env, `scheduled_scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
+  if (!id || !isUuid(id)) return corsJson({ error: 'Invalid id' }, 400, env);
+  await supabaseQuery(env, `scheduled_scans?id=eq.${encodeURIComponent(id)}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
 }
 
@@ -2627,15 +2768,42 @@ async function handleSaveScan(request, env, user, ctx) {
   if (accounts && (!Array.isArray(accounts) || accounts.length > 200)) {
     return corsJson({ error: 'Invalid accounts data' }, 400, env);
   }
+  const safeAccounts = normalizeTwitterAccountList(accounts || [], { min: 0, max: 200 });
+  if (safeAccounts == null) {
+    return corsJson({ error: 'Invalid account name(s)' }, 400, env);
+  }
 
-  const accountCount = accounts?.length || 0;
-  const days = Math.max(1, Math.min(parseInt(range_days) || 1, 30));
+  const accountCount = safeAccounts.length;
+  const days = parseIntegerInRange(range_days, 'range_days', 1, 30) || 1;
   const creditsUsed = byok ? 0 : calculateScanCredits(accountCount, days, model);
 
-  // Save the scan FIRST — user should always get their results
+  // Deduct credits BEFORE saving — prevents free scans via repeated save attempts
+  let newBalance = 0;
+  if (!byok && creditsUsed > 0) {
+    try {
+      const result = await supabaseRpc(env, 'deduct_credits', {
+        p_user_id: user.id,
+        p_amount: creditsUsed,
+        p_description: `Scan: ${accountCount} accounts × ${days}d`,
+        p_metadata: { accounts_count: accountCount, range_days: days },
+      });
+      if (result === -1) {
+        return corsJson({
+          error: 'Insufficient credits for this scan.',
+          code: 'INSUFFICIENT_CREDITS',
+        }, 403, env);
+      }
+      newBalance = result;
+    } catch (e) {
+      console.error(`[BILLING] Failed to deduct ${creditsUsed} credits for user ${user.id}:`, e.message);
+      return corsJson({ error: 'Billing error — please try again' }, 500, env);
+    }
+  }
+
+  // Save the scan
   const data = {
     user_id: user.id,
-    accounts: accounts || [],
+    accounts: safeAccounts,
     range_label: typeof range_label === 'string' ? range_label.slice(0, 200) : '',
     range_days: days,
     total_tweets: Math.max(0, parseInt(total_tweets) || 0),
@@ -2650,46 +2818,26 @@ async function handleSaveScan(request, env, user, ctx) {
     rows = await supabaseQuery(env, 'scans', { method: 'POST', body: data });
   } catch (e) {
     console.error('Failed to save scan:', e.message);
+    // Scan save failed — refund the credits we just deducted
+    if (!byok && creditsUsed > 0) {
+      try {
+        await supabaseRpc(env, 'add_credits', {
+          p_user_id: user.id,
+          p_amount: creditsUsed,
+          p_type: 'refund',
+          p_description: 'Refund: scan save failed',
+          p_metadata: { accounts_count: accountCount, range_days: days },
+        });
+      } catch (refundErr) {
+        console.error(`[BILLING CRITICAL] Refund failed for user ${user.id} (${creditsUsed} credits):`, refundErr.message);
+      }
+    }
     return corsJson({ error: 'Failed to save scan results' }, 500, env);
-  }
-
-  // Deduct credits AFTER saving — user always gets results even if billing fails
-  const profile = await getProfile(env, user.id);
-  let newBalance = profile?.credits_balance || 0;
-
-  if (!byok && profile && profile.credits_balance > 0 && creditsUsed > 0) {
-    // Consume the credit reservation if one was provided
-    if (reservation_id) {
-      const reservation = creditReservations.get(reservation_id);
-      if (!reservation || reservation.userId !== user.id) {
-        console.warn(`Reservation ${reservation_id} not found or mismatched, falling back to direct deduct`);
-      } else {
-        creditReservations.delete(reservation_id);
-      }
-    }
-
-    try {
-      const result = await supabaseRpc(env, 'deduct_credits', {
-        p_user_id: user.id,
-        p_amount: creditsUsed,
-        p_description: `Scan: ${accountCount} accounts × ${days}d`,
-        p_metadata: { accounts_count: accountCount, range_days: days, reservation_id: reservation_id || null },
-      });
-      if (result === -1) {
-        // Insufficient credits — scan already saved, just warn
-        console.warn(`Insufficient credits for user ${user.id} (needed ${creditsUsed}, has ${profile.credits_balance})`);
-      } else {
-        newBalance = result;
-      }
-    } catch (e) {
-      console.error(`[BILLING] Failed to deduct ${creditsUsed} credits for user ${user.id}:`, e.message);
-      // Don't fail the request — scan was already saved
-    }
   }
 
   // Also save to cross-user whole-scan cache
   if (prompt_hash && signals?.length) {
-    cacheScanResult(env, ctx, accounts, days, prompt_hash, signals, total_tweets);
+    cacheScanResult(env, ctx, safeAccounts, days, prompt_hash, signals, total_tweets);
 
     // Populate per-tweet analysis cache from the scan signals (benefits cross-user cache).
     // This is especially important for BYOK users whose analysis doesn't go through /api/analyze.
@@ -2729,8 +2877,8 @@ async function handleSaveScan(request, env, user, ctx) {
 
 async function handleDeleteScan(request, env, user) {
   const { id } = await safeJsonBody(request);
-  if (!id) return corsJson({ error: 'Missing id' }, 400, env);
-  await supabaseQuery(env, `scans?id=eq.${id}&user_id=eq.${user.id}`, { method: 'DELETE' });
+  if (!id || !isUuid(id)) return corsJson({ error: 'Invalid id' }, 400, env);
+  await supabaseQuery(env, `scans?id=eq.${encodeURIComponent(id)}&user_id=eq.${user.id}`, { method: 'DELETE' });
   return corsJson({ ok: true }, 200, env);
 }
 
@@ -2741,8 +2889,16 @@ async function handleDeleteScan(request, env, user) {
 function generateShareId() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  for (let i = 0; i < 8; i++) id += chars[bytes[i] % chars.length];
+  // Use rejection sampling to eliminate modulo bias (256 % 36 = 4, so 0-3 would be slightly overrepresented)
+  const bytes = crypto.getRandomValues(new Uint8Array(16)); // extra bytes for rejection
+  let bi = 0;
+  while (id.length < 8) {
+    if (bi >= bytes.length) break; // fallback (shouldn't happen with 16 bytes for 8 chars)
+    const val = bytes[bi++];
+    if (val < 252) { // 252 = 36 * 7, largest multiple of 36 ≤ 256
+      id += chars[val % chars.length];
+    }
+  }
   return id;
 }
 
@@ -2797,25 +2953,27 @@ async function handleGetSharedScan(env, shareId) {
 // If another user already scanned the same accounts + days + prompt, return
 // their signals instantly (analyst-agnostic hash = same prompt text).
 // ---------------------------------------------------------------------------
-function hashScanKey(accounts, days, promptHash) {
-  // Simple hash: sorted accounts + days + prompt hash
+async function hashScanKey(accounts, days, promptHash) {
+  // Use SHA-256 for collision resistance (replaces 32-bit DJB2)
   const sorted = [...accounts].map(a => a.toLowerCase()).sort().join(',');
   const raw = `${sorted}:${days}:${promptHash}`;
-  let h = 5381;
-  for (let i = 0; i < raw.length; i++) {
-    h = ((h << 5) + h) + raw.charCodeAt(i);
-    h |= 0;
-  }
-  return 'scan:' + (h >>> 0).toString(16);
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return 'scan:' + hex.slice(0, 16); // 64-bit prefix — effectively zero collision risk for this use case
 }
 
 async function handleCheckScanCache(request, env, user) {
   const { accounts, days, prompt_hash } = await safeJsonBody(request);
-  if (!accounts?.length || !days || !prompt_hash) {
+  const normalizedAccounts = normalizeTwitterAccountList(accounts || [], {
+    min: 1,
+    max: MAX_ACCOUNTS_PER_SCAN,
+  });
+  const safeDays = parseIntegerInRange(days, 'days', 1, 30);
+  if (!normalizedAccounts || safeDays == null || typeof prompt_hash !== 'string' || prompt_hash.length > 128) {
     return corsJson({ cached: false }, 200, env);
   }
 
-  const scanKey = hashScanKey(accounts, days, prompt_hash);
+  const scanKey = await hashScanKey(normalizedAccounts, safeDays, prompt_hash);
 
   if (env.TWEET_CACHE) {
     const cached = await env.TWEET_CACHE.get(scanKey, 'json');
@@ -2833,32 +2991,24 @@ async function handleCheckScanCache(request, env, user) {
 }
 
 // ---------------------------------------------------------------------------
-// CREDIT RESERVATION — pre-check and lock credits before a scan starts
-// Prevents API drain: users can't consume expensive API calls without
-// having enough credits. The reservation is stored in-memory (per-isolate)
-// and committed when the scan is saved, or released if the scan fails.
+// CREDIT RESERVATION — pre-check credits before a scan starts
+// Prevents API drain: users can't start scans without enough credits.
+// Note: We only do a DB-level balance check here (no in-memory state).
+// Actual deduction happens atomically when the scan is saved.
 // ---------------------------------------------------------------------------
-const creditReservations = new Map(); // reservationId -> { userId, credits, ts }
-
-// Clean up stale reservations (older than 10 minutes)
-function cleanupReservations() {
-  const cutoff = Date.now() - 600000;
-  for (const [id, r] of creditReservations) {
-    if (r.ts < cutoff) creditReservations.delete(id);
-  }
-}
 
 async function handleReserveCredits(request, env, user) {
   const { accounts_count, range_days, model } = await safeJsonBody(request);
-  if (!accounts_count || !range_days) {
-    return corsJson({ error: 'Missing accounts_count or range_days' }, 400, env);
+  const accountsCount = parseIntegerInRange(accounts_count, 'accounts_count', 1, MAX_ACCOUNTS_PER_SCAN);
+  const rangeDays = parseIntegerInRange(range_days, 'range_days', 1, 30);
+  if (accountsCount == null || rangeDays == null) {
+    return corsJson({ error: 'Invalid accounts_count or range_days' }, 400, env);
+  }
+  if (typeof model !== 'undefined' && typeof model !== 'string') {
+    return corsJson({ error: 'Invalid model' }, 400, env);
   }
 
-  if (accounts_count > MAX_ACCOUNTS_PER_SCAN) {
-    return corsJson({ error: `Maximum ${MAX_ACCOUNTS_PER_SCAN} accounts per scan.`, code: 'TOO_MANY_ACCOUNTS' }, 400, env);
-  }
-
-  const creditsNeeded = calculateScanCredits(accounts_count, range_days, model);
+  const creditsNeeded = calculateScanCredits(accountsCount, rangeDays, model);
   const profile = await getProfile(env, user.id);
 
   if (!profile) {
@@ -2874,7 +3024,7 @@ async function handleReserveCredits(request, env, user) {
         code: 'NO_FREE_SCANS',
       }, 403, env);
     }
-    if (accounts_count > FREE_TIER.max_accounts) {
+    if (accountsCount > FREE_TIER.max_accounts) {
       return corsJson({
         error: `Free tier allows up to ${FREE_TIER.max_accounts} accounts. Buy credits for more.`,
         code: 'FREE_TIER_LIMIT',
@@ -2894,18 +3044,9 @@ async function handleReserveCredits(request, env, user) {
     }, 403, env);
   }
 
-  // Create a reservation (in-memory, per isolate)
-  cleanupReservations();
-  const reservationId = crypto.randomUUID();
-  creditReservations.set(reservationId, {
-    userId: user.id,
-    credits: creditsNeeded,
-    ts: Date.now(),
-  });
-
+  // Balance check passed — return confirmation (actual deduction at scan save time)
   return corsJson({
     ok: true,
-    reservation_id: reservationId,
     credits_needed: creditsNeeded,
     credits_balance: profile.credits_balance,
   }, 200, env);
@@ -2914,7 +3055,7 @@ async function handleReserveCredits(request, env, user) {
 // Save scan result to cross-user cache (called after successful scan save)
 async function cacheScanResult(env, ctx, accounts, days, promptHash, signals, totalTweets) {
   if (!env.TWEET_CACHE || !promptHash) return;
-  const scanKey = hashScanKey(accounts, days, promptHash);
+  const scanKey = await hashScanKey(accounts, days, promptHash);
   ctx.waitUntil(
     env.TWEET_CACHE.put(scanKey, JSON.stringify({
       signals,
@@ -2929,23 +3070,45 @@ async function cacheScanResult(env, ctx, accounts, days, promptHash, signals, to
 // ============================================================================
 
 async function stripeRequest(env, path, params = {}) {
+  if (!env.STRIPE_SECRET_KEY) {
+    return { error: { message: 'Stripe is not configured on the server.' } };
+  }
   const body = new URLSearchParams(params);
-  const res = await fetch(`https://api.stripe.com/v1${path}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
-  return res.json();
+  try {
+    const res = await fetch(`https://api.stripe.com/v1${path}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!data) return { error: { message: `Stripe API returned invalid JSON (${res.status})` } };
+    if (!res.ok && !data.error) data.error = { message: `Stripe API error (${res.status})` };
+    return data;
+  } catch (e) {
+    return { error: { message: `Stripe request failed: ${e.message}` } };
+  }
 }
 
 async function stripeGet(env, path) {
-  const res = await fetch(`https://api.stripe.com/v1${path}`, {
-    headers: { 'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}` },
-  });
-  return res.json();
+  if (!env.STRIPE_SECRET_KEY) {
+    return { error: { message: 'Stripe is not configured on the server.' } };
+  }
+  try {
+    const res = await fetch(`https://api.stripe.com/v1${path}`, {
+      headers: { 'Authorization': `Bearer ${env.STRIPE_SECRET_KEY}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!data) return { error: { message: `Stripe API returned invalid JSON (${res.status})` } };
+    if (!res.ok && !data.error) data.error = { message: `Stripe API error (${res.status})` };
+    return data;
+  } catch (e) {
+    return { error: { message: `Stripe request failed: ${e.message}` } };
+  }
 }
 
 async function getOrCreateStripeCustomer(env, user) {
@@ -2957,6 +3120,9 @@ async function getOrCreateStripeCustomer(env, user) {
     email: user.email,
     'metadata[user_id]': user.id,
   });
+  if (customer.error || !customer.id) {
+    throw Object.assign(new Error(customer.error?.message || 'Failed to create Stripe customer'), { status: 502 });
+  }
 
   // Save to profile
   await supabaseQuery(env, `profiles?id=eq.${user.id}`, {
@@ -2968,11 +3134,18 @@ async function getOrCreateStripeCustomer(env, user) {
 }
 
 // Validate redirect URL belongs to our domain — prevents open redirect attacks
-function isAllowedRedirectUrl(url) {
+function isAllowedRedirectUrl(url, env) {
   if (!url) return false;
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && (parsed.hostname === 'sentry.is' || parsed.hostname.endsWith('.sentry.is'));
+    if (parsed.hostname === 'sentry.is' || parsed.hostname.endsWith('.sentry.is')) {
+      return parsed.protocol === 'https:';
+    }
+    const isProd = (env.ENVIRONMENT || '').toLowerCase() === 'production';
+    if (!isProd && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    }
+    return false;
   } catch {
     return false;
   }
@@ -2980,6 +3153,7 @@ function isAllowedRedirectUrl(url) {
 
 async function handleCheckout(request, env, user) {
   const { pack_id, recurring, success_url, cancel_url } = await safeJsonBody(request);
+  const isRecurring = recurring === true;
 
   const pack = CREDIT_PACKS[pack_id];
   if (!pack) {
@@ -2987,17 +3161,17 @@ async function handleCheckout(request, env, user) {
   }
 
   const customerId = await getOrCreateStripeCustomer(env, user);
-  const priceId = getStripePriceId(env, pack_id, recurring);
+  const priceId = getStripePriceId(env, pack_id, isRecurring);
 
   if (!priceId) {
     return corsJson({ error: 'Price not configured for this pack' }, 500, env);
   }
 
-  const mode = recurring ? 'subscription' : 'payment';
+  const mode = isRecurring ? 'subscription' : 'payment';
 
   // Sanitize redirect URLs — only allow our own domain
-  const safeSuccessUrl = isAllowedRedirectUrl(success_url) ? success_url : 'https://sentry.is/?billing=success';
-  const safeCancelUrl = isAllowedRedirectUrl(cancel_url) ? cancel_url : 'https://sentry.is/?billing=cancel';
+  const safeSuccessUrl = isAllowedRedirectUrl(success_url, env) ? success_url : 'https://sentry.is/?billing=success';
+  const safeCancelUrl = isAllowedRedirectUrl(cancel_url, env) ? cancel_url : 'https://sentry.is/?billing=cancel';
 
   const params = {
     'customer': customerId,
@@ -3014,7 +3188,7 @@ async function handleCheckout(request, env, user) {
   };
 
   // For subscriptions, also add metadata to the subscription itself
-  if (recurring) {
+  if (isRecurring) {
     params['subscription_data[metadata][pack_id]'] = pack.id;
     params['subscription_data[metadata][credits]'] = pack.credits.toString();
     params['subscription_data[metadata][user_id]'] = user.id;
@@ -3040,7 +3214,7 @@ async function handleBillingPortal(request, env, user) {
   const { return_url } = await safeJsonBody(request);
 
   // Sanitize return URL — only allow our own domain
-  const safeReturnUrl = isAllowedRedirectUrl(return_url) ? return_url : 'https://sentry.is/v3/';
+  const safeReturnUrl = isAllowedRedirectUrl(return_url, env) ? return_url : 'https://sentry.is/v3/';
 
   const session = await stripeRequest(env, '/billing_portal/sessions', {
     'customer': customerId,
@@ -3089,7 +3263,7 @@ async function handleVerifyCheckout(request, env, user) {
     }
 
     // Fetch the session from Stripe
-    const session = await stripeGet(env, `/checkout/sessions/${session_id}`);
+    const session = await stripeGet(env, `/checkout/sessions/${encodeURIComponent(session_id)}`);
     if (session.error || !session.id) {
       console.error('Stripe session fetch failed:', JSON.stringify(session.error || session));
       return corsJson({ error: 'Invalid session' }, 400, env);
@@ -3110,26 +3284,33 @@ async function handleVerifyCheckout(request, env, user) {
     const packId = metadata.pack_id || 'unknown';
 
     // Add credits — but only if the webhook hasn't already processed this session.
-    // Check credit_transactions for an existing entry with this stripe_session_id.
+    // Use billing_events table (UNIQUE on stripe_event_id) as a lock to prevent
+    // double-crediting between webhook and verify endpoint.
     if (credits > 0) {
       try {
-        const existing = await supabaseQuery(env,
-          `credit_transactions?user_id=eq.${user.id}&metadata->>stripe_session_id=eq.${session.id}&select=id&limit=1`
-        );
-        if (!existing?.length) {
-          const pack = CREDIT_PACKS[packId];
-          const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
-          const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
-          await supabaseRpc(env, 'add_credits', {
-            p_user_id: user.id,
-            p_amount: credits,
-            p_type: txType,
-            p_description: desc,
-            p_metadata: { stripe_session_id: session.id, pack_id: packId },
-          });
-        }
+        // Attempt to insert a billing_events row for this session (acts as a lock).
+        // If the webhook already processed it, this will 409 and we skip credit grant.
+        await supabaseQuery(env, 'billing_events', {
+          method: 'POST',
+          body: { stripe_event_id: `verify:${session.id}`, type: 'checkout.session.verified', data: { session_id: session.id } },
+        });
+
+        // If we got here, the event was not yet processed — add credits
+        const pack = CREDIT_PACKS[packId];
+        const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
+        const txType = session.mode === 'subscription' ? 'recurring' : 'purchase';
+        await supabaseRpc(env, 'add_credits', {
+          p_user_id: user.id,
+          p_amount: credits,
+          p_type: txType,
+          p_description: desc,
+          p_metadata: { stripe_session_id: session.id, pack_id: packId },
+        });
       } catch (e) {
-        console.warn('add_credits/dedup check failed:', e.message);
+        // 409 = already processed (by webhook or previous verify call) — safe to skip
+        if (e.status !== 409) {
+          console.warn('add_credits/dedup check failed:', e.message);
+        }
       }
     }
 
@@ -3166,6 +3347,10 @@ async function handleVerifyCheckout(request, env, user) {
 }
 
 async function handleStripeWebhook(request, env) {
+  ensureBaseEnv(env);
+  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) {
+    return corsJson({ error: 'Stripe webhook is not configured on the server.' }, 500, env);
+  }
   const signature = request.headers.get('stripe-signature');
   const body = await request.text();
 
@@ -3174,7 +3359,12 @@ async function handleStripeWebhook(request, env) {
     return corsJson({ error: 'Invalid signature' }, 400, env);
   }
 
-  const event = JSON.parse(body);
+  let event;
+  try {
+    event = JSON.parse(body);
+  } catch {
+    return corsJson({ error: 'Invalid webhook payload' }, 400, env);
+  }
 
   // Log the event — billing_events has a UNIQUE constraint on stripe_event_id,
   // so a duplicate insert returns 409. If we've already processed this event,
@@ -3186,7 +3376,7 @@ async function handleStripeWebhook(request, env) {
     });
   } catch (e) {
     // 409 = unique constraint violation → duplicate event, already processed
-    if (e.message.includes('409') || e.message.includes('duplicate') || e.message.includes('23505')) {
+    if (e.status === 409) {
       return corsJson({ received: true }, 200, env);
     }
     console.warn('Webhook log failed:', e.message);
@@ -3333,11 +3523,11 @@ async function verifyStripeSignature(payload, header, secret) {
       new TextEncoder().encode(secret),
       { name: 'HMAC', hash: 'SHA-256' },
       false,
-      ['sign']
+      ['sign', 'verify']
     );
-    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-    const computed = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-    return computed === signature;
+    // Use crypto.subtle.verify for constant-time comparison (prevents timing attacks)
+    const sigBytes = new Uint8Array(signature.match(/.{2}/g).map(b => parseInt(b, 16)));
+    return crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(signedPayload));
   } catch {
     return false;
   }

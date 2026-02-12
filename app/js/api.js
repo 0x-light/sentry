@@ -12,6 +12,24 @@ import * as auth from './auth.js';
 
 let userProfile = null;
 
+function makeHttpError(message, status, code = null, details = null) {
+  const err = new Error(message);
+  err.status = status;
+  if (code) err.code = code;
+  if (details) err.details = details;
+  return err;
+}
+
+async function parseJsonSafe(res) {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
 // --- HTTP Helpers ---
 
 async function apiCall(path, options = {}) {
@@ -23,7 +41,9 @@ async function apiCall(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (signal) signal.addEventListener('abort', () => controller.abort());
+  // Forward external abort signal to our controller (cleaned up in finally)
+  const onAbort = signal ? () => controller.abort() : null;
+  if (onAbort) signal.addEventListener('abort', onAbort, { once: true });
 
   let res;
   try {
@@ -34,25 +54,27 @@ async function apiCall(path, options = {}) {
       signal: controller.signal,
     });
   } catch (e) {
-    clearTimeout(timeout);
     if (e.name === 'AbortError') throw new Error('Request timed out');
     throw new Error('Network error — please check your connection');
   } finally {
     clearTimeout(timeout);
+    if (onAbort) signal.removeEventListener('abort', onAbort);
   }
 
   if (!res.ok) {
-    let errorMessage = `HTTP ${res.status}`;
-    try {
-      const data = await res.json();
-      errorMessage = data.error || data.message || errorMessage;
-    } catch {}
-    const err = new Error(errorMessage);
-    err.status = res.status;
-    throw err;
+    const data = await parseJsonSafe(res);
+    throw makeHttpError(
+      data?.error || data?.message || `HTTP ${res.status}`,
+      res.status,
+      data?.code || null,
+      data
+    );
   }
 
-  try { return await res.json(); } catch { throw new Error('Invalid response from server'); }
+  const data = await parseJsonSafe(res);
+  if (data === null) return null;
+  if (typeof data === 'object') return data;
+  throw new Error('Invalid response from server');
 }
 
 // --- Mode Detection ---
@@ -121,8 +143,12 @@ async function fetchTweetsDirect(account, days, signal) {
       headers: { 'X-API-Key': key, 'Accept': 'application/json' },
       signal,
     });
-    if (!res.ok) throw new Error(`Twitter API error ${res.status}`);
-    const data = await res.json();
+    const data = await parseJsonSafe(res);
+    if (!res.ok) {
+      if (res.status === 429) throw makeHttpError('Twitter API rate limited. Please wait and retry.', 429);
+      throw makeHttpError(data?.error || data?.message || `Twitter API error ${res.status}`, res.status, data?.code, data);
+    }
+    if (!data || typeof data !== 'object') throw new Error('Invalid response from Twitter API');
 
     const apiData = data.data || data;
     if (data.status === 'error') break;
@@ -169,8 +195,12 @@ async function analyzeDirect(body, signal) {
     body: JSON.stringify(body),
     signal,
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || 'Anthropic API error');
+  const data = await parseJsonSafe(res);
+  if (!res.ok || data?.error) {
+    const message = data?.error?.message || data?.message || `Anthropic API error (${res.status})`;
+    throw makeHttpError(message, res.status, data?.error?.type || data?.code, data);
+  }
+  if (!data || typeof data !== 'object') throw new Error('Invalid response from Anthropic API');
   return data;
 }
 
@@ -347,12 +377,6 @@ export async function verifyCheckout(sessionId) {
 }
 
 // --- Plan Helpers ---
-
-export function canScan() {
-  if (!isBackendMode()) return true;
-  if (!userProfile) return false;
-  return userProfile.scans_remaining !== 0;
-}
 
 export function hasCredits() {
   if (!isBackendMode()) return false;
