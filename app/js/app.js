@@ -6,7 +6,10 @@
 // Imports all modules and orchestrates the app.
 //
 
-import { RANGES, DEFAULT_PROMPT, DEFAULT_ANALYST_ID, LS_TW, LS_AN, LS_FINANCE, LS_MODEL, LS_LIVE_MODE } from './config.js';
+import {
+  RANGES, DEFAULT_PROMPT, DEFAULT_ANALYST_ID, LS_TW, LS_AN, LS_FINANCE, LS_MODEL, LS_LIVE_MODE,
+  LS_LAST_SCHEDULED_NOTICE, LS_PENDING_SCHEDULED_SCAN,
+} from './config.js';
 import * as auth from './auth.js';
 import * as api from './api.js';
 import * as engine from './engine.js';
@@ -18,6 +21,117 @@ const $ = id => document.getElementById(id);
 function renderNotice(message, type = 'error') {
   const cls = type === 'warning' ? 'warn' : 'err';
   $('notices').innerHTML = `<div class="notice ${cls}">${engine.esc(message)}</div>`;
+}
+
+function loadScheduledNoticeKey() {
+  try {
+    return localStorage.getItem(LS_LAST_SCHEDULED_NOTICE) || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveScheduledNoticeKey(key) {
+  try { localStorage.setItem(LS_LAST_SCHEDULED_NOTICE, key || ''); } catch {}
+}
+
+function loadPendingScheduledScanKey() {
+  try {
+    return localStorage.getItem(LS_PENDING_SCHEDULED_SCAN) || '';
+  } catch {
+    return '';
+  }
+}
+
+function savePendingScheduledScanKey(key) {
+  try {
+    if (key) localStorage.setItem(LS_PENDING_SCHEDULED_SCAN, key);
+    else localStorage.removeItem(LS_PENDING_SCHEDULED_SCAN);
+  } catch {}
+}
+
+function isScheduledScan(scan) {
+  if (!scan) return false;
+  if (scan.scheduled === true) return true;
+  const label = String(scan.range_label || scan.range || '').toLowerCase();
+  return label.includes('scheduled');
+}
+
+function getScanNoticeKey(scan) {
+  if (!scan) return '';
+  return String(scan.id || scan.created_at || scan.date || '');
+}
+
+function renderScanResult(scan) {
+  if (!scan) return;
+  state.lastScanResult = scan;
+  if (scan.range) {
+    const idx = RANGES.findIndex(r => r.label === scan.range);
+    if (idx !== -1) { state.range = idx; ui.renderRanges(); }
+  }
+  const d = new Date(scan.date || Date.now());
+  const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const accountsCount = Array.isArray(scan.accounts) ? scan.accounts.length : (parseInt(scan.accounts, 10) || 0);
+  const totalTweets = parseInt(scan.totalTweets, 10) || 0;
+  const signals = engine.normalizeSignals(Array.isArray(scan.signals) ? scan.signals : []);
+  ui.setStatus(`${dateStr} · <span class="hide-mobile">${accountsCount} accounts · ${totalTweets} tweets · </span>${signals.length} signals`, false, true);
+  ui.renderTickers(signals);
+  ui.renderSignals(signals);
+}
+
+function clearPendingScheduledScan() {
+  state.pendingScheduledScanKey = '';
+  savePendingScheduledScanKey('');
+}
+
+function queuePendingScheduledScan(scan) {
+  const key = getScanNoticeKey(scan);
+  if (!key) return;
+  state.pendingScheduledScanKey = key;
+  savePendingScheduledScanKey(key);
+}
+
+function showScheduledScanNotice(scan) {
+  const key = getScanNoticeKey(scan);
+  if (!key) return;
+  if (state.lastScheduledNoticeKey === key && state.pendingScheduledScanKey !== key) return;
+
+  const notices = $('notices');
+  if (!notices) return;
+
+  const signalCount = Array.isArray(scan.signals) ? scan.signals.length : (parseInt(scan.signal_count, 10) || 0);
+  const d = new Date(scan.created_at || scan.date || Date.now());
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const msg = `Scheduled scan complete · ${signalCount} signals · ${timeStr}`;
+
+  const banner = document.createElement('div');
+  banner.className = 'notice sched-banner';
+  banner.innerHTML = `<span>${engine.esc(msg)}</span>
+    <span style="display:flex;gap:6px;margin-left:auto">
+      <button class="resume-btn" type="button">View results</button>
+      <button class="dismiss-btn" type="button">Dismiss</button>
+    </span>`;
+
+  banner.querySelector('.resume-btn')?.addEventListener('click', () => {
+    state.lastScheduledNoticeKey = key;
+    saveScheduledNoticeKey(key);
+    clearPendingScheduledScan();
+    renderScanResult(scan);
+    banner.remove();
+    const resultsEl = $('results');
+    if (!resultsEl) return;
+    const top = Math.max(resultsEl.getBoundingClientRect().top + window.scrollY - 12, 0);
+    window.scrollTo({ top, behavior: 'smooth' });
+  });
+  banner.querySelector('.dismiss-btn')?.addEventListener('click', () => {
+    state.lastScheduledNoticeKey = key;
+    saveScheduledNoticeKey(key);
+    clearPendingScheduledScan();
+    banner.remove();
+  });
+
+  notices.querySelector('.notice.sched-banner')?.remove();
+  notices.prepend(banner);
 }
 
 // ============================================================================
@@ -41,6 +155,8 @@ const state = {
   nextScheduleLabel: '',
   scheduleInterval: null,
   wasRunning: false,
+  lastScheduledNoticeKey: loadScheduledNoticeKey(),
+  pendingScheduledScanKey: loadPendingScheduledScanKey(),
 
   getAllAccounts() {
     const all = [...state.customAccounts];
@@ -487,8 +603,9 @@ async function loadServerHistory() {
 
       if (serverDate > localDate) {
         const signals = engine.normalizeSignals(Array.isArray(latest.signals) ? latest.signals : []);
-        const isScheduled = !!latest.scheduled || (latest.range_label || '').includes('scheduled');
-        state.lastScanResult = {
+        const isScheduled = isScheduledScan(latest);
+        const loadedScan = {
+          id: latest.id || null,
           date: latest.created_at || new Date().toISOString(),
           range: latest.range_label || '',
           days: parseInt(latest.range_days) || 1,
@@ -498,14 +615,15 @@ async function loadServerHistory() {
           tweetMeta: (latest.tweet_meta && typeof latest.tweet_meta === 'object') ? latest.tweet_meta : {},
           scheduled: isScheduled,
         };
-        const idx = RANGES.findIndex(r => r.label === latest.range_label);
-        if (idx !== -1) { state.range = idx; ui.renderRanges(); }
-        const d = new Date(state.lastScanResult.date);
-        const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        const label = `${dateStr} · ${signals.length} signals`;
-        ui.setStatus(label, false, true);
-        ui.renderTickers(signals);
-        ui.renderSignals(signals);
+        engine.saveScanToStorage(loadedScan, true);
+        const scanKey = getScanNoticeKey(loadedScan);
+        if (isScheduled && scanKey && scanKey !== state.lastScheduledNoticeKey) {
+          queuePendingScheduledScan(loadedScan);
+          showScheduledScanNotice(loadedScan);
+          return;
+        }
+        clearPendingScheduledScan();
+        renderScanResult(loadedScan);
       }
     }
   } catch (e) {
@@ -1662,31 +1780,45 @@ async function init() {
 
   const savedScan = engine.loadCurrentScan();
   if (savedScan) {
-    state.lastScanResult = savedScan;
-    if (savedScan.range) {
-      const idx = RANGES.findIndex(r => r.label === savedScan.range);
-      if (idx !== -1) { state.range = idx; ui.renderRanges(); }
+    const savedIsScheduled = isScheduledScan(savedScan);
+    if (savedIsScheduled && savedScan.scheduled !== true) {
+      savedScan.scheduled = true;
+      engine.saveScanToStorage(savedScan, true);
     }
-    const d = new Date(savedScan.date);
-    const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    ui.setStatus(`${dateStr} · <span class="hide-mobile">${savedScan.accounts.length} accounts · ${savedScan.totalTweets} tweets · </span>${savedScan.signals.length} signals`, false, true);
-    ui.renderTickers(savedScan.signals);
-    ui.renderSignals(savedScan.signals);
+    const savedKey = getScanNoticeKey(savedScan);
+    const isPendingScheduled = savedIsScheduled && savedKey && state.pendingScheduledScanKey === savedKey;
+    if (isPendingScheduled) {
+      showScheduledScanNotice(savedScan);
+    } else {
+      if (state.pendingScheduledScanKey && state.pendingScheduledScanKey !== savedKey) {
+        clearPendingScheduledScan();
+      }
+      renderScanResult(savedScan);
+    }
   }
 
   const pendingScan = engine.loadPendingScan();
   if (pendingScan) {
     const totalTweets = pendingScan.accountTweets.reduce((s, a) => s + a.tweets.length, 0);
     const ago = Math.round((Date.now() - new Date(pendingScan.date).getTime()) / 60000);
-    $('notices').innerHTML = `<div class="notice resume-banner">
-      <span>Interrupted scan detected (${pendingScan.accounts.length} accounts · ${totalTweets} tweets · ${ago < 1 ? 'just now' : ago + 'm ago'})</span>
+    const notices = $('notices');
+    notices.querySelector('.notice.resume-banner')?.remove();
+    const banner = document.createElement('div');
+    banner.className = 'notice resume-banner';
+    banner.innerHTML = `<span>Interrupted scan detected (${pendingScan.accounts.length} accounts · ${totalTweets} tweets · ${ago < 1 ? 'just now' : ago + 'm ago'})</span>
       <span style="display:flex;gap:6px;margin-left:auto">
-        <button class="resume-btn" id="resumeBtn">Resume</button>
-        <button class="dismiss-btn" id="dismissBtn">Dismiss</button>
-      </span>
-    </div>`;
-    $('resumeBtn')?.addEventListener('click', resumeScan);
-    $('dismissBtn')?.addEventListener('click', () => { engine.clearPendingScan(); $('notices').innerHTML = ''; });
+        <button class="resume-btn" type="button">Resume</button>
+        <button class="dismiss-btn" type="button">Dismiss</button>
+      </span>`;
+    banner.querySelector('.resume-btn')?.addEventListener('click', () => {
+      banner.remove();
+      resumeScan();
+    });
+    banner.querySelector('.dismiss-btn')?.addEventListener('click', () => {
+      engine.clearPendingScan();
+      banner.remove();
+    });
+    notices.prepend(banner);
   }
 
   // Unregister any old service workers that may be caching stale files

@@ -76,6 +76,8 @@ export const LS_MODEL = 'signal_model';
 export const LS_ONBOARDING_DONE = 'signal_onboarding_done';
 export const LS_SHOW_TICKER_PRICE = 'signal_show_ticker_price';
 export const LS_ICON_SET = 'signal_icon_set';
+export const LS_LAST_SCHEDULED_NOTICE = 'signal_last_scheduled_notice';
+export const LS_PENDING_SCHEDULED_SCAN = 'signal_pending_scheduled_scan';
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 export const DEFAULT_ANALYST_ID = 'default';

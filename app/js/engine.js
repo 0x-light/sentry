@@ -901,7 +901,17 @@ export function createStorableScan(scan) {
       });
     });
   }
-  return { date: scan.date, range: scan.range, days: scan.days, accounts: scan.accounts, totalTweets: scan.totalTweets, signals: scan.signals, tweetMeta };
+  return {
+    id: scan.id || null,
+    date: scan.date,
+    range: scan.range,
+    days: scan.days,
+    accounts: scan.accounts,
+    totalTweets: scan.totalTweets,
+    signals: scan.signals,
+    tweetMeta,
+    scheduled: scan.scheduled === true,
+  };
 }
 
 export function saveScanToStorage(scan, skipHistory = false) {
