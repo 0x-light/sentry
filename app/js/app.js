@@ -1406,8 +1406,26 @@ async function handleForgotPassword() {
     $('authMessage').style.display = 'block';
     $('authError').style.display = 'none';
   } catch (e) {
-    $('authError').textContent = e.message || 'Failed to send reset email';
-    $('authError').style.display = 'block';
+    const msg = e.message || 'Failed to send reset email';
+    const secMatch = msg.match(/after\s+(\d+)\s+second/);
+    if (secMatch) {
+      let remaining = parseInt(secMatch[1], 10);
+      const errEl = $('authError');
+      errEl.style.display = 'block';
+      errEl.textContent = `Try again in ${remaining}s`;
+      const iv = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(iv);
+          errEl.style.display = 'none';
+        } else {
+          errEl.textContent = `Try again in ${remaining}s`;
+        }
+      }, 1000);
+    } else {
+      $('authError').textContent = msg;
+      $('authError').style.display = 'block';
+    }
   }
 }
 

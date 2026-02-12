@@ -69,7 +69,7 @@ export function renderPresets() {
   customAccounts.forEach(a => {
     h += `<button class="preset-chip selected" data-rm-account="${esc(a)}">${esc(a)}</button>`;
   });
-  h += `<button class="preset-manage" id="openPresetBtn">+</button>`;
+  h += `<button class="preset-manage" id="openPresetBtn">edit</button>`;
   if (loadedPresets.length > 0 || customAccounts.length > 0) {
     h += `<button class="clear-btn" id="clearAllBtn">×</button>`;
   }
@@ -819,10 +819,10 @@ export function renderAuthModal(tab = 'login') {
     <input type="email" id="authEmail" placeholder="you@email.com">
     <label>Password</label>
     <input type="password" id="authPassword" placeholder="${isLogin ? '••••••••' : 'Min 6 characters'}">
-    <div class="modal-actions">
+    <div class="auth-actions">
+      ${isLogin ? '<button class="auth-text-btn" id="forgotPwBtn">Forgot password?</button>' : '<span></span>'}
       <button id="authSubmitBtn">${isLogin ? 'Log in' : 'Create account'}</button>
     </div>
-    ${isLogin ? '<button class="auth-text-btn" id="forgotPwBtn">Forgot password?</button>' : ''}
     <div class="auth-divider">
       <button class="modal-sm-btn" id="googleSignInBtn">Continue with Google</button>
     </div>

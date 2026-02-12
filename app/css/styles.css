@@ -202,7 +202,7 @@ body.modal-open { overflow: hidden; }
 .preset-chip.selected { color: var(--bg-alt); background: var(--text-strong); }
 .preset-chip .count { font-size: inherit; }
 .preset-chip.selected .count { color: var(--bg-alt); }
-.preset-manage { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 3px 6px; }
+.preset-manage { background: none; border: none; color: var(--text-muted); font-size: var(--fs); padding: 0; cursor: pointer; }
 .preset-manage:hover { color: var(--text-strong); }
 
 .suggested { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
@@ -609,7 +609,10 @@ body.modal-open { overflow: hidden; }
    ============================================================================ */
 
 .auth-divider { border-top: 1px solid var(--border); margin: 16px 0; padding-top: 16px; }
-.auth-text-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; margin-top: 8px; }
+.auth-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; }
+.auth-actions button#authSubmitBtn { background: var(--text-strong); border: 1px solid var(--text-strong); color: var(--bg); font-size: var(--fs); font-family: inherit; cursor: pointer; padding: 6px 18px; }
+.auth-actions button#authSubmitBtn:hover { opacity: 0.9; }
+.auth-text-btn { background: none; border: none; color: var(--text-muted); font-size: var(--fs); cursor: pointer; }
 .auth-footnote { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 12px; }
 
 /* ============================================================================
