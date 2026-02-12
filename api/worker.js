@@ -2461,7 +2461,16 @@ async function handleGetSettings(env, user) {
 
 async function handleUpdateSettings(request, env, user) {
   const body = await safeJsonBody(request);
-  const allowed = ['theme', 'font', 'font_size', 'text_case', 'finance_provider', 'model', 'live_enabled'];
+  const allowed = [
+    'theme',
+    'font',
+    'font_size',
+    'text_case',
+    'finance_provider',
+    'model',
+    'live_enabled',
+    'scheduled_last_viewed_scan_key',
+  ];
 
   // Validate field types and values
   const VALID_THEMES = ['light', 'dark', 'auto'];
@@ -2478,6 +2487,7 @@ async function handleUpdateSettings(request, env, user) {
     finance_provider: v => typeof v === 'string' && v.length <= 50,
     model: v => typeof v === 'string' && v.length <= 100,
     live_enabled: v => typeof v === 'boolean',
+    scheduled_last_viewed_scan_key: v => typeof v === 'string' && v.length <= 120,
   };
 
   const update = {};

@@ -556,7 +556,7 @@ export function saveAnalystsFromUI() {
 // SCHEDULE TAB (Settings modal)
 // ============================================================================
 
-export function renderScheduleTab(schedules, schedulesLoading) {
+export function renderScheduleTab(schedules, schedulesLoading, { devMode = false } = {}) {
   const container = $('scheduleList');
   if (!container) return;
   const isAuth = auth.isAuthenticated();
@@ -638,6 +638,9 @@ export function renderScheduleTab(schedules, schedulesLoading) {
     h += `<button data-quick-schedule="${padded}" class="hour-btn${isActive ? ' active' : ''}">${label}</button>`;
   }
   h += `</div>`;
+  if (devMode) {
+    h += `<div class="sched-dev-time"><input type="time" id="devScheduleTime" step="60"><button id="devScheduleAdd" class="btn-ghost">add</button></div>`;
+  }
   h += `</div>`;
 
   container.innerHTML = h;

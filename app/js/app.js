@@ -62,6 +62,45 @@ function getScanNoticeKey(scan) {
   return String(scan.id || scan.created_at || scan.date || '');
 }
 
+function markScheduledNoticeSeen(key) {
+  if (!key) return;
+  state.lastScheduledNoticeKey = key;
+  saveScheduledNoticeKey(key);
+  if (auth.isAuthenticated()) {
+    api.saveSettings({ scheduled_last_viewed_scan_key: key }).catch((e) => {
+      console.warn('Failed to sync scheduled notice state:', e.message);
+    });
+  }
+}
+
+function pushCurrentScanIntoHistory(exceptScanKey = '') {
+  const prev = state.lastScanResult;
+  if (!prev?.signals?.length) return;
+
+  const prevKey = getScanNoticeKey(prev);
+  if (exceptScanKey && prevKey && prevKey === exceptScanKey) return;
+
+  const prevEntry = {
+    id: prev.id || null,
+    date: prev.date || new Date().toISOString(),
+    range: prev.range || '',
+    accounts: Array.isArray(prev.accounts) ? prev.accounts.length : 0,
+    totalTweets: prev.totalTweets || 0,
+    signalCount: prev.signals.length,
+    signals: prev.signals,
+  };
+
+  const history = Array.isArray(state._serverHistory) ? state._serverHistory : engine.getScanHistory();
+  const alreadyInHistory = history.some((scan) => {
+    if (prevEntry.id && scan?.id) return scan.id === prevEntry.id;
+    return scan?.date === prevEntry.date;
+  });
+  if (alreadyInHistory) return;
+
+  state._serverHistory = [prevEntry, ...history];
+  ui.renderHistory(state._serverHistory);
+}
+
 function renderScanResult(scan) {
   if (!scan) return;
   state.lastScanResult = scan;
@@ -112,8 +151,8 @@ function showScheduledScanNotice(scan) {
     </span>`;
 
   banner.querySelector('.resume-btn')?.addEventListener('click', () => {
-    state.lastScheduledNoticeKey = key;
-    saveScheduledNoticeKey(key);
+    pushCurrentScanIntoHistory(key);
+    markScheduledNoticeSeen(key);
     clearPendingScheduledScan();
     renderScanResult(scan);
     banner.remove();
@@ -233,7 +272,7 @@ function openSettingsModal(tab) {
   if (stp) stp.checked = engine.getShowTickerPrice();
   ui.renderAnalystList();
   ui.renderAccountTab();
-  ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+  ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
 
   const models = engine.getCachedModels();
   populateModelSelector(models, engine.getModel());
@@ -338,23 +377,7 @@ async function run() {
   currentScanAbort = new AbortController();
 
   // Fold current scan into history before clearing
-  if (state.lastScanResult?.signals?.length) {
-    const prev = state.lastScanResult;
-    const prevEntry = {
-      date: prev.date || new Date().toISOString(),
-      range: prev.range || '',
-      accounts: Array.isArray(prev.accounts) ? prev.accounts.length : 0,
-      totalTweets: prev.totalTweets || 0,
-      signalCount: prev.signals.length,
-      signals: prev.signals,
-    };
-    const history = state._serverHistory || [];
-    const alreadyInHistory = history.length && history[0].date === prevEntry.date;
-    if (!alreadyInHistory) {
-      state._serverHistory = [prevEntry, ...history];
-      ui.renderHistory(state._serverHistory);
-    }
-  }
+  pushCurrentScanIntoHistory();
 
   state.busy = true;
   ui.setLoading(true);
@@ -643,6 +666,10 @@ async function syncSettingsFromServer() {
     if (typeof settings.finance_provider === 'string') localStorage.setItem(LS_FINANCE, settings.finance_provider);
     if (typeof settings.model === 'string') localStorage.setItem(LS_MODEL, settings.model);
     if (typeof settings.live_enabled === 'boolean') engine.setLiveEnabled(settings.live_enabled);
+    if (typeof settings.scheduled_last_viewed_scan_key === 'string') {
+      state.lastScheduledNoticeKey = settings.scheduled_last_viewed_scan_key.trim();
+      saveScheduledNoticeKey(state.lastScheduledNoticeKey);
+    }
   } catch (e) {
     console.warn('Failed to load server settings:', e.message);
   }
@@ -725,7 +752,7 @@ function startSchedulePolling() {
       if (wasRunning && !nowRunning) loadServerHistory();
       ui.renderTopbar();
       if ($('modal').classList.contains('open')) {
-        ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+        ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
       }
     }
   }, pollMs);
@@ -748,24 +775,21 @@ async function addSchedule(time) {
     return;
   }
   const accounts = state.getAllAccounts();
-  if (!accounts.length) {
-    console.warn('Cannot add schedule: no accounts selected');
-    return;
-  }
+  const presetNames = [...state.loadedPresets];
   try {
     await api.saveSchedule({
       label: `Scan at ${engine.formatScheduleTime(time)}`,
       time,
       range_days: RANGES[state.range].days,
       accounts,
-      preset_names: [...state.loadedPresets],
+      preset_names: presetNames,
       timezone: engine.getBrowserTimezone(),
       days: [],
       enabled: true,
     });
     await loadSchedules();
     updateNextScheduleLabel();
-    ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+    ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
     ui.renderTopbar();
   } catch (e) {
     console.warn('Failed to add schedule:', e.message);
@@ -775,13 +799,13 @@ async function addSchedule(time) {
 async function deleteScheduleById(id) {
   if (!auth.isAuthenticated()) return;
   state.schedules = state.schedules.filter(s => s.id !== id);
-  ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+  ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   try {
     await api.deleteSchedule(id);
   } catch (e) {
     console.warn('Failed to delete schedule:', e.message);
     await loadSchedules();
-    ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+    ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   }
   updateNextScheduleLabel();
   ui.renderTopbar();
@@ -792,12 +816,12 @@ async function toggleScheduleEnabled(id) {
   if (!schedule) return;
   const enabled = !schedule.enabled;
   schedule.enabled = enabled;
-  ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+  ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   try {
     await api.saveSchedule({ ...schedule, enabled });
   } catch (e) {
     schedule.enabled = !enabled;
-    ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+    ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   }
   updateNextScheduleLabel();
   ui.renderTopbar();
@@ -830,13 +854,13 @@ async function toggleSchedulePreset(scheduleId, presetName) {
   schedule.preset_names = [...selectedNames];
   schedule.accounts = [...newAccounts];
 
-  ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+  ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   try {
     await api.saveSchedule({ ...schedule });
   } catch (e) {
     schedule.accounts = prevAccounts;
     schedule.preset_names = prevPresetNames;
-    ui.renderScheduleTab(state.schedules, state.schedulesLoading);
+    ui.renderScheduleTab(state.schedules, state.schedulesLoading, { devMode: IS_DEV });
   }
 }
 
@@ -1139,6 +1163,13 @@ function initEventDelegation() {
     if (toggleSchedule) { toggleScheduleEnabled(toggleSchedule.dataset.toggleSchedule); return; }
     const delSchedule = e.target.closest('[data-delete-schedule]');
     if (delSchedule) { deleteScheduleById(delSchedule.dataset.deleteSchedule); return; }
+
+    // Dev mode — add schedule at exact HH:MM
+    if (e.target.id === 'devScheduleAdd') {
+      const input = document.getElementById('devScheduleTime');
+      if (input?.value) { addSchedule(input.value); }
+      return;
+    }
   });
 
   // ID-based click handlers

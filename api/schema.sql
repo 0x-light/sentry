@@ -55,6 +55,7 @@ create table user_settings (
   finance_provider text not null default 'tradingview',
   model text not null default 'claude-sonnet-4-20250514',
   live_enabled boolean not null default false,
+  scheduled_last_viewed_scan_key text not null default '',
   updated_at timestamptz not null default now()
 );
 

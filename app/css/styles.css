@@ -546,6 +546,8 @@ body.modal-open { overflow: hidden; }
 .hour-btn { padding: 6px 0; font-size: var(--fs-sm); font-family: inherit; cursor: pointer; border: 1px solid transparent; background: var(--bg-alt); color: var(--text-muted); }
 .hour-btn:hover { border-color: var(--chip-border); }
 .hour-btn.active { background: var(--text-strong); color: var(--bg); }
+.sched-dev-time { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.sched-dev-time input[type="time"] { font-family: inherit; font-size: var(--fs-sm); background: var(--bg-alt); color: var(--text); border: 1px solid var(--chip-border); padding: 4px 8px; }
 
 /* ============================================================================
    ACCOUNT TAB
