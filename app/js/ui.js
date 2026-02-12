@@ -13,16 +13,33 @@ import * as api from './api.js';
 
 const $ = id => document.getElementById(id);
 const esc = engine.esc;
+let tickerRefreshTimer = null;
+const pendingTickerSymbols = new Set();
+
+function queueTickerMetricsRefresh(symbols) {
+  symbols.forEach((sym) => {
+    const clean = String(sym || '').replace(/^\$/, '').toUpperCase();
+    if (clean) pendingTickerSymbols.add(clean);
+  });
+  if (tickerRefreshTimer) return;
+  tickerRefreshTimer = setTimeout(() => {
+    tickerRefreshTimer = null;
+    const toFetch = [...pendingTickerSymbols];
+    pendingTickerSymbols.clear();
+    if (!toFetch.length) return;
+    engine.fetchAllPrices(toFetch).then(() => updateTickerPrices());
+  }, 0);
+}
 
 // Shared helper: render a ticker tag as an <a> element
 function tickerTagHtml(ticker, { showPrice = false } = {}) {
   const url = engine.tickerUrl(ticker.symbol || '');
   const sym = (ticker.symbol || '').replace(/^\$/, '').toUpperCase();
   const cached = engine.priceCache[sym];
-  const priceStr = (showPrice && cached) ? engine.priceHtml(cached) : '';
+  const changeStr = engine.priceHtml(cached, { showPrice });
   const color = ACT_C[ticker.action] || 'var(--text-muted)';
   const bg = ACT_BG[ticker.action] || 'var(--text-10)';
-  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${priceStr}</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${changeStr}</a>`;
 }
 const PACK_SIZES = CREDIT_PACKS.map(p => p.credits).sort((a, b) => a - b);
 function creditBarMax(credits) { return PACK_SIZES.find(s => s >= credits) || credits; }
@@ -174,25 +191,28 @@ export function renderTickers(signals) {
     const pa = (hasBuy && hasSell) ? 'mixed' : ['sell', 'buy', 'hold', 'watch'].find(a => t.acts.has(a)) || 'watch';
     const sym = t.s.replace(/^\$/, '');
     const cached = engine.priceCache[sym];
-    const priceStr = (showPrice && cached) ? engine.priceHtml(cached) : '';
+    const changeStr = engine.priceHtml(cached, { showPrice });
     const isActive = activeTicker === t.s;
     const dimStyle = (activeTicker && !isActive) ? ';opacity:0.3' : '';
-    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${dimStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${priceStr}</button>`;
+    return `<button class="ticker-item" data-filter-ticker="${esc(t.s)}" data-sym="${esc(sym)}" style="color:${ACT_C[pa]};background:${ACT_BG[pa]}${dimStyle}">${esc(t.s)}${t.n > 1 ? `<span class="ticker-cnt">×${t.n}</span>` : ''}${changeStr}</button>`;
   }).join('');
   if (activeTicker) {
     el.innerHTML += `<button class="clear-btn" data-clear-ticker-filter>×</button>`;
   }
   const symbols = list.map(t => t.s.replace(/^\$/, ''));
-  engine.fetchAllPrices(symbols).then(() => updateTickerPrices());
+  queueTickerMetricsRefresh(symbols);
 }
 
 export function updateTickerPrices() {
-  if (!engine.getShowTickerPrice()) return;
+  const showPrice = engine.getShowTickerPrice();
   document.querySelectorAll('.ticker-item[data-sym], .ticker-tag[data-sym]').forEach(el => {
     const sym = el.dataset.sym;
     const cached = engine.priceCache[sym];
-    if (!cached || el.querySelector('.ticker-change')) return;
-    el.insertAdjacentHTML('beforeend', engine.priceHtml(cached));
+    if (!cached) return;
+    const html = engine.priceHtml(cached, { showPrice });
+    if (!html) return;
+    el.querySelectorAll('.ticker-change').forEach(node => node.remove());
+    el.insertAdjacentHTML('beforeend', html);
   });
 }
 
@@ -301,7 +321,7 @@ export function renderSignals(signals) {
     const sym = (t.symbol || '').replace(/^\$/, '').toUpperCase();
     if (sym) allSymbols.add(sym);
   }));
-  if (allSymbols.size) engine.fetchAllPrices([...allSymbols]).then(() => updateTickerPrices());
+  if (allSymbols.size) queueTickerMetricsRefresh([...allSymbols]);
 }
 
 function buildTweetMap() {
@@ -961,7 +981,7 @@ export function renderOnboarding(onStep, onComplete, onAction) {
 
   const step = onStep.current;
   const isAuth = auth.isAuthenticated();
-  const STEPS = ['Welcome', 'Setup', 'Accounts', 'Analysts', 'Ready'];
+  const STEPS = ['Welcome', 'Setup', 'Accounts', 'Analysts', 'Schedule', 'Ready'];
 
   // Progress dots
   let h = `<div class="ob-progress">`;
@@ -975,7 +995,7 @@ export function renderOnboarding(onStep, onComplete, onAction) {
   if (step === 0) {
     // Welcome
     h += `<div>`;
-    h += `<div class="ob-logo"><div class="ob-logo-mark"></div><span class="text-strong-bold">sentry</span></div>`;
+    h += `<div class="ob-logo"><div class="ob-logo-mark"></div><span class="text-strong">sentry</span></div>`;
     h += `<h1 class="heading-xl">signal without the noise</h1>`;
     h += `<p class="ob-body">Sentry scans X/Twitter accounts and uses AI to extract actionable trading signals — tickers, sentiment, and catalysts — from the noise.</p>`;
     h += `<div class="mb-24">`;
@@ -996,8 +1016,8 @@ export function renderOnboarding(onStep, onComplete, onAction) {
     } else if (!onStep.path) {
       // Choose path
       h += `<div class="mb-24"><h2 class="heading-lg">How do you want to use Sentry?</h2><p class="text-muted">Sign in for the easiest experience, or bring your own API keys.</p></div>`;
-      h += `<button data-ob-path="signin" class="ob-choice recommended"><span class="badge-green mb-4" style="display:inline-block">Recommended</span><br><strong>Sign in</strong><br><span class="text-muted">Sign in and buy credits for managed API keys. Or use the free tier (1 scan/day, 10 accounts).</span></button>`;
-      h += `<button data-ob-path="byok" class="ob-choice"><strong>Use your own API keys</strong><br><span class="text-muted">Bring your own X/Twitter and Anthropic keys. Unlimited scans.</span></button>`;
+      h += `<button data-ob-path="signin" class="ob-choice recommended"><span class="badge-green mb-4" style="display:inline-block">Recommended</span><br>Sign in<br><span class="text-muted">Sign in and buy credits for managed API keys. Or use the free tier (1 scan/day, 10 accounts).</span></button>`;
+      h += `<button data-ob-path="byok" class="ob-choice">Use your own API keys<br><span class="text-muted">Bring your own X/Twitter and Anthropic keys. Unlimited scans.</span></button>`;
       h += `<div class="ob-nav"><button class="modal-sm-btn" data-ob-back>Back</button></div>`;
     } else if (onStep.path === 'signin') {
       h += `<div class="mb-16"><h2 class="heading-lg">Sign in</h2></div>`;
@@ -1020,18 +1040,18 @@ export function renderOnboarding(onStep, onComplete, onAction) {
   } else if (step === 2) {
     // Accounts
     h += `<div class="mb-16"><h2 class="heading-lg">Accounts to scan</h2><p class="text-muted">Pick a preset or add individual accounts.</p></div>`;
-    h += `<label>Presets</label><div class="flex-wrap mb-16">`;
+    h += `<label class="ob-label">Presets</label><div class="flex-wrap mb-16">`;
     engine.getPresets().filter(p => !p.hidden).forEach(p => {
       const active = appState.loadedPresets.includes(p.name);
-      h += `<button data-ob-preset="${esc(p.name)}" class="ob-preset${active ? ' selected' : ''}">${active ? '✓ ' : ''}${esc(p.name)} <span class="text-muted-xs" style="opacity:0.6">${p.accounts.length}</span></button>`;
+      h += `<button data-ob-preset="${esc(p.name)}" class="ob-preset${active ? ' selected' : ''}">${esc(p.name)} <span class="text-muted-xs" style="opacity:0.6">${p.accounts.length}</span></button>`;
     });
     h += `</div>`;
-    h += `<label class="mt-16">Custom accounts</label>`;
+    h += `<label class="ob-label mt-16">Custom accounts</label>`;
     h += `<div class="flex-row mb-8"><input type="text" id="obAccountInput" placeholder="@username" class="ob-input flex-1"><button class="modal-sm-btn" id="obAddAccountBtn">Add</button></div>`;
     if (appState.customAccounts.length) {
       h += `<div class="flex-wrap-sm mb-12">`;
       appState.customAccounts.forEach(a => {
-        h += `<button data-ob-rm-account="${esc(a)}" class="ob-account-chip">@${esc(a)} ×</button>`;
+        h += `<button data-ob-rm-account="${esc(a)}" class="ob-account-chip">@${esc(a)}</button>`;
       });
       h += `</div>`;
     }
@@ -1040,15 +1060,43 @@ export function renderOnboarding(onStep, onComplete, onAction) {
   } else if (step === 3) {
     // Analysts
     h += `<div class="mb-16"><h2 class="heading-lg">Analysts</h2><p class="text-muted">Analysts are AI prompts that tell Sentry what to look for.</p></div>`;
-    h += `<div class="user-credits-card"><div class="flex-between mb-4"><span class="text-strong-bold">Default</span><span class="badge-green">active</span></div><p class="text-muted">Trading signals — directional views, catalysts, technicals, on-chain data, contrarian takes.</p></div>`;
-    h += `<label>Add analysts</label>`;
+    h += `<div class="user-credits-card"><div class="flex-between mb-4"><span class="text-strong">Default</span><span class="badge-green">active</span></div><p class="text-muted">Trading signals — directional views, catalysts, technicals, on-chain data, contrarian takes.</p></div>`;
+    h += `<label class="ob-label">Add analysts</label>`;
     SUGGESTED_ANALYSTS.forEach(sa => {
       const active = onStep.selectedAnalysts?.has(sa.id);
-      h += `<button data-ob-analyst="${sa.id}" class="ob-analyst${active ? ' selected' : ''}"><div class="flex-row"><span class="ob-analyst-check">${active ? '✓' : ''}</span><span class="text-strong-bold">${esc(sa.name)}</span></div><p class="text-muted" style="margin-top:4px;padding-left:24px">${esc(sa.description)}</p></button>`;
+      h += `<button data-ob-analyst="${sa.id}" class="ob-analyst${active ? ' selected' : ''}"><div class="flex-row"><span class="ob-analyst-check">${active ? '✓' : ''}</span><span class="text-strong">${esc(sa.name)}</span></div><p class="text-muted" style="margin-top:4px;padding-left:24px">${esc(sa.description)}</p></button>`;
     });
     h += `<p class="text-muted mt-8">You can create, edit, or remove analysts anytime in settings.</p>`;
     h += `<div class="ob-nav"><button class="modal-sm-btn" data-ob-back>Back</button><button class="scan-btn" data-ob-next>Continue →</button></div>`;
   } else if (step === 4) {
+    // Schedule
+    h += `<div class="mb-16"><h2 class="heading-lg">Schedule a recurring scan</h2><p class="text-muted">Pick a time and Sentry will scan automatically — so there's always a fresh report waiting for you.</p></div>`;
+    const obPresets = engine.getPresets().filter(p => !p.hidden && p.accounts.length > 0);
+    const obSchedPresets = new Set(onStep.schedulePresets || []);
+    if (obPresets.length) {
+      h += `<label class="ob-label">Presets</label><div class="flex-wrap mb-16">`;
+      obPresets.forEach(p => {
+        const active = obSchedPresets.has(p.name);
+        h += `<button data-ob-sched-preset="${esc(p.name)}" class="ob-preset${active ? ' selected' : ''}">${esc(p.name)} <span class="text-muted-xs" style="opacity:0.6">${p.accounts.length}</span></button>`;
+      });
+      h += `</div>`;
+    }
+    h += `<label class="ob-label">Time</label>`;
+    const activeHours = new Set((onStep.scheduledTimes || []).map(t => {
+      const [hh] = (t || '').split(':');
+      return parseInt(hh);
+    }).filter(n => !isNaN(n)));
+    h += `<div class="hour-grid ob-hour-grid">`;
+    for (let hr = 0; hr <= 23; hr++) {
+      const isActive = activeHours.has(hr);
+      const label = `${String(hr).padStart(2, '0')}h`;
+      const padded = `${String(hr).padStart(2, '0')}:00`;
+      h += `<button data-ob-schedule="${padded}" class="hour-btn${isActive ? ' active' : ''}">${label}</button>`;
+    }
+    h += `</div>`;
+    h += `<p class="text-muted mt-8">You can always change this later in settings → schedule.</p>`;
+    h += `<div class="ob-nav"><button class="modal-sm-btn" data-ob-back>Back</button><div class="flex-row"><button class="modal-sm-btn text-muted" data-ob-next>Skip</button><button class="scan-btn" data-ob-next>Continue →</button></div></div>`;
+  } else if (step === 5) {
     // Ready
     const hasKeys = isAuth || engine.bothKeys();
     const hasAccounts = appState.customAccounts.length > 0 || appState.loadedPresets.length > 0;
@@ -1063,8 +1111,10 @@ export function renderOnboarding(onStep, onComplete, onAction) {
     }
     h += `<div class="ob-summary-row"><span class="text-muted">Accounts</span><span class="${hasAccounts ? 'status-green' : 'text-muted'}">${hasAccounts ? '✓ ' + (appState.loadedPresets.join(', ') || '') + (appState.customAccounts.length ? (appState.loadedPresets.length ? ' + ' : '') + appState.customAccounts.length + ' custom' : '') : 'skipped'}</span></div>`;
     h += `<div class="ob-summary-row"><span class="text-muted">Analysts</span><span class="status-green">✓ ${1 + (onStep.selectedAnalysts?.size || 0)} active</span></div>`;
+    const schedCount = onStep.scheduledTimes?.length || 0;
+    h += `<div class="ob-summary-row"><span class="text-muted">Schedule</span><span class="${schedCount ? 'status-green' : 'text-muted'}">${schedCount ? '✓ ' + schedCount + (schedCount === 1 ? ' recurring scan' : ' recurring scans') : 'skipped'}</span></div>`;
     h += `</div>`;
-    h += `<div class="flex-row"><button class="scan-btn" data-ob-finish>Start using sentry →</button><button class="modal-sm-btn text-muted" data-ob-back>Go back</button></div>`;
+    h += `<div class="ob-nav"><button class="modal-sm-btn text-muted" data-ob-back>Go back</button><button class="scan-btn" data-ob-finish>Start using sentry →</button></div>`;
   }
 
   container.querySelector('.onboarding-content').innerHTML = h;

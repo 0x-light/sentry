@@ -768,20 +768,34 @@ function startSchedulePolling() {
   document.addEventListener('visibilitychange', _visibilityHandler);
 }
 
-async function addSchedule(time) {
+async function addSchedule(time, { presetOverride } = {}) {
   if (!auth.isAuthenticated()) {
     console.warn('Cannot add schedule: not authenticated');
     openAuthModal();
     return;
   }
-  const accounts = state.getAllAccounts();
-  const presetNames = [...state.loadedPresets];
+  const presetNames = presetOverride ? [...presetOverride] : [...state.loadedPresets];
+  // Build accounts from the preset list
+  const allPresets = engine.getPresets();
+  const accountSet = new Set();
+  for (const name of presetNames) {
+    const p = allPresets.find(pr => pr.name === name);
+    if (p) p.accounts.forEach(a => accountSet.add(a));
+  }
+  if (!presetOverride) {
+    state.customAccounts.forEach(a => accountSet.add(a));
+  }
+  if (!accountSet.size) {
+    console.warn('Cannot add schedule: no accounts selected');
+    $('notices').innerHTML = '<div class="notice warn">Select at least one account or preset before scheduling.</div>';
+    return;
+  }
   try {
     await api.saveSchedule({
       label: `Scan at ${engine.formatScheduleTime(time)}`,
       time,
       range_days: RANGES[state.range].days,
-      accounts,
+      accounts: [...accountSet],
       preset_names: presetNames,
       timezone: engine.getBrowserTimezone(),
       days: [],
@@ -1406,6 +1420,13 @@ function initInputListeners() {
   let modelFetchTimer = null;
   $('keyInput').addEventListener('input', () => { clearTimeout(modelFetchTimer); modelFetchTimer = setTimeout(() => refreshModelList(), 600); });
   $('modelProvider').addEventListener('change', () => updateModelCostHint());
+  $('showTickerPriceToggle')?.addEventListener('change', (e) => {
+    engine.setShowTickerPrice(e.target.checked);
+    if (state.lastScanResult?.signals) {
+      ui.renderTickers(state.lastScanResult.signals);
+      ui.renderSignals(state.lastScanResult.signals);
+    }
+  });
   $('fontProvider').addEventListener('change', e => engine.setFont(e.target.value));
   $('fontSizeProvider').addEventListener('change', e => engine.setFontSize(e.target.value));
   $('caseProvider').addEventListener('change', e => engine.setCase(e.target.value));
@@ -1570,31 +1591,54 @@ async function initDevToolbar() {
 // ONBOARDING FLOW
 // ============================================================================
 
-const onboardingState = { current: 0, path: null, selectedAnalysts: new Set() };
+const onboardingState = {
+  current: 0,
+  path: null,
+  selectedAnalysts: new Set(),
+  scheduledTimes: [],
+  schedulePresets: null,
+  completing: false,
+};
 
 function startOnboarding() {
   onboardingState.current = 0;
   onboardingState.path = null;
   onboardingState.selectedAnalysts = new Set();
+  onboardingState.scheduledTimes = [];
+  onboardingState.schedulePresets = null;
+  onboardingState.completing = false;
   ui.renderOnboarding(onboardingState, completeOnboarding, onboardingAction);
   initOnboardingListeners();
 }
 
-function completeOnboarding() {
-  // Create selected analysts
-  for (const sa of ui.SUGGESTED_ANALYSTS) {
-    if (onboardingState.selectedAnalysts.has(sa.id)) {
-      const existing = (engine.getAnalysts() || []).find(a => a.name === sa.name);
-      if (!existing) {
-        const all = [...(engine.getAnalysts() || []), { id: engine.generateAnalystId(), name: sa.name, prompt: sa.prompt, isDefault: false }];
-        engine.saveAnalysts(all);
+async function completeOnboarding() {
+  if (onboardingState.completing) return;
+  onboardingState.completing = true;
+  try {
+    // Create selected analysts
+    for (const sa of ui.SUGGESTED_ANALYSTS) {
+      if (onboardingState.selectedAnalysts.has(sa.id)) {
+        const existing = (engine.getAnalysts() || []).find(a => a.name === sa.name);
+        if (!existing) {
+          const all = [...(engine.getAnalysts() || []), { id: engine.generateAnalystId(), name: sa.name, prompt: sa.prompt, isDefault: false }];
+          engine.saveAnalysts(all);
+        }
       }
     }
+    // Create scheduled scans with the presets chosen on the schedule step
+    if (onboardingState.scheduledTimes.length && auth.isAuthenticated()) {
+      const schedPresets = onboardingState.schedulePresets?.length ? onboardingState.schedulePresets : undefined;
+      for (const time of onboardingState.scheduledTimes) {
+        try { await addSchedule(time, { presetOverride: schedPresets }); } catch (e) { console.warn('Failed to create onboarding schedule:', e); }
+      }
+    }
+    engine.setOnboardingDone(true);
+    ui.hideOnboarding();
+    ui.renderTopbar();
+    ui.render();
+  } finally {
+    onboardingState.completing = false;
   }
-  engine.setOnboardingDone(true);
-  ui.hideOnboarding();
-  ui.renderTopbar();
-  ui.render();
 }
 
 function onboardingAction(action, data) {
@@ -1618,8 +1662,12 @@ function initOnboardingListeners() {
         if (tw) localStorage.setItem('signal_twitter_key', tw);
         if (an) localStorage.setItem('signal_anthropic_key', an);
       }
-      if (onboardingState.current < 4) {
+      if (onboardingState.current < 5) {
         onboardingState.current++;
+        // Initialize schedule presets from accounts step selection on first entry
+        if (onboardingState.current === 4 && onboardingState.schedulePresets === null) {
+          onboardingState.schedulePresets = [...state.loadedPresets];
+        }
         ui.renderOnboarding(onboardingState, completeOnboarding, onboardingAction);
       }
       return;
@@ -1633,7 +1681,8 @@ function initOnboardingListeners() {
       return;
     }
     if (e.target.closest('[data-ob-finish]')) {
-      completeOnboarding();
+      if (onboardingState.completing) return;
+      await completeOnboarding();
       return;
     }
     const pathBtn = e.target.closest('[data-ob-path]');
@@ -1659,6 +1708,32 @@ function initOnboardingListeners() {
       const id = analystBtn.dataset.obAnalyst;
       if (onboardingState.selectedAnalysts.has(id)) onboardingState.selectedAnalysts.delete(id);
       else onboardingState.selectedAnalysts.add(id);
+      ui.renderOnboarding(onboardingState, completeOnboarding, onboardingAction);
+      return;
+    }
+    const schedPresetBtn = e.target.closest('[data-ob-sched-preset]');
+    if (schedPresetBtn) {
+      const name = schedPresetBtn.dataset.obSchedPreset;
+      const presets = onboardingState.schedulePresets || [];
+      const idx = presets.indexOf(name);
+      if (idx >= 0) {
+        presets.splice(idx, 1);
+      } else {
+        presets.push(name);
+      }
+      onboardingState.schedulePresets = presets;
+      ui.renderOnboarding(onboardingState, completeOnboarding, onboardingAction);
+      return;
+    }
+    const schedBtn = e.target.closest('[data-ob-schedule]');
+    if (schedBtn) {
+      const time = schedBtn.dataset.obSchedule;
+      const idx = onboardingState.scheduledTimes.indexOf(time);
+      if (idx >= 0) {
+        onboardingState.scheduledTimes.splice(idx, 1);
+      } else {
+        onboardingState.scheduledTimes.push(time);
+      }
       ui.renderOnboarding(onboardingState, completeOnboarding, onboardingAction);
       return;
     }

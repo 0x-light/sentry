@@ -68,6 +68,10 @@ function safeLsSet(key, value) {
 }
 export function normCat(c) { return CAT_MIGRATE[c] || c; }
 
+const SHOW_TICKER_PRICE_DEFAULT = true;
+let showTickerPriceRuntime = null;
+let showTickerPriceReadWarned = false;
+
 // ============================================================================
 // SETTINGS
 // ============================================================================
@@ -998,6 +1002,72 @@ export function loadPendingScan() {
 
 export const priceCache = {};
 const PRICE_CACHE_TTL = 60000;
+const STOCK_QUOTE_BATCH_SIZE = 50;
+const pendingPriceFetches = new Map();
+const STOCK_RETRY_BASE_MS = 15000;
+const STOCK_RETRY_MAX_MS = 10 * 60 * 1000;
+const STOCK_RATE_LIMIT_FALLBACK_MS = 60000;
+const stockFailureState = new Map();
+let stockRateLimitedUntil = 0;
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hasFreshPriceChange(symbol, now = Date.now()) {
+  const cached = priceCache[symbol];
+  return !!cached && Number.isFinite(cached.change) && (now - cached.ts < PRICE_CACHE_TTL);
+}
+
+function parseRetryAfterMs(headers) {
+  const raw = headers?.get?.('retry-after');
+  if (!raw) return STOCK_RATE_LIMIT_FALLBACK_MS;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.max(STOCK_RATE_LIMIT_FALLBACK_MS, Math.floor(seconds * 1000));
+  }
+
+  const dateMs = Date.parse(raw);
+  if (!Number.isNaN(dateMs)) {
+    const ms = dateMs - Date.now();
+    if (ms > 0) return Math.max(STOCK_RATE_LIMIT_FALLBACK_MS, ms);
+  }
+
+  return STOCK_RATE_LIMIT_FALLBACK_MS;
+}
+
+function markStockFailure(symbol, delayMs = null) {
+  const clean = (symbol || '').replace(/^\$/, '').toUpperCase();
+  if (!clean) return;
+  const current = stockFailureState.get(clean) || { failures: 0, retryAt: 0 };
+  const failures = current.failures + 1;
+  const expDelay = Math.min(STOCK_RETRY_BASE_MS * (2 ** Math.max(0, failures - 1)), STOCK_RETRY_MAX_MS);
+  const retryDelay = delayMs == null ? expDelay : Math.min(Math.max(delayMs, STOCK_RETRY_BASE_MS), STOCK_RETRY_MAX_MS);
+  stockFailureState.set(clean, { failures, retryAt: Date.now() + retryDelay });
+}
+
+function clearStockFailure(symbol) {
+  const clean = (symbol || '').replace(/^\$/, '').toUpperCase();
+  if (!clean) return;
+  stockFailureState.delete(clean);
+}
+
+function shouldSkipStockRequest(symbol, now = Date.now()) {
+  if (now < stockRateLimitedUntil) return true;
+  const clean = (symbol || '').replace(/^\$/, '').toUpperCase();
+  if (!clean) return true;
+  const state = stockFailureState.get(clean);
+  return !!state && state.retryAt > now;
+}
+
+function markStockRateLimited(symbols, headers) {
+  const delayMs = parseRetryAfterMs(headers);
+  const retryAt = Date.now() + delayMs;
+  if (retryAt > stockRateLimitedUntil) stockRateLimitedUntil = retryAt;
+  symbols.forEach(sym => markStockFailure(sym, delayMs));
+}
 
 export function normalizeSymbol(sym) {
   const clean = sym.replace(/^\$/, '').toUpperCase();
@@ -1017,17 +1087,17 @@ export function formatChange(change) {
   return (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
 }
 
-export function priceHtml(data) {
+export function priceHtml(data, { showPrice = false } = {}) {
   if (!data || data.price == null) return '';
   const cls = data.change > 0.01 ? 'pos' : data.change < -0.01 ? 'neg' : 'neutral';
-  return `<span class="ticker-change ${cls}">${formatChange(data.change)}</span>`;
+  const priceStr = showPrice ? `<span class="ticker-price">${formatPrice(data.price)}</span>` : '';
+  return `<span class="ticker-change ${cls}">${priceStr}${formatChange(data.change)}</span>`;
 }
 
 async function fetchCryptoPrices(symbols) {
   const now = Date.now();
   const needed = symbols.filter(s => {
-    const cached = priceCache[s];
-    return !cached || (now - cached.ts > PRICE_CACHE_TTL);
+    return !hasFreshPriceChange(s, now);
   });
   if (!needed.length) return;
   const ids = needed.map(s => CRYPTO_SLUGS[s]).filter(Boolean);
@@ -1038,7 +1108,12 @@ async function fetchCryptoPrices(symbols) {
     const data = await resp.json();
     needed.forEach(sym => {
       const slug = CRYPTO_SLUGS[sym];
-      if (data[slug]) priceCache[sym] = { price: data[slug].usd, change: data[slug].usd_24h_change || 0, ts: now };
+      const row = data?.[slug];
+      if (!row) return;
+      const price = finiteNumber(row.usd);
+      const change = finiteNumber(row.usd_24h_change);
+      if (price == null) return;
+      priceCache[sym] = { price, change: change ?? 0, ts: now };
     });
   } catch {}
 }
@@ -1046,41 +1121,175 @@ async function fetchCryptoPrices(symbols) {
 async function fetchStockPrice(sym, originalSym = null) {
   const cacheKey = originalSym || sym;
   const now = Date.now();
-  if (priceCache[cacheKey] && (now - priceCache[cacheKey].ts < PRICE_CACHE_TTL)) return;
+  if (hasFreshPriceChange(cacheKey, now)) return true;
+  if (shouldSkipStockRequest(cacheKey, now)) return false;
   try {
     const yahooSym = normalizeSymbol(sym);
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=2d`;
     const url = CORS_PROXY + encodeURIComponent(yahooUrl);
     const resp = await fetch(url);
-    if (!resp.ok) return;
+    if (resp.status === 429) {
+      markStockRateLimited([cacheKey], resp.headers);
+      return false;
+    }
+    if (!resp.ok) {
+      markStockFailure(cacheKey);
+      return false;
+    }
     const data = await resp.json();
     const result = data?.chart?.result?.[0];
-    if (!result) return;
-    const price = result.meta?.regularMarketPrice;
-    const prevClose = result.meta?.chartPreviousClose || result.meta?.previousClose;
-    if (price == null) return;
-    const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    if (!result) {
+      markStockFailure(cacheKey);
+      return false;
+    }
+    const price = finiteNumber(result.meta?.regularMarketPrice);
+    const prevClose = finiteNumber(result.meta?.chartPreviousClose) ?? finiteNumber(result.meta?.previousClose);
+    if (price == null || prevClose == null || prevClose === 0) {
+      markStockFailure(cacheKey);
+      return false;
+    }
+    const change = ((price - prevClose) / prevClose) * 100;
+    if (!Number.isFinite(change)) {
+      markStockFailure(cacheKey);
+      return false;
+    }
     priceCache[cacheKey] = { price, change, ts: now };
-  } catch {}
+    clearStockFailure(cacheKey);
+    return true;
+  } catch {
+    markStockFailure(cacheKey);
+    return false;
+  }
+}
+
+async function fetchStockQuoteBatch(stockSyms) {
+  if (!stockSyms.length) return;
+  const now = Date.now();
+  if (now < stockRateLimitedUntil) return;
+  const queryToCacheKeys = new Map();
+  stockSyms.forEach((sym) => {
+    const clean = sym.replace(/^\$/, '').toUpperCase();
+    if (!clean) return;
+    if (shouldSkipStockRequest(clean, now)) return;
+    const query = normalizeSymbol(clean).toUpperCase();
+    if (!queryToCacheKeys.has(query)) queryToCacheKeys.set(query, []);
+    queryToCacheKeys.get(query).push(clean);
+  });
+
+  const querySymbols = [...queryToCacheKeys.keys()];
+  if (!querySymbols.length) return;
+  const unresolved = new Set(querySymbols);
+  let rateLimited = false;
+
+  for (let i = 0; i < querySymbols.length; i += STOCK_QUOTE_BATCH_SIZE) {
+    if (Date.now() < stockRateLimitedUntil) { rateLimited = true; break; }
+    const batch = querySymbols.slice(i, i + STOCK_QUOTE_BATCH_SIZE);
+    const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(batch.join(','))}`;
+    const url = CORS_PROXY + encodeURIComponent(yahooUrl);
+    try {
+      const resp = await fetch(url);
+      if (resp.status === 429) {
+        const batchKeys = batch.flatMap(sym => queryToCacheKeys.get(sym) || []);
+        markStockRateLimited(batchKeys, resp.headers);
+        rateLimited = true;
+        break;
+      }
+      if (!resp.ok) {
+        batch.forEach((querySym) => {
+          const keys = queryToCacheKeys.get(querySym) || [];
+          keys.forEach(k => markStockFailure(k));
+          unresolved.delete(querySym);
+        });
+        continue;
+      }
+      const data = await resp.json();
+      const results = Array.isArray(data?.quoteResponse?.result) ? data.quoteResponse.result : [];
+      results.forEach((row) => {
+        const quoteSym = String(row?.symbol || '').toUpperCase();
+        const cacheKeys = queryToCacheKeys.get(quoteSym);
+        if (!cacheKeys?.length) return;
+
+        const price = finiteNumber(row.regularMarketPrice);
+        let change = finiteNumber(row.regularMarketChangePercent);
+        if (change == null) {
+          const prevClose = finiteNumber(row.regularMarketPreviousClose) ?? finiteNumber(row.previousClose);
+          if (price != null && prevClose != null && prevClose !== 0) {
+            change = ((price - prevClose) / prevClose) * 100;
+          }
+        }
+        if (price == null || change == null) return;
+
+        cacheKeys.forEach((cacheKey) => {
+          priceCache[cacheKey] = { price, change, ts: now };
+          clearStockFailure(cacheKey);
+        });
+        unresolved.delete(quoteSym);
+      });
+    } catch {
+      batch.forEach((querySym) => {
+        const keys = queryToCacheKeys.get(querySym) || [];
+        keys.forEach(k => markStockFailure(k));
+        unresolved.delete(querySym);
+      });
+    }
+  }
+
+  if (rateLimited) return;
+
+  if (!unresolved.size) return;
+  const fallbackPromises = [];
+  unresolved.forEach((querySym) => {
+    const cacheKeys = queryToCacheKeys.get(querySym) || [];
+    cacheKeys.forEach((cacheKey) => {
+      fallbackPromises.push(fetchStockPrice(querySym, cacheKey));
+    });
+  });
+  await Promise.all(fallbackPromises);
 }
 
 export async function fetchAllPrices(symbols) {
+  const now = Date.now();
+  const waiting = [];
   const cryptoSyms = [];
   const stockSyms = [];
-  const now = Date.now();
+  const seen = new Set();
+
   symbols.forEach(s => {
     const clean = s.replace(/^\$/, '').toUpperCase();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    if (hasFreshPriceChange(clean, now)) return;
+
+    const pending = pendingPriceFetches.get(clean);
+    if (pending) {
+      waiting.push(pending);
+      return;
+    }
     if (CRYPTO_SLUGS[clean]) cryptoSyms.push(clean);
-    else if (!priceCache[clean] || (now - priceCache[clean].ts >= PRICE_CACHE_TTL)) stockSyms.push(clean);
+    else if (!shouldSkipStockRequest(clean, now)) stockSyms.push(clean);
   });
-  const promises = [];
-  if (cryptoSyms.length) promises.push(fetchCryptoPrices(cryptoSyms));
-  // Batch stock fetches in groups of 5 to limit concurrent requests
-  for (let i = 0; i < stockSyms.length; i += 5) {
-    const batch = stockSyms.slice(i, i + 5);
-    promises.push(Promise.all(batch.map(s => fetchStockPrice(s, s))));
+
+  const launched = [];
+  if (cryptoSyms.length) {
+    const task = fetchCryptoPrices(cryptoSyms);
+    cryptoSyms.forEach((sym) => pendingPriceFetches.set(sym, task));
+    launched.push(task.finally(() => {
+      cryptoSyms.forEach((sym) => {
+        if (pendingPriceFetches.get(sym) === task) pendingPriceFetches.delete(sym);
+      });
+    }));
   }
-  await Promise.all(promises);
+  if (stockSyms.length) {
+    const task = fetchStockQuoteBatch(stockSyms);
+    stockSyms.forEach((sym) => pendingPriceFetches.set(sym, task));
+    launched.push(task.finally(() => {
+      stockSyms.forEach((sym) => {
+        if (pendingPriceFetches.get(sym) === task) pendingPriceFetches.delete(sym);
+      });
+    }));
+  }
+
+  await Promise.all([...waiting, ...launched]);
 }
 
 // ============================================================================
@@ -1186,12 +1395,22 @@ export function setOnboardingDone(v = true) {
 // ============================================================================
 
 export function getShowTickerPrice() {
-  const v = localStorage.getItem(LS_SHOW_TICKER_PRICE);
-  return v === null ? true : v === 'true'; // default true
+  if (typeof showTickerPriceRuntime === 'boolean') return showTickerPriceRuntime;
+  try {
+    const v = localStorage.getItem(LS_SHOW_TICKER_PRICE);
+    return v === null ? SHOW_TICKER_PRICE_DEFAULT : v === 'true';
+  } catch (e) {
+    if (!showTickerPriceReadWarned) {
+      showTickerPriceReadWarned = true;
+      console.warn('localStorage read failed:', LS_SHOW_TICKER_PRICE, e.message);
+    }
+    return SHOW_TICKER_PRICE_DEFAULT;
+  }
 }
 
 export function setShowTickerPrice(v) {
-  localStorage.setItem(LS_SHOW_TICKER_PRICE, String(v));
+  showTickerPriceRuntime = Boolean(v);
+  safeLsSet(LS_SHOW_TICKER_PRICE, String(showTickerPriceRuntime));
 }
 
 // ============================================================================

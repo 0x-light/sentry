@@ -220,6 +220,8 @@ export const INDEX_MAP = {
   'VIX': '^VIX', 'UVXY': 'UVXY', 'VXX': 'VXX',
   'TNX': '^TNX', 'TLT': 'TLT', 'TBT': 'TBT',
   'DXY': 'DX-Y.NYB', 'UUP': 'UUP',
+  'EURUSD': 'EURUSD=X', 'GBPUSD': 'GBPUSD=X', 'AUDUSD': 'AUDUSD=X', 'NZDUSD': 'NZDUSD=X',
+  'USDJPY': 'JPY=X', 'USDCHF': 'CHF=X', 'USDCAD': 'CAD=X',
   'XAU': 'GC=F', 'GLD': 'GLD', 'XAG': 'SI=F', 'SLV': 'SLV', 'USO': 'USO', 'UNG': 'UNG',
   'XLF': 'XLF', 'XLE': 'XLE', 'XLK': 'XLK', 'XLV': 'XLV', 'XLI': 'XLI', 'XLP': 'XLP', 'XLU': 'XLU', 'XLY': 'XLY', 'XLB': 'XLB', 'XLRE': 'XLRE',
   'ARKK': 'ARKK', 'ARKG': 'ARKG', 'ARKW': 'ARKW', 'ARKF': 'ARKF',
