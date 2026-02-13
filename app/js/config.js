@@ -16,6 +16,11 @@ function configValue(key, fallback) {
   return fallback;
 }
 
+function trimTrailingSlash(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\/+$/, '');
+}
+
 // --- Default presets (matches v3) ---
 export const DEFAULT_PRESETS = [
   { name: 'tradfi', accounts: [
@@ -137,12 +142,12 @@ Return a JSON array. Each signal:
 Return ONLY valid JSON array. No markdown, no explanation.`;
 
 // API endpoints
-export const API_BASE = configValue('API_BASE', 'https://api.sentry.is');
-export const CORS_PROXY = configValue('CORS_PROXY', API_BASE + '/api/proxy?url=');
+export const API_BASE = trimTrailingSlash(configValue('API_BASE', 'https://api.sentry.is'));
+export const CORS_PROXY = configValue('CORS_PROXY', `${API_BASE || ''}/api/proxy?url=`);
 
 // Supabase config
-export const SUPABASE_URL = configValue('SUPABASE_URL', 'https://mfbnbfpfjeetaejibvjy.supabase.co');
-export const SUPABASE_ANON_KEY = configValue('SUPABASE_ANON_KEY', 'sb_publishable_aXJZySxABS2lOW_WQS-OOQ_RNSymyfn');
+export const SUPABASE_URL = trimTrailingSlash(configValue('SUPABASE_URL', ''));
+export const SUPABASE_ANON_KEY = configValue('SUPABASE_ANON_KEY', '');
 
 // Model pricing (per million tokens)
 export const MODEL_PRICING = {

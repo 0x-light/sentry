@@ -13,6 +13,7 @@ import * as ui from './ui.js';
 import * as auth from './auth.js';
 import * as api from './api.js';
 import { CATEGORIES } from './config.js';
+import { sanitizePathname } from './sanitize.js';
 
 const $ = id => document.getElementById(id);
 const esc = engine.esc;
@@ -457,6 +458,16 @@ function hideFab() {
 // ============================================================================
 
 function handleClick(e) {
+  const dismissNotice = e.target.closest('[data-dev-dismiss-notice]');
+  if (dismissNotice) {
+    dismissNotice.closest('.notice')?.remove();
+    return;
+  }
+  if (e.target.closest('[data-dev-clear-notices]')) {
+    $('notices').innerHTML = '';
+    return;
+  }
+
   const target = e.target.closest('[id]');
   if (!target) return;
   const id = target.id;
@@ -590,7 +601,7 @@ function handleClick(e) {
         <span>Interrupted scan detected (6 accounts · 42 tweets · 3m ago)</span>
         <span style="display:flex;gap:6px;margin-left:auto">
           <button class="resume-btn">Resume</button>
-          <button class="dismiss-btn" onclick="this.closest('.notice').remove()">✕</button>
+          <button class="dismiss-btn" data-dev-dismiss-notice>✕</button>
         </span>
       </div>`;
       break;
@@ -603,8 +614,8 @@ function handleClick(e) {
       $('notices').innerHTML = `<div class="notice sched-banner">
         <span>Scheduled scan complete · ${scan ? scan.signals.length : 0} signals · ${timeStr}</span>
         <span style="display:flex;gap:6px">
-          <button class="resume-btn" onclick="document.querySelector('#notices').innerHTML=''">View results</button>
-          <button class="dismiss-btn" onclick="this.closest('.notice').remove()">Dismiss</button>
+          <button class="resume-btn" data-dev-clear-notices>View results</button>
+          <button class="dismiss-btn" data-dev-dismiss-notice>Dismiss</button>
         </span>
       </div>`;
       if (scan) ui.renderSignals(scan.signals);
@@ -704,8 +715,9 @@ function handleClick(e) {
     // --- Shared ---
     case 'devSharedShow': {
       const sig = MOCK_SIGNALS[0];
+      const safePath = sanitizePathname(location.pathname);
       document.body.setAttribute('data-shared', '');
-      $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared signal</span><a href="${location.pathname}">← back to sentry</a></div>`;
+      $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">shared signal</span><a href="${esc(safePath)}">← back to sentry</a></div>`;
       document.querySelector('.controls').style.display = 'none';
       ui.renderSharedSignal(sig);
       break;

@@ -14,6 +14,7 @@ import * as auth from './auth.js';
 import * as api from './api.js';
 import * as engine from './engine.js';
 import * as ui from './ui.js';
+import { sanitizePathname } from './sanitize.js';
 import { normalizeAccountHandle, normalizeAccountList } from './validation.js';
 
 const $ = id => document.getElementById(id);
@@ -32,7 +33,11 @@ function loadScheduledNoticeKey() {
 }
 
 function saveScheduledNoticeKey(key) {
-  try { localStorage.setItem(LS_LAST_SCHEDULED_NOTICE, key || ''); } catch {}
+  try {
+    localStorage.setItem(LS_LAST_SCHEDULED_NOTICE, key || '');
+  } catch (e) {
+    console.warn('Failed to persist scheduled notice key:', e.message);
+  }
 }
 
 function loadPendingScheduledScanKey() {
@@ -47,7 +52,9 @@ function savePendingScheduledScanKey(key) {
   try {
     if (key) localStorage.setItem(LS_PENDING_SCHEDULED_SCAN, key);
     else localStorage.removeItem(LS_PENDING_SCHEDULED_SCAN);
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to persist pending scheduled scan key:', e.message);
+  }
 }
 
 function isScheduledScan(scan) {
@@ -973,7 +980,9 @@ async function handleBillingCallback() {
           $('notices').innerHTML = '<div class="notice" style="color:var(--green);background:var(--green-10)">Credits added! You\'re ready to scan.</div>';
           return;
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Checkout verification failed, falling back to profile polling:', e.message);
+      }
     }
     // Fallback: poll for credits (with cleanup)
     let attempts = 0;
@@ -987,7 +996,9 @@ async function handleBillingCallback() {
           ui.renderTopbar();
           $('notices').innerHTML = '<div class="notice" style="color:var(--green);background:var(--green-10)">Credits added! You\'re ready to scan.</div>';
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Billing status poll failed:', e.message);
+      }
       if (attempts >= 10) { clearInterval(state._billingPoll); state._billingPoll = null; }
     }, 2000);
   }
@@ -1010,8 +1021,7 @@ function initMobileDeepLinks() {
     if (!sym) return;
     e.preventDefault();
     const webUrl = a.href || engine.tickerUrl('$' + sym);
-    const tvSym = engine.getTvSymbol(sym);
-    const deepUrl = `tradingview://chart/?symbol=${encodeURIComponent(tvSym)}`;
+    const deepUrl = engine.getTradingViewDeepLink(sym);
     const t0 = Date.now();
     window.location.href = deepUrl;
     setTimeout(() => {
@@ -1574,8 +1584,9 @@ function checkSharedSignal() {
   const hash = location.hash;
 
   function setupSharedView(bannerText) {
+    const safePath = sanitizePathname(location.pathname);
     document.body.setAttribute('data-shared', '');
-    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">${bannerText}</span><a href="${location.pathname}">← back to sentry</a></div>`;
+    $('sharedBanner').innerHTML = `<div class="shared-banner"><span class="shared-banner-text">${engine.esc(bannerText)}</span><a href="${engine.esc(safePath)}">← back to sentry</a></div>`;
     document.querySelector('.controls').style.display = 'none';
   }
 
@@ -1624,7 +1635,8 @@ async function loadSharedScan(shareId) {
     ui.setStatus(`${dateStr} · ${scan.accounts_count || 0} accounts · ${scan.total_tweets || 0} tweets · ${signals.length} signals`);
     ui.renderTickers(signals);
     ui.renderSignals(signals);
-    $('footer').innerHTML = 'shared from <a href="' + location.pathname + '">sentry</a> · not financial advice';
+    const safePath = sanitizePathname(location.pathname);
+    $('footer').innerHTML = `shared from <a href="${engine.esc(safePath)}">sentry</a> · not financial advice`;
   } catch (e) {
     ui.setStatus('');
     $('results').innerHTML = '<div class="empty-state">Failed to load shared scan</div>';

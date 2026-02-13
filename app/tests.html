@@ -35,6 +35,7 @@ import * as config from './js/config.js';
 import * as auth from './js/auth.js';
 import * as api from './js/api.js';
 import * as engine from './js/engine.js';
+import * as sanitize from './js/sanitize.js';
 
 // ============================================================================
 // TEST RUNNER
@@ -218,6 +219,11 @@ describe('engine.js — TradingView symbols', () => {
   it('getTvSymbol strips dollar sign', () => {
     assertEqual(engine.getTvSymbol('$BTC'), 'BINANCE:BTCUSDT');
     assertEqual(engine.getTvSymbol('$AAPL'), 'AAPL');
+  });
+
+  it('getTradingViewDeepLink uses TradingView chart route', () => {
+    assertEqual(engine.getTradingViewDeepLink('BTC'), 'tradingview://chart?symbol=BINANCE:BTCUSDT');
+    assertEqual(engine.getTradingViewDeepLink('HYPE'), 'tradingview://chart?symbol=PYTH:HYPEUSD');
   });
 });
 
@@ -549,6 +555,24 @@ describe('engine.js — price & ticker helpers', () => {
     const url = engine.tickerUrl('$AAPL');
     assert(url.startsWith('http'), 'Should return a URL');
     assert(url.includes('AAPL'), 'Should contain the symbol');
+  });
+});
+
+// ============================================================================
+// TESTS: sanitize.js
+// ============================================================================
+
+describe('sanitize.js', () => {
+  it('sanitizeHttpUrl allows https/http and rejects javascript URLs', () => {
+    assertEqual(sanitize.sanitizeHttpUrl('https://example.com/test'), 'https://example.com/test');
+    assertEqual(sanitize.sanitizeHttpUrl('http://example.com/test'), 'http://example.com/test');
+    assertEqual(sanitize.sanitizeHttpUrl('javascript:alert(1)'), null);
+  });
+
+  it('sanitizePathname keeps safe paths and strips unsafe characters', () => {
+    assertEqual(sanitize.sanitizePathname('/hello/world'), '/hello/world');
+    assertEqual(sanitize.sanitizePathname('/hello\"world'), '/helloworld');
+    assertEqual(sanitize.sanitizePathname('https://example.com'), '/');
   });
 });
 

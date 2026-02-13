@@ -10,8 +10,23 @@ import { RANGES, CATEGORIES, CAT_C, ACT_C, ACT_BG, CREDIT_PACKS, DEFAULT_PROMPT,
 import * as engine from './engine.js';
 import * as auth from './auth.js';
 import * as api from './api.js';
+import { sanitizeHttpUrl, sanitizePathname } from './sanitize.js';
 
 const $ = id => document.getElementById(id);
+
+function timeAgo(date) {
+  if (!date) return '';
+  const now = Date.now();
+  const sec = Math.round((now - date.getTime()) / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
 const esc = engine.esc;
 let tickerRefreshTimer = null;
 const pendingTickerSymbols = new Set();
@@ -37,13 +52,13 @@ function queueTickerMetricsRefresh(symbols, cryptoHints) {
 
 // Shared helper: render a ticker tag as an <a> element
 function tickerTagHtml(ticker, { showPrice = false } = {}) {
-  const url = engine.tickerUrl(ticker.symbol || '');
+  const url = sanitizeHttpUrl(engine.tickerUrl(ticker.symbol || '')) || '#';
   const sym = (ticker.symbol || '').replace(/^\$/, '').toUpperCase();
   const cached = engine.priceCache[sym];
   const priceStr = cached ? engine.priceHtml(cached, { showPrice }) : '';
   const color = ACT_C[ticker.action] || 'var(--text-muted)';
   const bg = ACT_BG[ticker.action] || 'var(--text-10)';
-  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${priceStr}</a>`;
+  return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="ticker-tag" data-sym="${esc(sym)}" style="color:${color};background:${bg}">${esc(ticker.symbol)}${priceStr}</a>`;
 }
 const PACK_SIZES = CREDIT_PACKS.map(p => p.credits).sort((a, b) => a - b);
 function creditBarMax(credits) { return PACK_SIZES.find(s => s >= credits) || credits; }
@@ -335,8 +350,7 @@ function buildTweetMap() {
   if (scan?.tweetMeta) {
     Object.entries(scan.tweetMeta).forEach(([url, meta]) => {
       const date = meta.time ? new Date(meta.time) : null;
-      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-      tweetMap[url] = { text: meta.text || '', author: meta.author || '', time: timeStr };
+      tweetMap[url] = { text: meta.text || '', author: meta.author || '', time: timeAgo(date) };
     });
   }
   // Layer 2: rawTweets (from fresh scan — overwrites with full data)
@@ -344,8 +358,7 @@ function buildTweetMap() {
     scan.rawTweets.forEach(a => (a.tweets || []).forEach(tw => {
       const url = engine.getTweetUrl(tw);
       const date = tw.createdAt ? new Date(tw.createdAt) : null;
-      const timeStr = date ? date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-      tweetMap[url] = { text: tw.text || '', author: tw.author?.userName || a.account || '', time: timeStr };
+      tweetMap[url] = { text: tw.text || '', author: tw.author?.userName || a.account || '', time: timeAgo(date) };
     }));
   }
   return tweetMap;
@@ -357,20 +370,25 @@ export function renderSignalCard(item, i, tweetMap, isNew = false) {
   const tweetInfo = item.tweet_url ? (tweetMap[item.tweet_url] || {}) : {};
   const source = (item.source || '').replace(/^@/, '');
   const time = tweetInfo.time || '';
+  const safeTweetUrl = sanitizeHttpUrl(item.tweet_url);
   const tickers = (item.tickers && item.tickers.length)
     ? item.tickers.map(t => tickerTagHtml(t, { showPrice })).join('') : '';
   const extLinks = (item.links && item.links.length)
     ? item.links.map(l => {
+        const safeLink = sanitizeHttpUrl(l);
+        if (!safeLink) return '';
         try {
-          const hostname = new URL(l).hostname.replace('www.','');
-          return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
-        } catch { return ''; }
+          const hostname = new URL(safeLink).hostname.replace('www.','');
+          return `<a href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(hostname)}</a>`;
+        } catch {
+          return '';
+        }
       }).filter(Boolean).join(' ') : '';
-  const sourceLink = item.tweet_url
-    ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}">@${esc(source)}</a>`
+  const sourceLink = safeTweetUrl
+    ? `<a href="${esc(safeTweetUrl)}" target="_blank" rel="noopener noreferrer" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}">@${esc(source)}</a>`
     : `@${esc(source)}`;
-  const seePost = item.tweet_url
-    ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>` : '';
+  const seePost = safeTweetUrl
+    ? `<a href="${esc(safeTweetUrl)}" target="_blank" rel="noopener noreferrer" class="see-post" data-tweet="${esc(tweetInfo.text || '')}" data-author="${esc(source)}" data-time="${esc(time)}"><span class="text">See post</span><span class="arrow">↗</span></a>` : '';
   const tweetExpandId = `tweet-expand-${i}`;
   const tweetExpand = tweetInfo.text ? `
     <div class="tweet-expand">
@@ -451,11 +469,12 @@ export function renderHistory(scanHistory) {
           const tickers = (item.tickers && item.tickers.length)
             ? item.tickers.map(t => tickerTagHtml(t)).join('') : '';
           const source = (item.source || '').replace(/^@/, '');
-          const sourceLink = item.tweet_url
-            ? `<a href="${esc(item.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+          const safeTweetUrl = sanitizeHttpUrl(item.tweet_url);
+          const sourceLink = safeTweetUrl
+            ? `<a href="${esc(safeTweetUrl)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
             : `@${esc(source)}`;
           const tweetTime = item.tweet_time ? new Date(item.tweet_time) : null;
-          const timeStr = tweetTime ? tweetTime.toLocaleDateString() + ' ' + tweetTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+          const timeStr = timeAgo(tweetTime);
           return `<div class="signal" data-category="${esc(cat || '')}">
             <div class="sig-top"><span>${sourceLink}${timeStr ? ` · ${timeStr}` : ''}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span></div>
             ${tickers ? `<div class="sig-tickers">${tickers}</div>` : ''}
@@ -500,18 +519,25 @@ export function renderHistory(scanHistory) {
 export function renderSharedSignal(signal) {
   const cat = engine.normCat(signal.category)?.toLowerCase();
   const source = (signal.source || '').replace(/^@/, '');
+  const safeTweetUrl = sanitizeHttpUrl(signal.tweet_url);
+  const safePath = sanitizePathname(location.pathname);
   const tickers = (signal.tickers?.length)
     ? signal.tickers.map(t => tickerTagHtml(t)).join('') : '';
   const extLinks = (signal.links?.length)
     ? signal.links.map(l => {
-        try { return `<a href="${esc(l)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(l).hostname.replace('www.',''))}</a>`; }
-        catch { return ''; }
+        const safeLink = sanitizeHttpUrl(l);
+        if (!safeLink) return '';
+        try {
+          return `<a href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer" class="ext-link">${esc(new URL(safeLink).hostname.replace('www.',''))}</a>`;
+        } catch {
+          return '';
+        }
       }).filter(Boolean).join(' ') : '';
-  const sourceLink = signal.tweet_url
-    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
+  const sourceLink = safeTweetUrl
+    ? `<a href="${esc(safeTweetUrl)}" target="_blank" rel="noopener noreferrer">@${esc(source)}</a>`
     : `@${esc(source)}`;
-  const seePost = signal.tweet_url
-    ? `<a href="${esc(signal.tweet_url)}" target="_blank" rel="noopener noreferrer" class="see-post"><span class="text">see post</span><span class="arrow">↗</span></a>` : '';
+  const seePost = safeTweetUrl
+    ? `<a href="${esc(safeTweetUrl)}" target="_blank" rel="noopener noreferrer" class="see-post"><span class="text">see post</span><span class="arrow">↗</span></a>` : '';
 
   $('results').innerHTML = `<div class="signal">
     <div class="sig-top"><span>${sourceLink}${cat ? ` · <span class="sig-cat">${esc(cat)}</span>` : ''}</span>${seePost}</div>
@@ -520,7 +546,7 @@ export function renderSharedSignal(signal) {
     <div class="sig-summary">${esc(signal.summary || '')}</div>
     ${extLinks ? `<div class="sig-links">${extLinks}</div>` : ''}
   </div>`;
-  $('footer').innerHTML = 'shared from <a href="' + location.pathname + '">sentry</a> · not financial advice';
+  $('footer').innerHTML = `shared from <a href="${esc(safePath)}">sentry</a> · not financial advice`;
 }
 
 // ============================================================================
@@ -1055,8 +1081,8 @@ export function renderOnboarding(onStep, onComplete, onAction) {
     } else {
       // BYOK
       h += `<div class="mb-16"><h2 class="heading-lg">API keys</h2><p class="text-muted">Your keys are stored on your device and never shared.</p></div>`;
-      h += `<div class="ob-field"><label>X/Twitter API key</label><input type="password" id="obTwKey" placeholder="Your twitterapi.io key" value="${esc(engine.getTwKey())}" class="ob-input"><p><a href="https://twitterapi.io" target="_blank">Get one at twitterapi.io →</a></p></div>`;
-      h += `<div class="ob-field"><label>Anthropic API key</label><input type="password" id="obAnKey" placeholder="sk-ant-..." value="${esc(engine.getAnKey())}" class="ob-input"><p><a href="https://console.anthropic.com/settings/keys" target="_blank">Get one at console.anthropic.com →</a></p></div>`;
+      h += `<div class="ob-field"><label>X/Twitter API key</label><input type="password" id="obTwKey" placeholder="Your twitterapi.io key" value="${esc(engine.getTwKey())}" class="ob-input"><p><a href="https://twitterapi.io" target="_blank" rel="noopener noreferrer">Get one at twitterapi.io →</a></p></div>`;
+      h += `<div class="ob-field"><label>Anthropic API key</label><input type="password" id="obAnKey" placeholder="sk-ant-..." value="${esc(engine.getAnKey())}" class="ob-input"><p><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get one at console.anthropic.com →</a></p></div>`;
       h += `<div class="ob-nav"><button class="modal-sm-btn" data-ob-path="">Back</button><div class="flex-row"><button class="modal-sm-btn text-muted" data-ob-next>Skip</button><button class="scan-btn" data-ob-next>Continue →</button></div></div>`;
     }
   } else if (step === 2) {

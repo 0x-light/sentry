@@ -258,7 +258,7 @@ export async function deleteAnalystRemote(id) {
   return apiCall('/api/user/analysts', { method: 'DELETE', body: { id } });
 }
 
-// --- Tweet Batch Fetching (managed keys — up to 25 accounts per request) ---
+// --- Tweet Batch Fetching (managed keys — up to 100 accounts per request) ---
 
 export async function fetchTweetsBatch(accounts, days, signal) {
   return apiCall('/api/tweets/fetch-batch', {
@@ -294,14 +294,12 @@ export async function shareScan(scanData) {
 }
 
 export async function getSharedScan(shareId) {
-  const res = await fetch(`${API_BASE}/api/shared/${encodeURIComponent(shareId)}`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    throw new Error('Failed to load shared scan');
+  try {
+    return await apiCall(`/api/shared/${encodeURIComponent(shareId)}`);
+  } catch (e) {
+    if (e.status === 404) return null;
+    throw new Error(e.message || 'Failed to load shared scan');
   }
-  return res.json();
 }
 
 // --- Cross-user scan cache (whole-scan cache) ---

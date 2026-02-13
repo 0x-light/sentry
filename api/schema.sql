@@ -36,7 +36,7 @@ begin
   );
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -66,7 +66,7 @@ begin
   insert into user_settings (user_id) values (new.id);
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_profile_created
   after insert on profiles
@@ -338,7 +338,7 @@ begin
 
   return v_balance;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 -- Add credits (purchase, recurring, bonus)
 create or replace function add_credits(p_user_id uuid, p_amount int, p_type text, p_description text, p_metadata jsonb default '{}')
@@ -370,7 +370,7 @@ begin
 
   return v_balance;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 -- Check if free user can scan this week (1 scan/week, 150 accounts max)
 create or replace function check_free_scan_this_week(p_user_id uuid)
@@ -384,7 +384,7 @@ begin
     and created_at >= date_trunc('week', now() at time zone 'UTC');
   return v_scans_this_week < 1;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 -- Clean up old caches (run periodically via pg_cron or external cron)
 create or replace function cleanup_caches()
@@ -393,7 +393,38 @@ begin
   delete from tweet_cache where fetched_at < now() - interval '2 hours';
   delete from analysis_cache where created_at < now() - interval '7 days';
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
+
+-- Restrict privileged RPCs to service_role only.
+do $$
+begin
+  revoke all on function public.deduct_credits(uuid, int, text, jsonb) from public;
+  revoke all on function public.add_credits(uuid, int, text, text, jsonb) from public;
+  revoke all on function public.check_free_scan_this_week(uuid) from public;
+  revoke all on function public.cleanup_caches() from public;
+
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    revoke all on function public.deduct_credits(uuid, int, text, jsonb) from anon;
+    revoke all on function public.add_credits(uuid, int, text, text, jsonb) from anon;
+    revoke all on function public.check_free_scan_this_week(uuid) from anon;
+    revoke all on function public.cleanup_caches() from anon;
+  end if;
+
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    revoke all on function public.deduct_credits(uuid, int, text, jsonb) from authenticated;
+    revoke all on function public.add_credits(uuid, int, text, text, jsonb) from authenticated;
+    revoke all on function public.check_free_scan_this_week(uuid) from authenticated;
+    revoke all on function public.cleanup_caches() from authenticated;
+  end if;
+
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.deduct_credits(uuid, int, text, jsonb) to service_role;
+    grant execute on function public.add_credits(uuid, int, text, text, jsonb) to service_role;
+    grant execute on function public.check_free_scan_this_week(uuid) to service_role;
+    grant execute on function public.cleanup_caches() to service_role;
+  end if;
+end
+$$;
 
 -- ============================================================================
 -- SCHEDULED SCANS
@@ -405,7 +436,7 @@ create table scheduled_scans (
   label text not null default 'Morning',
   time text not null default '07:00' check (time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   timezone text not null default 'UTC',       -- IANA timezone (e.g. "America/New_York")
-  days int[] not null default '{}',           -- 0-6 (Sun-Sat), empty = every day
+  days int[] not null default '{}' check (days <@ array[0,1,2,3,4,5,6]), -- 0-6 (Sun-Sat), empty = every day
   range_days int not null default 1 check (range_days in (1, 7, 30)),
   preset_id uuid references presets(id) on delete set null,  -- which preset to scan
   preset_names text[] not null default '{}',  -- selected preset names (source of truth for UI)
@@ -421,6 +452,7 @@ create table scheduled_scans (
 create index idx_scheduled_scans_user on scheduled_scans(user_id);
 create index idx_scheduled_scans_enabled on scheduled_scans(enabled) where enabled = true;
 create index idx_scheduled_scans_user_enabled_time on scheduled_scans(user_id, enabled, time);
+create index idx_scheduled_scans_running on scheduled_scans(last_run_at) where last_run_status = 'running';
 
 create trigger trg_scheduled_scans_updated_at
   before update on scheduled_scans

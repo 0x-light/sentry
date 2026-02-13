@@ -6,7 +6,7 @@ signal without the noise. scans twitter accounts for trading signals using claud
 
 ```
 app/           vanilla js frontend (no build step)
-  js/          app.js, engine.js, ui.js, api.js, auth.js, config.js
+  js/          app.js, engine.js, ui.js, api.js, auth.js, config.js, sanitize.js
   css/         styles.css
 api/           cloudflare worker backend
   worker.js    all api endpoints
@@ -44,7 +44,7 @@ open `http://localhost:8000`, go to settings, enter your own twitter api key (tw
    - `sentry-cors-proxy` — CORS proxy URL
    - `sentry-supabase-url` / `sentry-supabase-anon-key` — Supabase public config
 
-if those meta tags are empty, the app falls back to defaults from `app/js/config.js`.
+supabase auth values are runtime-configured only (no baked-in Supabase URL/key in client JS).
 
 ### running the api worker locally
 
@@ -109,6 +109,10 @@ supabase (postgres). run `api/schema.sql` to create all tables:
 - `analysis_cache` — shared analysis cache (prompt hash + tweet url)
 
 migrations are manual — run alter statements in supabase sql editor.
+recommended hardening migrations:
+- `api/migrations/20260212_production_hardening.sql`
+- `api/migrations/20260212_scheduled_notice_sync.sql`
+- `api/migrations/20260212_rpc_permissions_and_schedule_indexes.sql`
 
 ## commands
 

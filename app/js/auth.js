@@ -21,9 +21,44 @@ let authChangeCallbacks = [];
 let pendingRecovery = false;
 let refreshTimer = null;
 
+function hasAuthConfig() {
+  return !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
+}
+
+function assertAuthConfig() {
+  if (hasAuthConfig()) return;
+  throw new Error('Authentication is not configured. Set sentry-supabase-url and sentry-supabase-anon-key.');
+}
+
+function lsSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    console.warn(`Failed to persist auth key "${key}":`, e.message);
+  }
+}
+
+function lsRemove(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn(`Failed to clear auth key "${key}":`, e.message);
+  }
+}
+
+function lsGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    console.warn(`Failed to read auth key "${key}":`, e.message);
+    return null;
+  }
+}
+
 // --- Core API ---
 
 async function supabaseAuth(path, body = null, method = 'POST') {
+  assertAuthConfig();
   const headers = {
     'apikey': SUPABASE_ANON_KEY,
     'Content-Type': 'application/json',
@@ -75,13 +110,13 @@ function saveSession(session) {
   refreshToken = session.refresh_token;
   expiresAt = Date.now() + (session.expires_in || 3600) * 1000;
 
-  localStorage.setItem(LS_ACCESS_TOKEN, accessToken);
-  localStorage.setItem(LS_REFRESH_TOKEN, refreshToken);
-  localStorage.setItem(LS_EXPIRES_AT, String(expiresAt));
+  lsSet(LS_ACCESS_TOKEN, accessToken);
+  lsSet(LS_REFRESH_TOKEN, refreshToken);
+  lsSet(LS_EXPIRES_AT, String(expiresAt));
 
   if (session.user) {
     currentUser = session.user;
-    localStorage.setItem(LS_USER, JSON.stringify(currentUser));
+    lsSet(LS_USER, JSON.stringify(currentUser));
   }
 
   scheduleRefresh();
@@ -92,18 +127,18 @@ function clearSession() {
   accessToken = null;
   refreshToken = null;
   expiresAt = 0;
-  localStorage.removeItem(LS_ACCESS_TOKEN);
-  localStorage.removeItem(LS_REFRESH_TOKEN);
-  localStorage.removeItem(LS_USER);
-  localStorage.removeItem(LS_EXPIRES_AT);
+  lsRemove(LS_ACCESS_TOKEN);
+  lsRemove(LS_REFRESH_TOKEN);
+  lsRemove(LS_USER);
+  lsRemove(LS_EXPIRES_AT);
   if (refreshTimer) clearTimeout(refreshTimer);
 }
 
 function loadSession() {
-  accessToken = localStorage.getItem(LS_ACCESS_TOKEN);
-  refreshToken = localStorage.getItem(LS_REFRESH_TOKEN);
-  expiresAt = parseInt(localStorage.getItem(LS_EXPIRES_AT) || '0');
-  const userStr = localStorage.getItem(LS_USER);
+  accessToken = lsGet(LS_ACCESS_TOKEN);
+  refreshToken = lsGet(LS_REFRESH_TOKEN);
+  expiresAt = parseInt(lsGet(LS_EXPIRES_AT) || '0');
+  const userStr = lsGet(LS_USER);
   if (userStr) {
     try { currentUser = JSON.parse(userStr); } catch { currentUser = null; }
   }
@@ -138,6 +173,12 @@ async function refreshSession() {
 export async function init() {
   loadSession();
 
+  if (!hasAuthConfig()) {
+    clearSession();
+    notifyAuthChange();
+    return;
+  }
+
   // Check for OAuth error in query params (e.g. bad_oauth_state from Supabase)
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('error')) {
@@ -159,7 +200,7 @@ export async function init() {
       try {
         const user = await supabaseAuth('/user', null, 'GET');
         currentUser = user;
-        localStorage.setItem(LS_USER, JSON.stringify(user));
+        lsSet(LS_USER, JSON.stringify(user));
       } catch (e) {
         console.warn('Failed to fetch user after OAuth:', e.message);
       }
@@ -207,6 +248,7 @@ export async function init() {
 }
 
 export async function signInGoogle() {
+  assertAuthConfig();
   const redirectUrl = window.location.origin + window.location.pathname;
   const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
   window.location.href = url;

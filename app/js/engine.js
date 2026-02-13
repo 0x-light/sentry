@@ -68,7 +68,7 @@ function safeLsSet(key, value) {
 }
 export function normCat(c) { return CAT_MIGRATE[c] || c; }
 
-const SHOW_TICKER_PRICE_DEFAULT = true;
+const SHOW_TICKER_PRICE_DEFAULT = false;
 let showTickerPriceRuntime = null;
 let showTickerPriceReadWarned = false;
 
@@ -236,7 +236,9 @@ export function getAnalysts() {
   try {
     const raw = localStorage.getItem(LS_ANALYSTS);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to parse saved analysts:', e.message);
+  }
   return null;
 }
 
@@ -306,7 +308,9 @@ export function loadAnalysisCache() {
     const raw = localStorage.getItem(LS_ANALYSIS_CACHE);
     const parsed = raw ? JSON.parse(raw) : null;
     if (parsed && parsed.entries) return parsed;
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to parse analysis cache:', e.message);
+  }
   return { v: 1, entries: {} };
 }
 
@@ -540,26 +544,38 @@ export function safeParseSignals(text) {
   if (!arrayMatch) return [];
   let jsonStr = arrayMatch[0];
   let parsed = null;
+  let lastParseError = null;
   try {
     const result = JSON.parse(jsonStr);
     if (Array.isArray(result)) parsed = result;
-  } catch {}
+  } catch (e) {
+    lastParseError = e;
+  }
   if (!parsed) {
     try {
       jsonStr = jsonStr.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
       jsonStr = jsonStr.replace(/([^\\])\\n(?=")/g, '$1\\\\n');
       const result = JSON.parse(jsonStr);
       if (Array.isArray(result)) parsed = result;
-    } catch {}
+    } catch (e) {
+      lastParseError = e;
+    }
   }
   if (!parsed) {
     try {
       jsonStr = sanitizeText(jsonStr);
       const result = JSON.parse(jsonStr);
       if (Array.isArray(result)) parsed = result;
-    } catch {}
+    } catch (e) {
+      lastParseError = e;
+    }
   }
-  if (!parsed) return [];
+  if (!parsed) {
+    if (lastParseError) {
+      console.warn('Failed to parse analysis response JSON:', lastParseError.message);
+    }
+    return [];
+  }
   return parsed.filter(isValidSignal);
 }
 
@@ -717,7 +733,9 @@ export async function anthropicCall(body, maxRetries = 5, signal = null, onStrea
               } else if (event.type === 'error') {
                 streamError = event.error;
               }
-            } catch {}
+            } catch (e) {
+              console.warn('Invalid Anthropic stream event:', e.message);
+            }
           }
         }
       }
@@ -1007,11 +1025,20 @@ const pendingPriceFetches = new Map();
 // Dynamic crypto slug resolution (for tokens not in static CRYPTO_SLUGS)
 const LS_DYNAMIC_CRYPTO = 'signal_dynamic_crypto_slugs';
 const dynamicCryptoSlugs = (() => {
-  try { return JSON.parse(localStorage.getItem(LS_DYNAMIC_CRYPTO)) || {}; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_DYNAMIC_CRYPTO)) || {};
+  } catch (e) {
+    console.warn('Failed to parse dynamic crypto slug cache:', e.message);
+    return {};
+  }
 })();
 
 function saveDynamicSlugs() {
-  try { localStorage.setItem(LS_DYNAMIC_CRYPTO, JSON.stringify(dynamicCryptoSlugs)); } catch {}
+  try {
+    localStorage.setItem(LS_DYNAMIC_CRYPTO, JSON.stringify(dynamicCryptoSlugs));
+  } catch (e) {
+    console.warn('Failed to persist dynamic crypto slugs:', e.message);
+  }
 }
 
 const pendingSlugLookups = new Map();
@@ -1161,7 +1188,9 @@ async function fetchCryptoPrices(symbols) {
       if (price == null) continue;
       priceCache[sym] = { price, change: change ?? 0, ts: now };
     }
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to fetch crypto prices:', e.message);
+  }
 }
 
 async function fetchStockPrice(sym, originalSym = null) {
@@ -1434,6 +1463,11 @@ export function getTvSymbol(sym) {
   if (clean.endsWith('.T')) return `TSE:${clean.replace('.T', '')}`;
   if (clean.endsWith('.KS')) return `KRX:${clean.replace('.KS', '')}`;
   return clean;
+}
+
+export function getTradingViewDeepLink(sym) {
+  // Keep symbol unencoded here: TradingView app route expects raw exchange notation (e.g. BINANCE:BTCUSDT).
+  return `tradingview://chart?symbol=${getTvSymbol(sym)}`;
 }
 
 // ============================================================================
@@ -1734,11 +1768,8 @@ export function getNextScheduleLabel(schedules) {
 
 export async function fetchFollowing(username, onProgress, signal) {
   if (shouldUseManaged()) {
-    // Use backend to fetch following
-    try {
-      const data = await api.fetchTweets(username, 0, signal); // special case: days=0 means fetch following
-      return data;
-    } catch { return []; }
+    onProgress?.('Following import currently requires your own Twitter API key.', true);
+    return [];
   }
   // BYOK: direct fetch
   const key = getTwKey();

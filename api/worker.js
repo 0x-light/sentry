@@ -187,6 +187,126 @@ function packFromPriceId(env, priceId) {
   return null;
 }
 
+const PUBLIC_ROUTES = {
+  '/api/billing/webhook': {
+    POST: (request, env) => handleStripeWebhook(request, env),
+  },
+  '/api/proxy': {
+    GET: (request, env, ctx) => handleProxy(request, env, ctx),
+  },
+  '/api/health': {
+    GET: (_request, env) => corsJson({ status: 'ok', version: 'v3' }, 200, env),
+  },
+  '/api/admin/monitoring': {
+    GET: (request, env) => handleAdminMonitoring(request, env),
+  },
+};
+
+const AUTH_ROUTES = {
+  '/api/tweets/fetch': {
+    POST: (request, env, ctx, user) => handleFetchTweets(request, env, user, ctx),
+  },
+  '/api/tweets/fetch-batch': {
+    POST: (request, env, ctx, user) => handleFetchTweetsBatch(request, env, user, ctx),
+  },
+  '/api/analyze': {
+    POST: (request, env, _ctx, user) => handleAnalyze(request, env, user),
+  },
+  '/api/analysis/check-cache': {
+    POST: (request, env, _ctx, user) => handleCheckAnalysisCache(request, env, user),
+  },
+  '/api/user': {
+    GET: (_request, env, _ctx, user) => handleGetUser(env, user),
+  },
+  '/api/user/settings': {
+    GET: (_request, env, _ctx, user) => handleGetSettings(env, user),
+    PUT: (request, env, _ctx, user) => handleUpdateSettings(request, env, user),
+  },
+  '/api/user/presets': {
+    GET: (_request, env, _ctx, user) => handleGetPresets(env, user),
+    POST: (request, env, _ctx, user) => handleSavePreset(request, env, user),
+    DELETE: (request, env, _ctx, user) => handleDeletePreset(request, env, user),
+  },
+  '/api/user/analysts': {
+    GET: (_request, env, _ctx, user) => handleGetAnalysts(env, user),
+    POST: (request, env, _ctx, user) => handleSaveAnalyst(request, env, user),
+    DELETE: (request, env, _ctx, user) => handleDeleteAnalyst(request, env, user),
+  },
+  '/api/scans': {
+    GET: (_request, env, _ctx, user) => handleGetScans(env, user),
+    POST: (request, env, ctx, user) => handleSaveScan(request, env, user, ctx),
+    DELETE: (request, env, _ctx, user) => handleDeleteScan(request, env, user),
+  },
+  '/api/scans/check-cache': {
+    POST: (request, env, _ctx, user) => handleCheckScanCache(request, env, user),
+  },
+  '/api/scans/reserve': {
+    POST: (request, env, _ctx, user) => handleReserveCredits(request, env, user),
+  },
+  '/api/scans/share': {
+    POST: (request, env, _ctx, user) => handleShareScan(request, env, user),
+  },
+  '/api/user/schedules': {
+    GET: (_request, env, _ctx, user) => handleGetSchedules(env, user),
+    POST: (request, env, _ctx, user) => handleSaveSchedule(request, env, user),
+    DELETE: (request, env, _ctx, user) => handleDeleteSchedule(request, env, user),
+  },
+  '/api/billing/checkout': {
+    POST: (request, env, _ctx, user) => handleCheckout(request, env, user),
+  },
+  '/api/billing/portal': {
+    POST: (request, env, _ctx, user) => handleBillingPortal(request, env, user),
+  },
+  '/api/billing/status': {
+    GET: (_request, env, _ctx, user) => handleBillingStatus(env, user),
+  },
+  '/api/billing/verify': {
+    POST: (request, env, _ctx, user) => handleVerifyCheckout(request, env, user),
+  },
+};
+
+function normalizePathname(pathname) {
+  return pathname.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+}
+
+function buildRequestId(request) {
+  const cfRay = request.headers.get('cf-ray');
+  if (cfRay) return cfRay.split('-')[0];
+  return crypto.randomUUID();
+}
+
+function withRequestId(payload, requestId) {
+  if (!requestId) return payload;
+  return { ...payload, request_id: requestId };
+}
+
+function errorResponse(env, {
+  status,
+  message,
+  code,
+  requestId,
+  originOverride,
+  allowMethods,
+  retryAfter,
+}) {
+  const body = { error: message };
+  if (code) body.code = code;
+  const headers = {};
+  if (allowMethods?.length) headers.Allow = allowMethods.join(', ');
+  if (retryAfter != null) headers['Retry-After'] = String(retryAfter);
+  return corsJson(withRequestId(body, requestId), status, env, originOverride, headers);
+}
+
+async function dispatchRoute(table, path, method, args) {
+  const route = table[path];
+  if (!route) return { matched: false };
+  const handler = route[method];
+  if (!handler) {
+    return { matched: true, allowMethods: Object.keys(route), response: null };
+  }
+  return { matched: true, response: await handler(...args), allowMethods: null };
+}
+
 export default {
   // ── Cron trigger: runs scheduled scans server-side ─────────────────────
   async scheduled(event, env, ctx) {
@@ -208,6 +328,9 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    const requestId = buildRequestId(request);
+    env._request_id = requestId;
+
     // Resolve CORS origin: reflect request origin if it's in our allow-list
     const reqOrigin = request.headers.get('Origin') || '';
     if (getAllowedOrigins().has(reqOrigin)) {
@@ -218,7 +341,7 @@ export default {
     if (request.method === 'OPTIONS') {
       // Admin endpoints allow any origin (protected by secret, not CORS)
       const prefUrl = new URL(request.url);
-      const prefPath = prefUrl.pathname.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+      const prefPath = normalizePathname(prefUrl.pathname);
       if (prefPath.startsWith('/api/admin/')) {
         return corsResponse(null, 204, env, '*');
       }
@@ -226,150 +349,110 @@ export default {
     }
 
     const url = new URL(request.url);
-    // Normalize path so route matching isn't sensitive to accidental `//` or trailing `/`.
-    // (Some clients may send `//api/...` if their base URL ends with `/`.)
-    const rawPath = url.pathname;
-    const path = rawPath.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
+    const path = normalizePathname(url.pathname);
     const method = request.method;
 
     try {
       // --- Public routes (no auth required) ---
-      if (path === '/api/billing/webhook' && method === 'POST') {
-        return handleStripeWebhook(request, env);
+      if (path !== '/api/admin/monitoring') {
+        const publicRoute = await dispatchRoute(PUBLIC_ROUTES, path, method, [request, env, ctx]);
+        if (publicRoute.matched && publicRoute.response) {
+          return publicRoute.response;
+        }
+        if (publicRoute.matched && publicRoute.allowMethods) {
+          return errorResponse(env, {
+            status: 405,
+            message: 'Method not allowed',
+            requestId,
+            allowMethods: publicRoute.allowMethods,
+          });
+        }
       }
-      // CORS proxy — public (hostname allowlist prevents abuse)
-      if (path === '/api/proxy' && method === 'GET') {
-        return handleProxy(request, env, ctx);
-      }
-      if (path === '/api/health') {
-        return corsJson({ status: 'ok', version: 'v3' }, 200, env);
-      }
+
       ensureBaseEnv(env);
-      if (path === '/api/admin/monitoring' && method === 'GET') {
-        return handleAdminMonitoring(request, env);
+
+      const adminRoute = await dispatchRoute(PUBLIC_ROUTES, path, method, [request, env, ctx]);
+      if (adminRoute.matched && adminRoute.response) {
+        return adminRoute.response;
       }
-      if (path.startsWith('/api/shared/') && method === 'GET') {
+      if (adminRoute.matched && adminRoute.allowMethods) {
+        return errorResponse(env, {
+          status: 405,
+          message: 'Method not allowed',
+          requestId,
+          allowMethods: adminRoute.allowMethods,
+        });
+      }
+
+      if (path.startsWith('/api/shared/')) {
+        if (method !== 'GET') {
+          return errorResponse(env, {
+            status: 405,
+            message: 'Method not allowed',
+            requestId,
+            allowMethods: ['GET'],
+          });
+        }
         const shareId = path.slice('/api/shared/'.length);
         return handleGetSharedScan(env, shareId);
+      }
+
+      const authRoute = AUTH_ROUTES[path];
+      if (!authRoute) {
+        return errorResponse(env, {
+          status: 404,
+          message: 'Not found',
+          requestId,
+        });
+      }
+      if (!authRoute[method]) {
+        return errorResponse(env, {
+          status: 405,
+          message: 'Method not allowed',
+          requestId,
+          allowMethods: Object.keys(authRoute),
+        });
       }
 
       // --- Auth required routes ---
       const user = await authenticate(request, env);
       if (!user) {
-        return corsJson({ error: 'Unauthorized' }, 401, env);
+        return errorResponse(env, {
+          status: 401,
+          message: 'Unauthorized',
+          requestId,
+          code: 'UNAUTHORIZED',
+        });
       }
 
       // Per-user rate limit: 120 requests per minute (generous but prevents abuse)
       const userRl = await checkRateLimit(env, `user:${user.id}`, 120, 60);
       if (!userRl.ok) {
-        return corsJson({ error: 'Too many requests. Please slow down.', code: 'RATE_LIMITED' }, 429, env);
+        return errorResponse(env, {
+          status: 429,
+          message: 'Too many requests. Please slow down.',
+          code: 'RATE_LIMITED',
+          requestId,
+          retryAfter: userRl.retryAfter,
+        });
       }
-
-      // Tweet fetching
-      if (path === '/api/tweets/fetch' && method === 'POST') {
-        return handleFetchTweets(request, env, user, ctx);
-      }
-      if (path === '/api/tweets/fetch-batch' && method === 'POST') {
-        return handleFetchTweetsBatch(request, env, user, ctx);
-      }
-
-      // Claude analysis
-      if (path === '/api/analyze' && method === 'POST') {
-        return handleAnalyze(request, env, user);
-      }
-      if (path === '/api/analysis/check-cache' && method === 'POST') {
-        return handleCheckAnalysisCache(request, env, user);
-      }
-
-      // User profile
-      if (path === '/api/user' && method === 'GET') {
-        return handleGetUser(env, user);
-      }
-
-      // Settings
-      if (path === '/api/user/settings' && method === 'GET') {
-        return handleGetSettings(env, user);
-      }
-      if (path === '/api/user/settings' && method === 'PUT') {
-        return handleUpdateSettings(request, env, user);
-      }
-
-      // Presets
-      if (path === '/api/user/presets' && method === 'GET') {
-        return handleGetPresets(env, user);
-      }
-      if (path === '/api/user/presets' && method === 'POST') {
-        return handleSavePreset(request, env, user);
-      }
-      if (path === '/api/user/presets' && method === 'DELETE') {
-        return handleDeletePreset(request, env, user);
-      }
-
-      // Analysts
-      if (path === '/api/user/analysts' && method === 'GET') {
-        return handleGetAnalysts(env, user);
-      }
-      if (path === '/api/user/analysts' && method === 'POST') {
-        return handleSaveAnalyst(request, env, user);
-      }
-      if (path === '/api/user/analysts' && method === 'DELETE') {
-        return handleDeleteAnalyst(request, env, user);
-      }
-
-      // Scan history
-      if (path === '/api/scans' && method === 'GET') {
-        return handleGetScans(env, user);
-      }
-      if (path === '/api/scans' && method === 'POST') {
-        return handleSaveScan(request, env, user, ctx);
-      }
-      if (path === '/api/scans' && method === 'DELETE') {
-        return handleDeleteScan(request, env, user);
-      }
-      if (path === '/api/scans/check-cache' && method === 'POST') {
-        return handleCheckScanCache(request, env, user);
-      }
-      if (path === '/api/scans/reserve' && method === 'POST') {
-        return handleReserveCredits(request, env, user);
-      }
-      if (path === '/api/scans/share' && method === 'POST') {
-        return handleShareScan(request, env, user);
-      }
-
-      // Scheduled scans
-      if (path === '/api/user/schedules' && method === 'GET') {
-        return handleGetSchedules(env, user);
-      }
-      if (path === '/api/user/schedules' && method === 'POST') {
-        return handleSaveSchedule(request, env, user);
-      }
-      if (path === '/api/user/schedules' && method === 'DELETE') {
-        return handleDeleteSchedule(request, env, user);
-      }
-
-      // Billing
-      if (path === '/api/billing/checkout' && method === 'POST') {
-        return handleCheckout(request, env, user);
-      }
-      if (path === '/api/billing/portal' && method === 'POST') {
-        return handleBillingPortal(request, env, user);
-      }
-      if (path === '/api/billing/status' && method === 'GET') {
-        return handleBillingStatus(env, user);
-      }
-      if (path === '/api/billing/verify' && method === 'POST') {
-        return handleVerifyCheckout(request, env, user);
-      }
-
-      return corsJson({ error: 'Not found' }, 404, env);
+      return await authRoute[method](request, env, ctx, user);
 
     } catch (e) {
       const status = e.status || 500;
       if (status >= 500) {
-        console.error('Unhandled error:', e.message, e.stack);
-        return corsJson({ error: 'Internal server error' }, status, env);
+        console.error(`[${requestId}] Unhandled error:`, e.message, e.stack);
+        return errorResponse(env, {
+          status,
+          message: 'Internal server error',
+          requestId,
+        });
       }
-      return corsJson({ error: e.message || 'Request failed' }, status, env);
+      return errorResponse(env, {
+        status,
+        message: e.message || 'Request failed',
+        requestId,
+      });
     }
   },
 };
@@ -1622,18 +1705,38 @@ function corsHeaders(env, originOverride) {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Admin-Secret',
+    'Access-Control-Expose-Headers': 'Retry-After, Allow',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
 
-function corsResponse(body, status, env, originOverride) {
-  return new Response(body, { status, headers: corsHeaders(env, originOverride) });
+function corsResponse(body, status, env, originOverride, extraHeaders = {}) {
+  return new Response(body, {
+    status,
+    headers: { ...corsHeaders(env, originOverride), ...extraHeaders },
+  });
 }
 
-function corsJson(data, status, env, originOverride) {
-  return new Response(JSON.stringify(data), {
+function corsJson(data, status, env, originOverride, extraHeaders = {}) {
+  let payload = data;
+  if (
+    status >= 400
+    && data
+    && typeof data === 'object'
+    && !Array.isArray(data)
+    && !Object.prototype.hasOwnProperty.call(data, 'request_id')
+    && env?._request_id
+  ) {
+    payload = { ...data, request_id: env._request_id };
+  }
+  return new Response(JSON.stringify(payload), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(env, originOverride) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(env, originOverride),
+      ...extraHeaders,
+    },
   });
 }
 
@@ -1787,10 +1890,40 @@ async function authenticate(request, env) {
 /**
  * Safely parse request JSON body. Returns parsed object or throws a clean 400 error.
  */
-async function safeJsonBody(request) {
+async function safeJsonBody(request, { maxBytes = 1_000_000, allowEmpty = false } = {}) {
+  const contentType = (request.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('application/json')) {
+    throw Object.assign(new Error('Content-Type must be application/json'), { status: 415 });
+  }
+
+  const contentLength = parseInt(request.headers.get('content-length') || '0', 10);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw Object.assign(new Error('Request body too large'), { status: 413 });
+  }
+
+  let raw;
   try {
-    return await request.json();
+    raw = await request.text();
   } catch {
+    throw Object.assign(new Error('Failed to read request body'), { status: 400 });
+  }
+
+  if (!raw || !raw.trim()) {
+    if (allowEmpty) return {};
+    throw Object.assign(new Error('Request body is required'), { status: 400 });
+  }
+  if (raw.length > maxBytes) {
+    throw Object.assign(new Error('Request body too large'), { status: 413 });
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed;
+    throw new Error('Request body must be a JSON object');
+  } catch (err) {
+    if (err.message === 'Request body must be a JSON object') {
+      throw Object.assign(err, { status: 400 });
+    }
     throw Object.assign(new Error('Invalid JSON in request body'), { status: 400 });
   }
 }
@@ -3264,14 +3397,13 @@ async function handleBillingStatus(env, user) {
 // Verify a checkout session directly with Stripe (fallback for missed webhooks)
 async function handleVerifyCheckout(request, env, user) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const session_id = body.session_id;
-    if (!session_id) {
+    const { session_id } = await safeJsonBody(request, { allowEmpty: true });
+    if (typeof session_id !== 'string' || !session_id.trim() || session_id.length > 200) {
       return corsJson({ error: 'Missing session_id' }, 400, env);
     }
 
     // Fetch the session from Stripe
-    const session = await stripeGet(env, `/checkout/sessions/${encodeURIComponent(session_id)}`);
+    const session = await stripeGet(env, `/checkout/sessions/${encodeURIComponent(session_id.trim())}`);
     if (session.error || !session.id) {
       console.error('Stripe session fetch failed:', JSON.stringify(session.error || session));
       return corsJson({ error: 'Invalid session' }, 400, env);
@@ -3300,7 +3432,7 @@ async function handleVerifyCheckout(request, env, user) {
         // If the webhook already processed it, this will 409 and we skip credit grant.
         await supabaseQuery(env, 'billing_events', {
           method: 'POST',
-          body: { stripe_event_id: `verify:${session.id}`, type: 'checkout.session.verified', data: { session_id: session.id } },
+          body: { stripe_event_id: `session:${session.id}`, type: 'checkout.session.verified', data: { session_id: session.id } },
         });
 
         // If we got here, the event was not yet processed — add credits
@@ -3403,6 +3535,13 @@ async function handleStripeWebhook(request, env) {
 
       if (credits > 0 && userId) {
         try {
+          // Insert a session-keyed dedup row so this collides with verify-checkout.
+          // If verify-checkout already fulfilled credits, this 409s and we skip.
+          await supabaseQuery(env, 'billing_events', {
+            method: 'POST',
+            body: { stripe_event_id: `session:${obj.id}`, type: 'checkout.session.completed', data: { session_id: obj.id } },
+          });
+
           const pack = CREDIT_PACKS[packId];
           const desc = pack ? `${pack.name} pack (${credits.toLocaleString()} credits)` : `${credits.toLocaleString()} credits`;
           const txType = obj.mode === 'subscription' ? 'recurring' : 'purchase';
@@ -3414,6 +3553,8 @@ async function handleStripeWebhook(request, env) {
             p_metadata: { stripe_session_id: obj.id, pack_id: packId },
           });
         } catch (e) {
+          // 409 = session already fulfilled by verify-checkout — safe to skip credit grant
+          if (e.status === 409) break;
           // Credit fulfillment failed — this is critical. Log prominently.
           // The billing_events row already exists, so retries of this webhook will
           // be caught as duplicates. We return 500 so Stripe retries the event.
