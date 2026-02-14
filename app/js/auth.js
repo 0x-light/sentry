@@ -320,6 +320,7 @@ export function signInGoogle() {
   const redirectUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams({
     provider: 'google',
+    flow_type: 'implicit',
     redirect_to: redirectUrl,
     response_type: 'token',
     prompt: 'select_account',
