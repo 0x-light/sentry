@@ -12,6 +12,8 @@ const LS_ACCESS_TOKEN = 'sentry_access_token';
 const LS_REFRESH_TOKEN = 'sentry_refresh_token';
 const LS_USER = 'sentry_user';
 const LS_EXPIRES_AT = 'sentry_token_expires';
+const LS_OAUTH_CODE_VERIFIER = 'sentry_oauth_code_verifier';
+const LS_OAUTH_STATE = 'sentry_oauth_state';
 
 let currentUser = null;
 let accessToken = null;
@@ -53,6 +55,38 @@ function lsGet(key) {
     console.warn(`Failed to read auth key "${key}":`, e.message);
     return null;
   }
+}
+
+function toBase64Url(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function getWebCrypto() {
+  return globalThis?.crypto || null;
+}
+
+function randomBase64Url(byteLength = 32) {
+  const webCrypto = getWebCrypto();
+  if (!webCrypto?.getRandomValues) throw new Error('Web crypto unavailable');
+  const bytes = new Uint8Array(byteLength);
+  webCrypto.getRandomValues(bytes);
+  return toBase64Url(bytes);
+}
+
+async function sha256Base64Url(text) {
+  const webCrypto = getWebCrypto();
+  if (!webCrypto?.subtle) throw new Error('Web crypto unavailable');
+  const digest = await webCrypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return toBase64Url(new Uint8Array(digest));
+}
+
+function clearOAuthFlowState() {
+  lsRemove(LS_OAUTH_CODE_VERIFIER);
+  lsRemove(LS_OAUTH_STATE);
 }
 
 // --- Core API ---
@@ -207,6 +241,7 @@ export async function init() {
       if (params.get('type') === 'recovery') {
         pendingRecovery = true;
       }
+      clearOAuthFlowState();
       history.replaceState(null, '', window.location.pathname);
       notifyAuthChange();
       return;
@@ -216,14 +251,31 @@ export async function init() {
   // Check for PKCE code in query params
   const code = urlParams.get('code');
   if (code) {
+    const returnedState = urlParams.get('state');
+    const storedState = lsGet(LS_OAUTH_STATE);
+    const codeVerifier = lsGet(LS_OAUTH_CODE_VERIFIER);
     // Always clean up the code from the URL to prevent replay and stale bookmarks
     history.replaceState(null, '', window.location.pathname);
     try {
-      const data = await supabaseAuth('/token?grant_type=authorization_code', { code });
+      if (storedState && returnedState && storedState !== returnedState) {
+        throw new Error('OAuth state mismatch. Please try signing in again.');
+      }
+      let data = null;
+      if (codeVerifier) {
+        data = await supabaseAuth('/token?grant_type=pkce', {
+          auth_code: code,
+          code_verifier: codeVerifier,
+        });
+      } else {
+        // Backward-compatible fallback for non-PKCE authorization code flows.
+        data = await supabaseAuth('/token?grant_type=authorization_code', { code });
+      }
       saveSession(data);
+      clearOAuthFlowState();
       notifyAuthChange();
       return;
     } catch (e) {
+      clearOAuthFlowState();
       console.warn('OAuth code exchange failed:', e.message);
     }
   }
@@ -250,8 +302,42 @@ export async function init() {
 export function signInGoogle() {
   assertAuthConfig();
   const redirectUrl = window.location.origin + window.location.pathname;
-  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
-  window.location.assign(url);
+  const params = new URLSearchParams({
+    provider: 'google',
+    redirect_to: redirectUrl,
+  });
+
+  const redirect = () => {
+    const url = `${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`;
+    window.location.assign(url);
+  };
+
+  const run = async () => {
+    try {
+      const webCrypto = getWebCrypto();
+      if (webCrypto?.subtle && webCrypto?.getRandomValues) {
+        const codeVerifier = randomBase64Url(32);
+        const state = randomBase64Url(16);
+        const codeChallenge = await sha256Base64Url(codeVerifier);
+        lsSet(LS_OAUTH_CODE_VERIFIER, codeVerifier);
+        lsSet(LS_OAUTH_STATE, state);
+        params.set('flow_type', 'pkce');
+        params.set('code_challenge_method', 's256');
+        params.set('code_challenge', codeChallenge);
+        params.set('state', state);
+      } else {
+        clearOAuthFlowState();
+        params.set('flow_type', 'implicit');
+      }
+    } catch (e) {
+      clearOAuthFlowState();
+      console.warn('PKCE setup failed, using implicit OAuth flow:', e.message);
+      params.set('flow_type', 'implicit');
+    }
+    redirect();
+  };
+
+  void run();
 }
 
 export async function signInEmail(email, password) {
