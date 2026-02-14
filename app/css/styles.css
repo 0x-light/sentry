@@ -418,6 +418,7 @@ body.modal-open { overflow: hidden; }
   .modal-actions button:last-child:hover { opacity: 1; }
   .ext-link:hover { background: var(--text-10); }
   .rng.on:hover { color: var(--bg); background: var(--text-strong); }
+  .modal-tab.active:hover { color: var(--bg); background: var(--text-strong); }
 }
 
 /* ============================================================================
