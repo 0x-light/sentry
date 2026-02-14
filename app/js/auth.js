@@ -57,36 +57,39 @@ function lsGet(key) {
   }
 }
 
-function toBase64Url(bytes) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function getWebCrypto() {
-  return globalThis?.crypto || null;
-}
-
-function randomBase64Url(byteLength = 32) {
-  const webCrypto = getWebCrypto();
-  if (!webCrypto?.getRandomValues) throw new Error('Web crypto unavailable');
-  const bytes = new Uint8Array(byteLength);
-  webCrypto.getRandomValues(bytes);
-  return toBase64Url(bytes);
-}
-
-async function sha256Base64Url(text) {
-  const webCrypto = getWebCrypto();
-  if (!webCrypto?.subtle) throw new Error('Web crypto unavailable');
-  const digest = await webCrypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return toBase64Url(new Uint8Array(digest));
-}
-
 function clearOAuthFlowState() {
   lsRemove(LS_OAUTH_CODE_VERIFIER);
   lsRemove(LS_OAUTH_STATE);
+}
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padLen = (4 - (base64.length % 4)) % 4;
+    const padded = base64 + '='.repeat(padLen);
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function hydrateUserFromAccessToken(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.sub) return false;
+  currentUser = {
+    id: payload.sub,
+    email: payload.email || '',
+    aud: payload.aud || 'authenticated',
+    user_metadata: (payload.user_metadata && typeof payload.user_metadata === 'object')
+      ? payload.user_metadata
+      : {},
+  };
+  lsSet(LS_USER, JSON.stringify(currentUser));
+  return true;
 }
 
 // --- Core API ---
@@ -213,32 +216,41 @@ export async function init() {
     return;
   }
 
-  // Check for OAuth error in query params (e.g. bad_oauth_state from Supabase)
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('error')) {
-    console.warn('OAuth error:', urlParams.get('error_description') || urlParams.get('error'));
+  const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+
+  // Check for OAuth error in query/hash params
+  const oauthError = urlParams.get('error') || hashParams.get('error');
+  const oauthErrorDesc = urlParams.get('error_description') || hashParams.get('error_description');
+  if (oauthError) {
+    console.warn('OAuth error:', oauthErrorDesc || oauthError);
     history.replaceState(null, '', window.location.pathname);
   }
 
-  // Check for OAuth callback in URL hash (implicit flow)
-  const hash = window.location.hash;
-  if (hash.includes('access_token=')) {
-    const params = new URLSearchParams(hash.substring(1));
+  // Check for OAuth callback tokens (implicit flow)
+  const tokenParams = hashParams.get('access_token') ? hashParams
+    : (urlParams.get('access_token') ? urlParams : null);
+  if (tokenParams) {
     const session = {
-      access_token: params.get('access_token'),
-      refresh_token: params.get('refresh_token'),
-      expires_in: parseInt(params.get('expires_in') || '3600'),
+      access_token: tokenParams.get('access_token'),
+      refresh_token: tokenParams.get('refresh_token'),
+      expires_in: parseInt(tokenParams.get('expires_in') || '3600'),
     };
     if (session.access_token) {
       saveSession(session);
+      let userLoaded = false;
       try {
         const user = await supabaseAuth('/user', null, 'GET');
         currentUser = user;
         lsSet(LS_USER, JSON.stringify(user));
+        userLoaded = true;
       } catch (e) {
         console.warn('Failed to fetch user after OAuth:', e.message);
       }
-      if (params.get('type') === 'recovery') {
+      if (!userLoaded) {
+        hydrateUserFromAccessToken(session.access_token);
+      }
+      if ((tokenParams.get('type') || urlParams.get('type')) === 'recovery') {
         pendingRecovery = true;
       }
       clearOAuthFlowState();
@@ -282,6 +294,9 @@ export async function init() {
 
   // Existing session — check if token is still valid
   if (accessToken) {
+    if (!currentUser) {
+      hydrateUserFromAccessToken(accessToken);
+    }
     if (Date.now() < expiresAt - 30000) {
       scheduleRefresh();
       notifyAuthChange();
@@ -301,43 +316,16 @@ export async function init() {
 
 export function signInGoogle() {
   assertAuthConfig();
+  clearOAuthFlowState();
   const redirectUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams({
     provider: 'google',
     redirect_to: redirectUrl,
+    response_type: 'token',
+    prompt: 'select_account',
   });
-
-  const redirect = () => {
-    const url = `${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`;
-    window.location.assign(url);
-  };
-
-  const run = async () => {
-    try {
-      const webCrypto = getWebCrypto();
-      if (webCrypto?.subtle && webCrypto?.getRandomValues) {
-        const codeVerifier = randomBase64Url(32);
-        const state = randomBase64Url(16);
-        const codeChallenge = await sha256Base64Url(codeVerifier);
-        lsSet(LS_OAUTH_CODE_VERIFIER, codeVerifier);
-        lsSet(LS_OAUTH_STATE, state);
-        params.set('flow_type', 'pkce');
-        params.set('code_challenge_method', 's256');
-        params.set('code_challenge', codeChallenge);
-        params.set('state', state);
-      } else {
-        clearOAuthFlowState();
-        params.set('flow_type', 'implicit');
-      }
-    } catch (e) {
-      clearOAuthFlowState();
-      console.warn('PKCE setup failed, using implicit OAuth flow:', e.message);
-      params.set('flow_type', 'implicit');
-    }
-    redirect();
-  };
-
-  void run();
+  const url = `${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`;
+  window.location.assign(url);
 }
 
 export async function signInEmail(email, password) {

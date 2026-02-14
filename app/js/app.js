@@ -1228,7 +1228,17 @@ function initEventDelegation() {
       case 'closeAuthBtn': closeModal('authModal'); auth.clearPendingRecovery(); break;
       case 'authSubmitBtn': handleAuthSubmit(); break;
       case 'forgotPwBtn': handleForgotPassword(); break;
-      case 'googleSignInBtn': auth.signInGoogle(); break;
+      case 'googleSignInBtn':
+        try {
+          auth.signInGoogle();
+        } catch (e) {
+          const errEl = $('authError');
+          if (errEl) {
+            errEl.textContent = e.message || 'Google sign-in is unavailable.';
+            errEl.style.display = 'block';
+          }
+        }
+        break;
       case 'resetPasswordBtn': handlePasswordReset(); break;
 
       // Pricing modal
@@ -1831,7 +1841,15 @@ function initOnboardingListeners() {
       return;
     }
     if (e.target.id === 'obGoogleBtn') {
-      auth.signInGoogle();
+      try {
+        auth.signInGoogle();
+      } catch (e) {
+        const errEl = $('obAuthError');
+        if (errEl) {
+          errEl.textContent = e.message || 'Google sign-in is unavailable.';
+          errEl.style.display = 'block';
+        }
+      }
       return;
     }
     if (e.target.id === 'obLoginBtn' || e.target.id === 'obSignupBtn') {
