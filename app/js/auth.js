@@ -92,6 +92,60 @@ function hydrateUserFromAccessToken(token) {
   return true;
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function loadUserProfileWithRetry(maxAttempts = 3) {
+  let lastErr = null;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const user = await supabaseAuth('/user', null, 'GET');
+      if (user && typeof user === 'object') return user;
+    } catch (e) {
+      lastErr = e;
+      if (i < maxAttempts - 1) {
+        await wait(250 * (i + 1));
+      }
+    }
+  }
+  if (lastErr) throw lastErr;
+  throw new Error('Failed to load user profile');
+}
+
+async function exchangeOAuthCodeForSession(code, codeVerifier = '') {
+  const safeCode = typeof code === 'string' ? code.trim() : '';
+  if (!safeCode) throw new Error('Missing OAuth code');
+  const safeVerifier = typeof codeVerifier === 'string' ? codeVerifier.trim() : '';
+
+  const attempts = [];
+  if (safeVerifier) {
+    attempts.push(['/token?grant_type=pkce', { auth_code: safeCode, code_verifier: safeVerifier }]);
+    attempts.push(['/token?grant_type=pkce', { code: safeCode, code_verifier: safeVerifier }]);
+  }
+  attempts.push(['/token?grant_type=authorization_code', { auth_code: safeCode }]);
+  attempts.push(['/token?grant_type=authorization_code', { code: safeCode }]);
+
+  let lastErr = null;
+  for (const [path, body] of attempts) {
+    try {
+      return await supabaseAuth(path, body);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('OAuth code exchange failed');
+}
+
+async function exchangeIdTokenForSession(idToken) {
+  const safeIdToken = typeof idToken === 'string' ? idToken.trim() : '';
+  if (!safeIdToken) throw new Error('Missing id_token');
+  return supabaseAuth('/token?grant_type=id_token', {
+    provider: 'google',
+    id_token: safeIdToken,
+  });
+}
+
 // --- Core API ---
 
 async function supabaseAuth(path, body = null, method = 'POST') {
@@ -218,6 +272,7 @@ export async function init() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  const callbackParams = hashParams.toString() ? hashParams : urlParams;
 
   // Check for OAuth error in query/hash params
   const oauthError = urlParams.get('error') || hashParams.get('error');
@@ -227,20 +282,52 @@ export async function init() {
     history.replaceState(null, '', window.location.pathname);
   }
 
-  // Check for OAuth callback tokens (implicit flow)
-  const tokenParams = hashParams.get('access_token') ? hashParams
-    : (urlParams.get('access_token') ? urlParams : null);
-  if (tokenParams) {
-    const session = {
-      access_token: tokenParams.get('access_token'),
-      refresh_token: tokenParams.get('refresh_token'),
-      expires_in: parseInt(tokenParams.get('expires_in') || '3600'),
-    };
-    if (session.access_token) {
+  const callbackAccessToken = callbackParams.get('access_token');
+  const callbackRefreshToken = callbackParams.get('refresh_token');
+  const callbackExpiresIn = parseInt(callbackParams.get('expires_in') || '3600', 10);
+  const callbackCode = (
+    urlParams.get('code')
+    || urlParams.get('auth_code')
+    || hashParams.get('code')
+    || hashParams.get('auth_code')
+    || ''
+  ).trim();
+  const callbackIdToken = (callbackParams.get('id_token') || '').trim();
+  const callbackType = callbackParams.get('type') || urlParams.get('type');
+  const hasOAuthCallback = !!(callbackAccessToken || callbackCode || callbackIdToken);
+
+  // Handle OAuth callback in a single place (token/code/id_token)
+  if (hasOAuthCallback) {
+    // Always clean up callback params from URL to avoid replay/stale bookmarks.
+    history.replaceState(null, '', window.location.pathname);
+    let session = null;
+    try {
+      if (callbackAccessToken) {
+        session = {
+          access_token: callbackAccessToken,
+          refresh_token: callbackRefreshToken,
+          expires_in: Number.isFinite(callbackExpiresIn) ? callbackExpiresIn : 3600,
+        };
+      } else if (callbackCode) {
+        const storedState = lsGet(LS_OAUTH_STATE);
+        const returnedState = (urlParams.get('state') || hashParams.get('state') || '').trim();
+        const codeVerifier = lsGet(LS_OAUTH_CODE_VERIFIER) || '';
+        if (storedState && returnedState && storedState !== returnedState) {
+          throw new Error('OAuth state mismatch. Please try signing in again.');
+        }
+        session = await exchangeOAuthCodeForSession(callbackCode, codeVerifier);
+      } else if (callbackIdToken) {
+        session = await exchangeIdTokenForSession(callbackIdToken);
+      }
+
+      if (!session?.access_token) {
+        throw new Error('OAuth callback missing access token');
+      }
+
       saveSession(session);
       let userLoaded = false;
       try {
-        const user = await supabaseAuth('/user', null, 'GET');
+        const user = await loadUserProfileWithRetry();
         currentUser = user;
         lsSet(LS_USER, JSON.stringify(user));
         userLoaded = true;
@@ -250,45 +337,15 @@ export async function init() {
       if (!userLoaded) {
         hydrateUserFromAccessToken(session.access_token);
       }
-      if ((tokenParams.get('type') || urlParams.get('type')) === 'recovery') {
+      if (callbackType === 'recovery') {
         pendingRecovery = true;
       }
-      clearOAuthFlowState();
-      history.replaceState(null, '', window.location.pathname);
-      notifyAuthChange();
-      return;
-    }
-  }
-
-  // Check for PKCE code in query params
-  const code = urlParams.get('code');
-  if (code) {
-    const returnedState = urlParams.get('state');
-    const storedState = lsGet(LS_OAUTH_STATE);
-    const codeVerifier = lsGet(LS_OAUTH_CODE_VERIFIER);
-    // Always clean up the code from the URL to prevent replay and stale bookmarks
-    history.replaceState(null, '', window.location.pathname);
-    try {
-      if (storedState && returnedState && storedState !== returnedState) {
-        throw new Error('OAuth state mismatch. Please try signing in again.');
-      }
-      let data = null;
-      if (codeVerifier) {
-        data = await supabaseAuth('/token?grant_type=pkce', {
-          auth_code: code,
-          code_verifier: codeVerifier,
-        });
-      } else {
-        // Backward-compatible fallback for non-PKCE authorization code flows.
-        data = await supabaseAuth('/token?grant_type=authorization_code', { code });
-      }
-      saveSession(data);
       clearOAuthFlowState();
       notifyAuthChange();
       return;
     } catch (e) {
       clearOAuthFlowState();
-      console.warn('OAuth code exchange failed:', e.message);
+      console.warn('OAuth callback handling failed:', e.message);
     }
   }
 
@@ -318,14 +375,7 @@ export function signInGoogle() {
   assertAuthConfig();
   clearOAuthFlowState();
   const redirectUrl = window.location.origin + window.location.pathname;
-  const params = new URLSearchParams({
-    provider: 'google',
-    flow_type: 'implicit',
-    redirect_to: redirectUrl,
-    response_type: 'token',
-    prompt: 'select_account',
-  });
-  const url = `${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`;
+  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
   window.location.assign(url);
 }
 
