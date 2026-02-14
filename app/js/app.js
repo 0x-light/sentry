@@ -1682,8 +1682,22 @@ const onboardingState = {
 };
 
 function startOnboarding() {
-  onboardingState.current = 0;
-  onboardingState.path = null;
+  // Restore onboarding state if returning from OAuth redirect
+  let restoredStep = 0;
+  let restoredPath = null;
+  try {
+    const savedStep = localStorage.getItem('signal_onboarding_step');
+    const savedPath = localStorage.getItem('signal_onboarding_path');
+    if (savedStep !== null && auth.isAuthenticated()) {
+      restoredStep = parseInt(savedStep, 10) || 0;
+      restoredPath = savedPath || null;
+    }
+    localStorage.removeItem('signal_onboarding_step');
+    localStorage.removeItem('signal_onboarding_path');
+  } catch {}
+
+  onboardingState.current = restoredStep;
+  onboardingState.path = restoredPath;
   onboardingState.selectedAnalysts = new Set();
   onboardingState.scheduledTimes = [];
   onboardingState.schedulePresets = null;
@@ -1842,6 +1856,8 @@ function initOnboardingListeners() {
     }
     if (e.target.id === 'obGoogleBtn') {
       try {
+        // Persist onboarding state so we resume at the right step after OAuth redirect
+        try { localStorage.setItem('signal_onboarding_step', String(onboardingState.current)); localStorage.setItem('signal_onboarding_path', onboardingState.path || ''); } catch {}
         auth.signInGoogle();
       } catch (e) {
         const errEl = $('obAuthError');
