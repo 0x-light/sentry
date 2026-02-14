@@ -247,11 +247,11 @@ export async function init() {
   }
 }
 
-export async function signInGoogle() {
+export function signInGoogle() {
   assertAuthConfig();
   const redirectUrl = window.location.origin + window.location.pathname;
   const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
-  window.location.href = url;
+  window.location.assign(url);
 }
 
 export async function signInEmail(email, password) {
