@@ -146,8 +146,8 @@ export const API_BASE = trimTrailingSlash(configValue('API_BASE', 'https://api.s
 export const CORS_PROXY = configValue('CORS_PROXY', `${API_BASE || ''}/api/proxy?url=`);
 
 // Supabase config
-export const SUPABASE_URL = trimTrailingSlash(configValue('SUPABASE_URL', ''));
-export const SUPABASE_ANON_KEY = configValue('SUPABASE_ANON_KEY', '');
+export const SUPABASE_URL = trimTrailingSlash(configValue('SUPABASE_URL', 'https://mfbnbfpfjeetaejibvjy.supabase.co'));
+export const SUPABASE_ANON_KEY = configValue('SUPABASE_ANON_KEY', 'sb_publishable_aXJZySxABS2lOW_WQS-OOQ_RNSymyfn');
 
 // Model pricing (per million tokens)
 export const MODEL_PRICING = {
